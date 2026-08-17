@@ -1,0 +1,32 @@
+@startuml
+title Auralis - Device Session State
+
+[*] --> Discovered
+
+Discovered --> Pairing : pair()
+Pairing --> Paired : success
+Pairing --> Failed : error/timeout
+
+Paired --> Connecting : connect()
+Connecting --> Connected : bluetooth connected
+Connecting --> Failed : error
+
+Connected --> AudioEndpointPending : wait for audio route
+AudioEndpointPending --> AudioReady : endpoint available
+AudioEndpointPending --> Failed : timeout/failure
+
+AudioReady --> Streaming : session start / join
+Streaming --> Reconnecting : unexpected disconnect
+Streaming --> Disconnecting : user disconnect
+
+Reconnecting --> AudioEndpointPending : bluetooth restored
+Reconnecting --> Failed : retry policy exhausted
+
+AudioEndpointPending --> Resyncing : endpoint restored during active session
+Resyncing --> Streaming : buffer + sync ready
+
+Disconnecting --> Disconnected
+Failed --> Discovered : retry / rescan
+Disconnected --> Connecting : reconnect
+Disconnected --> [*]
+@enduml

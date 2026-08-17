@@ -1,0 +1,123 @@
+@startuml
+title Auralis - Multi-Hearing-Device Audio Hub\nHigh-Level Laptop Architecture
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam linetype ortho
+
+actor User
+
+package "Linux Laptop" {
+    rectangle "Audio Sources" as Sources {
+        component "System Audio\nBrowser / VLC / Music / Video" as SystemAudio
+        component "Microphone" as Microphone
+        component "Future External Audio\nUSB / Line-In" as ExternalAudio
+    }
+
+    package "Auralis Application\nC++20 + Qt 6" {
+        component "Qt / QML UI" as UI
+        component "Device Manager" as DeviceManager
+        component "Audio Capture Engine" as CaptureEngine
+        component "Audio Processing Engine" as ProcessingEngine
+        component "Multi-Output Router" as OutputRouter
+        component "Synchronization Engine" as SyncEngine
+        component "Session Manager" as SessionManager
+        component "Diagnostics & Metrics" as Diagnostics
+
+        component "Device Output A\nRing Buffer + Delay" as OutputA
+        component "Device Output B\nRing Buffer + Delay" as OutputB
+        component "Device Output C\nRing Buffer + Delay" as OutputC
+        component "Device Output N\nRing Buffer + Delay" as OutputN
+    }
+
+    package "Linux Audio & Bluetooth Layer" {
+        component "PipeWire" as PipeWire
+        component "BlueZ" as BlueZ
+        component "D-Bus" as DBus
+        component "Laptop Bluetooth Adapter" as BTAdapter
+    }
+}
+
+cloud "Bluetooth Wireless Links" as BluetoothLinks
+node "Hearing Device A" as HearingA
+node "Hearing Device B" as HearingB
+node "Hearing Device C" as HearingC
+node "Hearing Device N" as HearingN
+
+User --> UI : Scan / Pair / Connect\nStart / Stop Audio
+
+SystemAudio --> PipeWire : System Audio
+Microphone --> PipeWire : Audio
+ExternalAudio --> PipeWire : Future Audio Input
+PipeWire --> CaptureEngine : PCM Audio Capture
+
+CaptureEngine --> ProcessingEngine : PCM Frames
+ProcessingEngine --> OutputRouter : Normalized PCM
+OutputRouter --> SyncEngine : Shared Audio Timeline
+
+SyncEngine --> OutputA : Buffered PCM\nDelay Compensation
+SyncEngine --> OutputB : Buffered PCM\nDelay Compensation
+SyncEngine --> OutputC : Buffered PCM\nDelay Compensation
+SyncEngine --> OutputN : Buffered PCM\nDelay Compensation
+
+OutputA --> PipeWire : Output Stream A
+OutputB --> PipeWire : Output Stream B
+OutputC --> PipeWire : Output Stream C
+OutputN --> PipeWire : Output Stream N
+
+UI --> DeviceManager : Device Commands
+DeviceManager --> DBus : Discovery / Pair /\nConnect / Disconnect
+DBus --> BlueZ : Bluetooth Control
+BlueZ --> BTAdapter : Connection Management
+PipeWire --> BlueZ : Bluetooth Audio Sink Routing
+
+BTAdapter --> BluetoothLinks
+BluetoothLinks --> HearingA : Bluetooth Audio
+BluetoothLinks --> HearingB : Bluetooth Audio
+BluetoothLinks --> HearingC : Bluetooth Audio
+BluetoothLinks --> HearingN : Bluetooth Audio
+
+UI --> SessionManager : Playback Controls
+SessionManager --> CaptureEngine : Start / Stop Capture
+SessionManager --> OutputRouter : Configure Outputs
+SessionManager --> SyncEngine : Start / Stop Sync
+SessionManager --> DeviceManager : Device Session State
+
+DeviceManager --> UI : Connection Status\nDevice Metadata
+DeviceManager --> SyncEngine : Connected Device Set
+
+CaptureEngine --> Diagnostics
+ProcessingEngine --> Diagnostics
+OutputRouter --> Diagnostics
+SyncEngine --> Diagnostics
+DeviceManager --> Diagnostics
+Diagnostics --> UI : Latency / Buffer /\nDropouts / Errors
+
+note right of SyncEngine
+Core responsibilities:
+- Per-device buffering
+- Delay compensation
+- Latency tracking
+- Clock drift handling
+- Resynchronization
+end note
+
+note right of DeviceManager
+BlueZ/D-Bus control:
+- Discovery
+- Pairing
+- Connection
+- Disconnection
+- Reconnection
+- Device metadata
+end note
+
+note bottom of BTAdapter
+Prototype:
+Use laptop Bluetooth hardware first.
+Fallback:
+USB Bluetooth adapter if evidence
+shows radio/adapter limitations.
+end note
+@enduml

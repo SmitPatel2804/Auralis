@@ -1,0 +1,35 @@
+{
+  "project": "Auralis Multi-Hearing-Device Audio Hub",
+  "package": "Laptop Prototype Documentation",
+  "baseline_date": "2026-08-17",
+  "source_spec": "00_source_specification.md",
+  "prototype_stack": [
+    "Linux",
+    "C++20",
+    "CMake",
+    "Qt 6/QML",
+    "QtDBus",
+    "BlueZ",
+    "PipeWire"
+  ],
+  "files": [
+    "00_source_specification.md",
+    "01_project_overview.md",
+    "02_laptop_technical_architecture.md",
+    "03_tech_stack.md",
+    "04_component_design.md",
+    "05_bluetooth_device_management.md",
+    "06_audio_pipeline.md",
+    "07_synchronization_latency.md",
+    "08_session_state_recovery.md",
+    "09_testing_validation_plan.md",
+    "10_development_roadmap.md",
+    "11_risk_register.md",
+    "12_acceptance_criteria.md",
+    "13_decisions_open_questions.md",
+    "README.md",
+    "diagrams/audio_pipeline.puml",
+    "diagrams/device_session_state.puml",
+    "diagrams/high_level_architecture.puml"
+  ]
+}

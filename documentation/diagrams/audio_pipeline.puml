@@ -1,0 +1,61 @@
+@startuml
+title Auralis - Audio Data Pipeline
+
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+component "System Audio" as Source
+component "PipeWire Capture" as Capture
+component "Audio Capture Engine" as ACE
+component "Processing / Normalization" as Process
+component "Master Source Timeline" as Timeline
+component "Multi-Output Router" as Router
+
+component "Ring Buffer A" as BA
+component "Ring Buffer B" as BB
+component "Ring Buffer C" as BC
+
+component "Sync/Delay A" as SA
+component "Sync/Delay B" as SB
+component "Sync/Delay C" as SC
+
+component "PipeWire Output A" as OA
+component "PipeWire Output B" as OB
+component "PipeWire Output C" as OC
+
+node "Hearing Device A" as HA
+node "Hearing Device B" as HB
+node "Hearing Device C" as HC
+
+Source --> Capture
+Capture --> ACE : PCM
+ACE --> Process
+Process --> Timeline
+Timeline --> Router
+
+Router --> BA
+Router --> BB
+Router --> BC
+
+BA --> SA
+BB --> SB
+BC --> SC
+
+SA --> OA
+SB --> OB
+SC --> OC
+
+OA --> HA : Host Bluetooth audio path
+OB --> HB : Host Bluetooth audio path
+OC --> HC : Host Bluetooth audio path
+
+note right of Router
+One failing output must not
+block the other output queues.
+end note
+
+note bottom of Timeline
+All outputs consume the same
+logical source sequence/timeline.
+end note
+@enduml
