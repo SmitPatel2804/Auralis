@@ -28,8 +28,9 @@
     "12_acceptance_criteria.md",
     "13_decisions_open_questions.md",
     "README.md",
-    "diagrams/audio_pipeline.puml",
-    "diagrams/device_session_state.puml",
-    "diagrams/high_level_architecture.puml"
+    "../diagrams/audio_pipeline.puml",
+    "../diagrams/device_session_state.puml",
+    "../diagrams/high_level_architecture.puml",
+    "../diagrams/hla_final.puml"
   ]
 }

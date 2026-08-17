@@ -1,0 +1,49 @@
+# Build trees
+/build/
+/build-*/
+/out/
+
+# In-source CMake / Ninja leftovers
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeUserPresets.json
+compile_commands.json
+install_manifest.txt
+DartConfiguration.tcl
+.ninja_deps
+.ninja_log
+Testing/
+
+# Qt / moc / rcc generated
+.qt/
+*.qmlc
+*.jsc
+*.qmltypes
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.moc
+*_autogen/
+
+# Compiled objects and libraries
+*.o
+*.a
+*.so
+*.so.*
+
+# Coverage
+*.gcda
+*.gcno
+*.gcov
+
+# Editors / IDEs / OS
+*.user
+*.user.*
+*.autosave
+*.swp
+*~
+.DS_Store
+.idea/
+.cache/

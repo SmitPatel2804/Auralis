@@ -1,0 +1,11 @@
+#pragma once
+
+#include <QLoggingCategory>
+
+Q_DECLARE_LOGGING_CATEGORY(auralisCore)
+Q_DECLARE_LOGGING_CATEGORY(auralisConfig)
+Q_DECLARE_LOGGING_CATEGORY(auralisBluetooth)
+Q_DECLARE_LOGGING_CATEGORY(auralisAudio)
+Q_DECLARE_LOGGING_CATEGORY(auralisDevices)
+Q_DECLARE_LOGGING_CATEGORY(auralisSession)
+Q_DECLARE_LOGGING_CATEGORY(auralisUi)

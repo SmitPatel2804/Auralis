@@ -52,23 +52,25 @@ The laptop application should ultimately:
 | Synchronization | Custom C++ synchronization engine |
 | Testing support | C++ tests + Python analysis scripts |
 
+This pack is part of the repository documentation tree. The full map is in [../README.md](../README.md).
+
 ## Documentation map
 
-- `00_source_specification.md` — untouched source specification.
-- `01_project_overview.md` — scope, goals, non-goals and validation gates.
-- `02_laptop_technical_architecture.md` — high-level laptop architecture.
-- `03_tech_stack.md` — selected technology stack and rationale.
-- `04_component_design.md` — module boundaries and responsibilities.
-- `05_bluetooth_device_management.md` — discovery, pairing, connection and device states.
-- `06_audio_pipeline.md` — capture, processing, routing and outputs.
-- `07_synchronization_latency.md` — synchronization model, latency and drift.
-- `08_session_state_recovery.md` — session lifecycle, reconnect and fault isolation.
-- `09_testing_validation_plan.md` — feasibility and hardware test plan.
-- `10_development_roadmap.md` — implementation sequence.
-- `11_risk_register.md` — major risks and mitigations.
-- `12_acceptance_criteria.md` — proposed measurable success criteria framework.
-- `13_decisions_open_questions.md` — architecture decisions and unresolved items.
-- `diagrams/` — PlantUML source files.
+- [00_source_specification.md](00_source_specification.md) — untouched source specification.
+- [01_project_overview.md](01_project_overview.md) — scope, goals, non-goals and validation gates.
+- [02_laptop_technical_architecture.md](02_laptop_technical_architecture.md) — high-level laptop architecture.
+- [03_tech_stack.md](03_tech_stack.md) — selected technology stack and rationale.
+- [04_component_design.md](04_component_design.md) — module boundaries and responsibilities.
+- [05_bluetooth_device_management.md](05_bluetooth_device_management.md) — discovery, pairing, connection and device states.
+- [06_audio_pipeline.md](06_audio_pipeline.md) — capture, processing, routing and outputs.
+- [07_synchronization_latency.md](07_synchronization_latency.md) — synchronization model, latency and drift.
+- [08_session_state_recovery.md](08_session_state_recovery.md) — session lifecycle, reconnect and fault isolation.
+- [09_testing_validation_plan.md](09_testing_validation_plan.md) — feasibility and hardware test plan.
+- [10_development_roadmap.md](10_development_roadmap.md) — implementation sequence.
+- [11_risk_register.md](11_risk_register.md) — major risks and mitigations.
+- [12_acceptance_criteria.md](12_acceptance_criteria.md) — proposed measurable success criteria framework.
+- [13_decisions_open_questions.md](13_decisions_open_questions.md) — architecture decisions and unresolved items.
+- [../diagrams/](../diagrams/) — PlantUML sources and rendered SVGs.
 
 ## Engineering principle
 

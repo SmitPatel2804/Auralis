@@ -1,0 +1,13 @@
+function(auralis_add_test name)
+    add_executable("${name}" ${ARGN})
+    target_link_libraries("${name}" PRIVATE Qt6::Test)
+    auralis_apply_warnings("${name}")
+    add_test(NAME "${name}" COMMAND "${name}")
+endfunction()
+
+add_subdirectory(unit/core)
+add_subdirectory(unit/bluetooth)
+add_subdirectory(unit/audio)
+add_subdirectory(unit/devices)
+add_subdirectory(unit/session)
+add_subdirectory(integration)

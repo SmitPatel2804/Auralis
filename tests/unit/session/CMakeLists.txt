@@ -1,0 +1,2 @@
+auralis_add_test(tst_SessionManager tst_SessionManager.cpp)
+target_link_libraries(tst_SessionManager PRIVATE auralis-session)

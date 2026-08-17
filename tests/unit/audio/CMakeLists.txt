@@ -1,0 +1,2 @@
+auralis_add_test(tst_PipeWireManager tst_PipeWireManager.cpp)
+target_link_libraries(tst_PipeWireManager PRIVATE auralis-audio)

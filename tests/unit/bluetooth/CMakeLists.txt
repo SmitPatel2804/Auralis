@@ -1,0 +1,2 @@
+auralis_add_test(tst_BluetoothManager tst_BluetoothManager.cpp)
+target_link_libraries(tst_BluetoothManager PRIVATE auralis-bluetooth)

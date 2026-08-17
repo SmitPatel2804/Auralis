@@ -1,0 +1,2 @@
+auralis_add_test(tst_DeviceManager tst_DeviceManager.cpp)
+target_link_libraries(tst_DeviceManager PRIVATE auralis-devices)
