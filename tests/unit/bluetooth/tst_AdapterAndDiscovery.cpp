@@ -162,7 +162,7 @@ private slots:
         QVERIFY(!discovery.ownsDiscovery());
     }
 
-    void inProgressCountsAsStarted()
+    void inProgressDoesNotClaimOwnership()
     {
         FakeBlueZClient client;
         AdapterManager adapters;
@@ -175,8 +175,10 @@ private slots:
             false,
             QStringLiteral("org.bluez.Error.InProgress"),
             QStringLiteral("Operation already in progress"));
-        QVERIFY(discovery.state() == DiscoveryState::Discovering);
-        QVERIFY(discovery.ownsDiscovery());
+        QVERIFY(discovery.state() == DiscoveryState::Idle);
+        QVERIFY(!discovery.ownsDiscovery());
+        QVERIFY(discovery.canStartScan());
+        QVERIFY(!discovery.lastErrorMessage().isEmpty());
     }
 };
 

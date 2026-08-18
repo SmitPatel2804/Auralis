@@ -49,6 +49,10 @@ public:
             emit snapshotFailed(QStringLiteral("org.freedesktop.DBus.Error.ServiceUnknown"), QStringLiteral("BlueZ missing"));
             return;
         }
+        if (!snapshotSucceeds_) {
+            emit snapshotFailed(snapshotErrorName_, snapshotErrorMessage_);
+            return;
+        }
         emit snapshotReceived(objects_);
     }
 
@@ -56,22 +60,22 @@ public:
     {
         ++startRequests_;
         lastStartPath_ = adapterPath;
-        if (!startSucceeds_) {
-            emit startDiscoveryFinished(adapterPath, false, startErrorName_, startErrorMessage_);
+        pendingStartPath_ = adapterPath;
+        if (!autoCompleteStart_) {
             return;
         }
-        emit startDiscoveryFinished(adapterPath, true, {}, {});
+        emitStartFinished();
     }
 
     void stopDiscovery(const QString& adapterPath) override
     {
         ++stopRequests_;
         lastStopPath_ = adapterPath;
-        if (!stopSucceeds_) {
-            emit stopDiscoveryFinished(adapterPath, false, stopErrorName_, stopErrorMessage_);
+        pendingStopPath_ = adapterPath;
+        if (!autoCompleteStop_) {
             return;
         }
-        emit stopDiscoveryFinished(adapterPath, true, {}, {});
+        emitStopFinished();
     }
 
     void setSystemBusConnected(bool connected)
@@ -98,6 +102,56 @@ public:
         stopSucceeds_ = succeeds;
         stopErrorName_ = errorName;
         stopErrorMessage_ = errorMessage;
+    }
+
+    void setSnapshotResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
+    {
+        snapshotSucceeds_ = succeeds;
+        snapshotErrorName_ = errorName;
+        snapshotErrorMessage_ = errorMessage;
+    }
+
+    void setAutoCompleteStart(bool enabled)
+    {
+        autoCompleteStart_ = enabled;
+    }
+
+    void setAutoCompleteStop(bool enabled)
+    {
+        autoCompleteStop_ = enabled;
+    }
+
+    void completeStartSuccess()
+    {
+        startSucceeds_ = true;
+        emitStartFinished();
+    }
+
+    void completeStartFailure(const QString& errorName, const QString& errorMessage)
+    {
+        startSucceeds_ = false;
+        startErrorName_ = errorName;
+        startErrorMessage_ = errorMessage;
+        emitStartFinished();
+    }
+
+    void completeStopSuccess()
+    {
+        stopSucceeds_ = true;
+        emitStopFinished();
+    }
+
+    void completeStopFailure(const QString& errorName, const QString& errorMessage)
+    {
+        stopSucceeds_ = false;
+        stopErrorName_ = errorName;
+        stopErrorMessage_ = errorMessage;
+        emitStopFinished();
+    }
+
+    void failSnapshot(const QString& errorName, const QString& errorMessage)
+    {
+        emit snapshotFailed(errorName, errorMessage);
     }
 
     void setAdapter(const QString& path, const QVariantMap& properties)
@@ -161,21 +215,50 @@ public:
     QString lastStopPath() const { return lastStopPath_; }
 
 private:
+    void emitStartFinished()
+    {
+        const QString path = pendingStartPath_.isEmpty() ? lastStartPath_ : pendingStartPath_;
+        pendingStartPath_.clear();
+        if (!startSucceeds_) {
+            emit startDiscoveryFinished(path, false, startErrorName_, startErrorMessage_);
+            return;
+        }
+        emit startDiscoveryFinished(path, true, {}, {});
+    }
+
+    void emitStopFinished()
+    {
+        const QString path = pendingStopPath_.isEmpty() ? lastStopPath_ : pendingStopPath_;
+        pendingStopPath_.clear();
+        if (!stopSucceeds_) {
+            emit stopDiscoveryFinished(path, false, stopErrorName_, stopErrorMessage_);
+            return;
+        }
+        emit stopDiscoveryFinished(path, true, {}, {});
+    }
+
     bool initialized_ = false;
     bool systemBusConnected_ = true;
     bool blueZAvailable_ = true;
     bool startSucceeds_ = true;
     bool stopSucceeds_ = true;
+    bool snapshotSucceeds_ = true;
+    bool autoCompleteStart_ = true;
+    bool autoCompleteStop_ = true;
     QString startErrorName_;
     QString startErrorMessage_;
     QString stopErrorName_;
     QString stopErrorMessage_;
+    QString snapshotErrorName_;
+    QString snapshotErrorMessage_;
     QVariantMap objects_;
     int snapshotRequests_ = 0;
     int startRequests_ = 0;
     int stopRequests_ = 0;
     QString lastStartPath_;
     QString lastStopPath_;
+    QString pendingStartPath_;
+    QString pendingStopPath_;
 };
 
 } // namespace auralis::test

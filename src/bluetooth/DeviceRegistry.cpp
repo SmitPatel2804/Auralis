@@ -58,6 +58,10 @@ bool DeviceRegistry::applyPropertyChanges(
     BluetoothDeviceData current = byPath_.value(objectPath);
     const QString previousKey = current.addressIndexKey();
     DeviceParseResult parsed = applyDevicePropertyChanges(current, changed, invalidated);
+    logParseWarnings(objectPath, QStringLiteral("org.bluez.Device1"), parsed.warnings);
+    for (const ParseWarning& warning : parsed.warnings) {
+        emit parseWarning(objectPath, warning.property, warning.message);
+    }
     touchLastSeen(parsed.device);
     byPath_.insert(objectPath, parsed.device);
 

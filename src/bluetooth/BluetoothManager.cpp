@@ -14,6 +14,30 @@
 #include <QSet>
 
 namespace auralis::bluetooth {
+namespace {
+
+int errorPriority(BluetoothError error)
+{
+    switch (error) {
+    case BluetoothError::NoSystemBus:
+        return 1;
+    case BluetoothError::BlueZUnavailable:
+        return 2;
+    case BluetoothError::NoAdapter:
+        return 3;
+    case BluetoothError::AdapterPoweredOff:
+        return 4;
+    case BluetoothError::DiscoveryStartFailed:
+    case BluetoothError::DiscoveryStopFailed:
+        return 5;
+    case BluetoothError::DbusCallFailed:
+        return 6;
+    default:
+        return 100;
+    }
+}
+
+} // namespace
 
 BluetoothManager::BluetoothManager(QObject* parent)
     : BluetoothManager(nullptr, parent)
@@ -54,7 +78,9 @@ void BluetoothManager::connectClientSignals()
     }
     signalsWired_ = true;
     connect(client_, &IBlueZClient::blueZAvailableChanged, this, &BluetoothManager::handleBlueZAvailable);
+    connect(client_, &IBlueZClient::systemBusStateChanged, this, &BluetoothManager::handleSystemBusStateChanged);
     connect(client_, &IBlueZClient::snapshotReceived, this, &BluetoothManager::handleSnapshot);
+    connect(client_, &IBlueZClient::snapshotFailed, this, &BluetoothManager::handleSnapshotFailed);
     connect(client_, &IBlueZClient::interfacesAdded, this, &BluetoothManager::handleInterfacesAdded);
     connect(client_, &IBlueZClient::interfacesRemoved, this, &BluetoothManager::handleInterfacesRemoved);
     connect(client_, &IBlueZClient::propertiesChanged, this, &BluetoothManager::handlePropertiesChanged);
@@ -66,23 +92,48 @@ void BluetoothManager::connectClientSignals()
         emit adapterChanged();
         emit scanningChanged();
         updateStatusText();
+        refreshDisplayedError();
     });
     connect(adapters_, &AdapterManager::selectedAdapterUpdated, this, [this]() {
         discovery_->onSelectedAdapterChanged();
         emit adapterChanged();
         emit scanningChanged();
         updateStatusText();
+        refreshDisplayedError();
     });
     connect(discovery_, &DiscoveryManager::stateChanged, this, [this]() {
         emit scanningChanged();
         updateStatusText();
     });
+    connect(discovery_, &DiscoveryManager::intentChanged, this, [this]() {
+        emit scanningChanged();
+        updateStatusText();
+    });
     connect(discovery_, &DiscoveryManager::errorChanged, this, [this]() {
-        errorText_ = discovery_->lastError() == BluetoothError::None ? QString() : discovery_->lastErrorMessage();
-        emit errorTextChanged();
+        refreshDisplayedError();
         updateStatusText();
     });
     connect(registry_, &DeviceRegistry::countChanged, this, &BluetoothManager::deviceCountChanged);
+}
+
+void BluetoothManager::refreshDisplayedError()
+{
+    BluetoothError error = discovery_ != nullptr ? discovery_->lastError() : BluetoothError::None;
+    QString message = discovery_ != nullptr ? discovery_->lastErrorMessage() : QString();
+
+    if (snapshotError_ != BluetoothError::None) {
+        if (error == BluetoothError::None || errorPriority(snapshotError_) < errorPriority(error)) {
+            error = snapshotError_;
+            message = snapshotErrorMessage_;
+        }
+    }
+
+    const QString text = error == BluetoothError::None ? QString() : message;
+    if (errorText_ == text) {
+        return;
+    }
+    errorText_ = text;
+    emit errorTextChanged();
 }
 
 void BluetoothManager::updateStatusText()
@@ -127,8 +178,8 @@ void BluetoothManager::shutdown()
         return;
     }
 
-    if (discovery_ != nullptr && discovery_->ownsDiscovery()) {
-        discovery_->stopScan();
+    if (discovery_ != nullptr) {
+        discovery_->shutdown();
     }
     if (registry_ != nullptr) {
         registry_->clear();
@@ -248,6 +299,29 @@ void BluetoothManager::handleBlueZAvailable(bool available)
     emit adapterChanged();
     emit scanningChanged();
     updateStatusText();
+    refreshDisplayedError();
+}
+
+void BluetoothManager::handleSystemBusStateChanged(bool connected)
+{
+    if (discovery_ != nullptr) {
+        discovery_->onSelectedAdapterChanged();
+    }
+    emit scanningChanged();
+    updateStatusText();
+    refreshDisplayedError();
+    if (!connected) {
+        qCWarning(auralisBluetooth) << "SystemBusUnavailable";
+    }
+}
+
+void BluetoothManager::handleSnapshotFailed(const QString& errorName, const QString& errorMessage)
+{
+    snapshotError_ = BluetoothError::DbusCallFailed;
+    snapshotErrorMessage_ = QStringLiteral("Failed to refresh BlueZ state: %1 (%2)").arg(errorMessage, errorName);
+    qCWarning(auralisBluetooth) << "BlueZSnapshotFailed" << errorName << errorMessage;
+    refreshDisplayedError();
+    updateStatusText();
 }
 
 void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
@@ -258,33 +332,43 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
         const QVariantMap interfaces = it.value().toMap();
         if (interfaces.contains(bluez::kAdapterInterface.toString())) {
             AdapterParseResult parsed = parseAdapter(it.key(), adapterProperties(interfaces));
+            logParseWarnings(it.key(), bluez::kAdapterInterface.toString(), parsed.warnings);
             adapters_->upsertAdapter(parsed.adapter);
             adapterPaths.insert(it.key());
         }
         if (interfaces.contains(bluez::kDeviceInterface.toString())) {
             DeviceParseResult parsed = parseDevice(it.key(), deviceProperties(interfaces));
+            logParseWarnings(it.key(), bluez::kDeviceInterface.toString(), parsed.warnings);
             registry_->upsertDevice(parsed.device);
             devicePaths.insert(it.key());
         }
     }
     adapters_->reconcile(adapterPaths);
     registry_->reconcile(devicePaths);
+    snapshotError_ = BluetoothError::None;
+    snapshotErrorMessage_.clear();
     discovery_->onSelectedAdapterChanged();
+    if (adapters_->hasAdapter() && adapters_->selected().discovering) {
+        discovery_->onAdapterDiscoveringPropertyChanged(true);
+    }
     qCInfo(auralisBluetooth) << "BlueZSnapshotApplied adapters=" << adapterPaths.size()
                              << "devices=" << devicePaths.size();
     emit adapterChanged();
     updateStatusText();
+    refreshDisplayedError();
 }
 
 void BluetoothManager::handleInterfacesAdded(const QString& objectPath, const QVariantMap& interfaces)
 {
     if (interfaces.contains(bluez::kAdapterInterface.toString())) {
         AdapterParseResult parsed = parseAdapter(objectPath, adapterProperties(interfaces));
+        logParseWarnings(objectPath, bluez::kAdapterInterface.toString(), parsed.warnings);
         adapters_->upsertAdapter(parsed.adapter);
         qCInfo(auralisBluetooth) << "AdapterAdded" << objectPath;
     }
     if (interfaces.contains(bluez::kDeviceInterface.toString())) {
         DeviceParseResult parsed = parseDevice(objectPath, deviceProperties(interfaces));
+        logParseWarnings(objectPath, bluez::kDeviceInterface.toString(), parsed.warnings);
         registry_->upsertDevice(parsed.device);
         qCInfo(auralisBluetooth) << "DeviceAdded" << objectPath << parsed.device.displayName();
     }
@@ -313,6 +397,11 @@ void BluetoothManager::handlePropertiesChanged(
 {
     if (interfaceName == bluez::kAdapterInterface.toString()) {
         adapters_->applyPropertyChanges(objectPath, changed, invalidated);
+        if (objectPath == adapters_->selectedObjectPath()
+            && (changed.contains(bluez::kPropDiscovering.toString())
+                || invalidated.contains(bluez::kPropDiscovering.toString()))) {
+            discovery_->onAdapterDiscoveringPropertyChanged(adapters_->selected().discovering);
+        }
         return;
     }
     if (interfaceName == bluez::kDeviceInterface.toString()) {

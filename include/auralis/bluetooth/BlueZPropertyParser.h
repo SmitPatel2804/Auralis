@@ -38,4 +38,9 @@ AdapterParseResult applyAdapterPropertyChanges(
     const QVariantMap& changed,
     const QStringList& invalidated);
 
+void logParseWarnings(
+    const QString& objectPath,
+    const QString& interfaceName,
+    const QList<ParseWarning>& warnings);
+
 } // namespace auralis::bluetooth

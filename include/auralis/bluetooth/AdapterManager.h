@@ -34,6 +34,7 @@ public:
 signals:
     void selectedAdapterChanged();
     void selectedAdapterUpdated();
+    void parseWarning(const QString& objectPath, const QString& property, const QString& message);
 
 private:
     void selectBestAdapter();

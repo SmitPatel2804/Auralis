@@ -54,6 +54,10 @@ void AdapterManager::applyPropertyChanges(
         return;
     }
     AdapterParseResult parsed = applyAdapterPropertyChanges(adapters_.value(objectPath), changed, invalidated);
+    logParseWarnings(objectPath, QStringLiteral("org.bluez.Adapter1"), parsed.warnings);
+    for (const ParseWarning& warning : parsed.warnings) {
+        emit parseWarning(objectPath, warning.property, warning.message);
+    }
     parsed.adapter.objectPath = objectPath;
     parsed.adapter.available = true;
     adapters_.insert(objectPath, parsed.adapter);

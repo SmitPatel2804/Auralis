@@ -2,6 +2,8 @@
 
 #include <auralis/bluetooth/BlueZConstants.h>
 
+#include <auralis/core/LoggingCategories.h>
+
 #include <QVariant>
 
 #include <optional>
@@ -370,6 +372,20 @@ AdapterParseResult applyAdapterPropertyChanges(
     }
     applyAdapterProperties(result.adapter, changed, result.warnings);
     return result;
+}
+
+void logParseWarnings(
+    const QString& objectPath,
+    const QString& interfaceName,
+    const QList<ParseWarning>& warnings)
+{
+    const bool adapter = interfaceName == bluez::kAdapterInterface.toString();
+    const QLatin1String token = adapter ? QLatin1String("MalformedAdapterProperty")
+                                        : QLatin1String("MalformedDeviceProperty");
+    for (const ParseWarning& warning : warnings) {
+        qCWarning(auralisBluetooth) << token << "path=" << objectPath << "property=" << warning.property
+                                    << "message=" << warning.message;
+    }
 }
 
 } // namespace auralis::bluetooth

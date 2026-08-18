@@ -45,6 +45,7 @@ signals:
     void deviceAboutToBeRemoved(int index, const QString& objectPath);
     void deviceRemoved(int index, const QString& objectPath);
     void countChanged();
+    void parseWarning(const QString& objectPath, const QString& property, const QString& message);
 
 private:
     void reindex();

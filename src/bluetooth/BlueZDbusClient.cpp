@@ -459,7 +459,7 @@ void BlueZDbusClient::onGetManagedObjectsFinished(QDBusPendingCallWatcher* watch
     watcher->deleteLater();
     const QDBusPendingReply<ManagedObjectMap> typed = *watcher;
     if (typed.isError()) {
-        qCWarning(auralisBluetooth) << "BlueZ snapshot failed" << typed.error().name() << typed.error().message();
+        qCWarning(auralisBluetooth) << "BlueZSnapshotFailed" << typed.error().name() << typed.error().message();
         emit snapshotFailed(typed.error().name(), typed.error().message());
         return;
     }
@@ -530,9 +530,16 @@ void BlueZDbusClient::stopDiscovery(const QString& adapterPath)
 
 void BlueZDbusClient::onInterfacesAdded(const QDBusObjectPath& objectPath, const QDBusMessage& message)
 {
-    QVariantMap interfaces;
-    if (message.arguments().size() >= 2) {
-        interfaces = decodeInterfaceMap(message.arguments().at(1));
+    if (message.arguments().size() < 2) {
+        qCWarning(auralisBluetooth) << "MalformedDbusPayload" << "signal=InterfacesAdded"
+                                    << "path=" << objectPath.path();
+        return;
+    }
+    QVariantMap interfaces = decodeInterfaceMap(message.arguments().at(1));
+    if (interfaces.isEmpty() && !message.arguments().at(1).isValid()) {
+        qCWarning(auralisBluetooth) << "MalformedDbusPayload" << "signal=InterfacesAdded"
+                                    << "path=" << objectPath.path();
+        return;
     }
     emit interfacesAdded(objectPath.path(), interfaces);
 }

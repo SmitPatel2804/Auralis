@@ -76,7 +76,10 @@ private:
         const QVariantMap& changed,
         const QStringList& invalidated);
     void handleBlueZAvailable(bool available);
+    void handleSnapshotFailed(const QString& errorName, const QString& errorMessage);
+    void handleSystemBusStateChanged(bool connected);
     void updateStatusText();
+    void refreshDisplayedError();
     QVariantMap deviceProperties(const QVariantMap& interfaces) const;
     QVariantMap adapterProperties(const QVariantMap& interfaces) const;
 
@@ -90,6 +93,8 @@ private:
     bool signalsWired_ = false;
     QString statusText_;
     QString errorText_;
+    BluetoothError snapshotError_ = BluetoothError::None;
+    QString snapshotErrorMessage_;
 };
 
 } // namespace auralis::bluetooth

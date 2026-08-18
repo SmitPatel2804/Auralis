@@ -123,6 +123,22 @@ private slots:
         QCOMPARE(registry.count(), 1);
         QCOMPARE(registry.at(0).objectPath, QStringLiteral("/a"));
     }
+
+    void malformedRssiEmitsWarningAndKeepsDevice()
+    {
+        DeviceRegistry registry;
+        registry.upsertDevice(makeDevice(QStringLiteral("/a"), QStringLiteral("AA:BB:CC:DD:EE:01"), QStringLiteral("One")));
+        QSignalSpy warnings(&registry, &DeviceRegistry::parseWarning);
+        QVERIFY(registry.applyPropertyChanges(
+            QStringLiteral("/a"),
+            {{QStringLiteral("RSSI"), QStringLiteral("not-a-number")}},
+            {}));
+        QCOMPARE(registry.count(), 1);
+        QVERIFY(!registry.at(0).hasRssi);
+        QCOMPARE(warnings.count(), 1);
+        QCOMPARE(warnings.at(0).at(0).toString(), QStringLiteral("/a"));
+        QCOMPARE(warnings.at(0).at(1).toString(), QStringLiteral("RSSI"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDeviceRegistry)
