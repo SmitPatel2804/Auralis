@@ -362,7 +362,7 @@ bool PipeWireConnection::start(EventHandler handler)
         pw_thread_loop_destroy(impl_->loop);
         delete impl_;
         impl_ = nullptr;
-        return true;
+        return false;
     }
 
     pw_core_add_listener(impl_->core, &impl_->coreListener, &Impl::kCoreEvents, impl_);
@@ -376,7 +376,7 @@ bool PipeWireConnection::start(EventHandler handler)
         pw_thread_loop_destroy(impl_->loop);
         delete impl_;
         impl_ = nullptr;
-        return true;
+        return false;
     }
 
     pw_registry_add_listener(impl_->registry, &impl_->registryListener, &Impl::kRegistryEvents, impl_);

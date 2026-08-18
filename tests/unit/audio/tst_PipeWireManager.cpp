@@ -17,8 +17,13 @@ private slots:
         QVERIFY(manager.status() == ServiceStatus::Uninitialized);
         QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
         const bool started = manager.initialize();
-        QVERIFY(started);
-        QVERIFY(manager.status() != ServiceStatus::Uninitialized);
+        if (started) {
+            QVERIFY(manager.status() != ServiceStatus::Uninitialized);
+        } else {
+            QVERIFY(manager.status() == ServiceStatus::Error);
+            QVERIFY(manager.connectionState() == PipeWireConnectionState::Error);
+            QVERIFY(!manager.lastError().isEmpty());
+        }
         manager.shutdown();
         QVERIFY(manager.status() == ServiceStatus::Uninitialized);
         QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
@@ -28,11 +33,13 @@ private slots:
     void repeatedStartStopIsSafe()
     {
         PipeWireManager manager;
-        QVERIFY(manager.initialize());
+        manager.initialize();
         manager.shutdown();
-        QVERIFY(manager.initialize());
+        manager.initialize();
         manager.shutdown();
         QCOMPARE(manager.endpointCount(), 0);
+        QVERIFY(manager.status() == ServiceStatus::Uninitialized);
+        QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
     }
 };
 

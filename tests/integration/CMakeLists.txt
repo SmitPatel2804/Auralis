@@ -20,6 +20,9 @@ set_tests_properties(tst_DesktopBackendSmoke PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+auralis_add_test(tst_BlueZLiveIntegration tst_BlueZLiveIntegration.cpp)
+target_link_libraries(tst_BlueZLiveIntegration PRIVATE auralis-bluetooth)
+
 auralis_add_test(tst_PipeWireLiveIntegration tst_PipeWireLiveIntegration.cpp)
 target_link_libraries(tst_PipeWireLiveIntegration PRIVATE auralis-audio auralis-bluetooth)
 

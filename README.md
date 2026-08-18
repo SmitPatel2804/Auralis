@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure
 Live BlueZ tests are skipped unless explicitly enabled:
 
 ```bash
-AURALIS_RUN_BLUETOOTH_INTEGRATION=1 AURALIS_EXPECT_DEVICE_ADDRESS=AA:BB:CC:DD:EE:FF ctest --test-dir build -R tst_BlueZLiveIntegration --output-on-failure
+AURALIS_RUN_BLUETOOTH_INTEGRATION=1 AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF" ctest --test-dir build -R tst_BlueZLiveIntegration --output-on-failure
 ```
 
 Destructive forget in live tests requires `AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS=1` in addition to the flags above.
@@ -84,7 +84,7 @@ Live PipeWire tests are skipped unless explicitly enabled:
 AURALIS_RUN_PIPEWIRE_INTEGRATION=1 ctest --test-dir build -R tst_PipeWireLiveIntegration --output-on-failure
 ```
 
-Add `AURALIS_EXPECT_DEVICE_ADDRESS=AA:BB:CC:DD:EE:FF` to also require a mapped Bluetooth audio endpoint.
+Add `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"` to also require a mapped Bluetooth audio endpoint.
 
 ## Architecture summary
 

@@ -47,7 +47,7 @@ Connect/disconnect several times. Expect no crash, no duplicate endpoints, no st
 | Variable | Effect |
 |---|---|
 | `AURALIS_RUN_PIPEWIRE_INTEGRATION=1` | Run live PipeWire integration (`tst_PipeWireLiveIntegration`) |
-| `AURALIS_EXPECT_DEVICE_ADDRESS=AA:BB:CC:DD:EE:FF` | With the flag above, also require a mapped Bluetooth endpoint for that address |
+| `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"` | With the flag above, also require a mapped Bluetooth endpoint for that address |
 
 ```bash
 AURALIS_RUN_PIPEWIRE_INTEGRATION=1 \
@@ -56,7 +56,7 @@ ctest --test-dir build -R tst_PipeWireLiveIntegration --output-on-failure
 
 ```bash
 AURALIS_RUN_PIPEWIRE_INTEGRATION=1 \
-AURALIS_EXPECT_DEVICE_ADDRESS=AA:BB:CC:DD:EE:FF \
+AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF" \
 ctest --test-dir build -R tst_PipeWireLiveIntegration --output-on-failure
 ```
 
