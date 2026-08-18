@@ -26,10 +26,12 @@ Column {
     property bool canDisconnect: false
     property bool canForget: false
     property bool canReconnect: false
+    property bool canCancelOperation: false
     property var uuids: []
 
     signal pairRequested()
     signal cancelPairingRequested()
+    signal cancelOperationRequested()
     signal trustRequested()
     signal untrustRequested()
     signal connectRequested()
@@ -107,6 +109,11 @@ Column {
             text: "Cancel"
             visible: root.canCancelPairing
             onClicked: root.cancelPairingRequested()
+        }
+        Button {
+            text: "Stop"
+            visible: root.canCancelOperation
+            onClicked: root.cancelOperationRequested()
         }
         Button {
             text: "Trust"

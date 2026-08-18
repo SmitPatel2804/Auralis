@@ -113,6 +113,8 @@ QVariant BluetoothDeviceListModel::data(const QModelIndex& index, int role) cons
         return canForget(device);
     case CanReconnectRole:
         return canReconnect(device);
+    case CanCancelOperationRole:
+        return canCancelOperation(device);
     default:
         return {};
     }
@@ -155,6 +157,7 @@ QHash<int, QByteArray> BluetoothDeviceListModel::roleNames() const
         {CanDisconnectRole, "canDisconnect"},
         {CanForgetRole, "canForget"},
         {CanReconnectRole, "canReconnect"},
+        {CanCancelOperationRole, "canCancelOperation"},
     };
 }
 

@@ -172,4 +172,22 @@ bool canReconnect(const BluetoothDeviceData& device)
     return device.paired && !device.connected && !isOperationBusy(device.operation);
 }
 
+bool canCancelOperation(const BluetoothDeviceData& device)
+{
+    switch (device.operation) {
+    case DeviceOperation::Connecting:
+    case DeviceOperation::Reconnecting:
+    case DeviceOperation::Trusting:
+    case DeviceOperation::Untrusting:
+    case DeviceOperation::Disconnecting:
+    case DeviceOperation::Forgetting:
+        return true;
+    case DeviceOperation::Pairing:
+    case DeviceOperation::CancellingPairing:
+    case DeviceOperation::Idle:
+        return false;
+    }
+    return false;
+}
+
 } // namespace auralis::bluetooth

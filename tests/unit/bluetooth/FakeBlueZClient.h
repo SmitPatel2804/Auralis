@@ -174,6 +174,7 @@ public:
 
     int pairRequests() const { return pairRequests_; }
     int connectRequests() const { return connectRequests_; }
+    int disconnectRequests() const { return disconnectRequests_; }
     int removeRequests() const { return removeRequests_; }
     int registerAgentRequests() const { return registerAgentRequests_; }
     QString lastPairPath() const { return lastPairPath_; }

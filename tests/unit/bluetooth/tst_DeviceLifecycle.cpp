@@ -160,6 +160,45 @@ private slots:
         QTest::qWait(300);
         QCOMPARE(dueSpy.count(), 0);
     }
+
+    void cancelConnectClearsBusyState()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        h.client.setAutoCompleteDeviceOps(false);
+
+        h.lifecycle.connectDevice(path);
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Connecting);
+
+        h.lifecycle.cancelDeviceOperation(path);
+        device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Idle);
+        QVERIFY(canConnect(*device));
+        QVERIFY(canForget(*device));
+        QCOMPARE(h.client.disconnectRequests(), 1);
+    }
+
+    void cancelReconnectAllowsForget()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        h.client.setAutoCompleteDeviceOps(false);
+
+        h.lifecycle.reconnectDevice(path);
+        h.lifecycle.forgetDevice(path);
+        QCOMPARE(h.client.removeRequests(), 0);
+
+        h.lifecycle.cancelDeviceOperation(path);
+        h.lifecycle.forgetDevice(path);
+        QCOMPARE(h.client.removeRequests(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDeviceLifecycle)

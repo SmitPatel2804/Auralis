@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 namespace auralis::bluetooth {
 
@@ -43,6 +44,7 @@ public:
     void disconnectDevice(const QString& objectPath);
     void forgetDevice(const QString& objectPath);
     void reconnectDevice(const QString& objectPath);
+    void cancelDeviceOperation(const QString& objectPath);
 
 signals:
     void deviceOperationChanged(const QString& objectPath);
@@ -53,11 +55,16 @@ private:
         quint64 generation = 0;
         bool waitingProperty = false;
         bool expectedTrusted = false;
+        QTimer* timeoutTimer = nullptr;
     };
 
     bool beginOperation(const QString& objectPath, DeviceOperation operation);
     void finishOperation(const QString& objectPath, quint64 generation, bool success, BluetoothError error, const QString& errorName, const QString& message);
+    void abortPendingOperation(const QString& objectPath, const QString& reason, BluetoothError error = BluetoothError::OperationFailed);
     void clearPending(const QString& objectPath);
+    void stopOperationTimeout(const QString& objectPath);
+    void startOperationTimeout(const QString& objectPath, DeviceOperation operation);
+    int operationTimeoutMs(DeviceOperation operation) const;
     quint64 bumpGeneration(const QString& objectPath);
     bool isStale(const QString& objectPath, quint64 generation) const;
     const BluetoothDeviceData* requireDevice(const QString& objectPath) const;

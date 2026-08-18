@@ -46,7 +46,8 @@ public:
         CanConnectRole,
         CanDisconnectRole,
         CanForgetRole,
-        CanReconnectRole
+        CanReconnectRole,
+        CanCancelOperationRole
     };
 
     explicit BluetoothDeviceListModel(DeviceRegistry* registry, QObject* parent = nullptr);

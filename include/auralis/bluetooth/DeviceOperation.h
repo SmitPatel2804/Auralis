@@ -48,5 +48,6 @@ bool canConnect(const BluetoothDeviceData& device);
 bool canDisconnect(const BluetoothDeviceData& device);
 bool canForget(const BluetoothDeviceData& device);
 bool canReconnect(const BluetoothDeviceData& device);
+bool canCancelOperation(const BluetoothDeviceData& device);
 
 } // namespace auralis::bluetooth

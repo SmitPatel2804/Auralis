@@ -222,6 +222,7 @@ ApplicationWindow {
                     required property bool canDisconnect
                     required property bool canForget
                     required property bool canReconnect
+                    required property bool canCancelOperation
                     required property var uuids
 
                     width: deviceList.width
@@ -251,10 +252,12 @@ ApplicationWindow {
                         canDisconnect: wrapper.canDisconnect
                         canForget: wrapper.canForget
                         canReconnect: wrapper.canReconnect
+                        canCancelOperation: wrapper.canCancelOperation
                         uuids: wrapper.uuids
 
                         onPairRequested: root.bluetooth.pairDevice(wrapper.objectPath)
                         onCancelPairingRequested: root.bluetooth.cancelPairing(wrapper.objectPath)
+                        onCancelOperationRequested: root.bluetooth.cancelDeviceOperation(wrapper.objectPath)
                         onTrustRequested: root.bluetooth.trustDevice(wrapper.objectPath)
                         onUntrustRequested: root.bluetooth.untrustDevice(wrapper.objectPath)
                         onConnectRequested: root.bluetooth.connectDevice(wrapper.objectPath)

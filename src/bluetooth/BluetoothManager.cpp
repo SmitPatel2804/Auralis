@@ -514,6 +514,13 @@ void BluetoothManager::reconnectDevice(const QString& deviceId)
     }
 }
 
+void BluetoothManager::cancelDeviceOperation(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->cancelDeviceOperation(deviceId);
+    }
+}
+
 void BluetoothManager::acceptPairingRequest(const QString& requestId)
 {
     if (agent_ != nullptr) {

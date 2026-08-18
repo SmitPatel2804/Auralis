@@ -4,6 +4,7 @@
 #include <auralis/bluetooth/BlueZAgent.h>
 #include <auralis/bluetooth/BlueZConstants.h>
 #include <auralis/bluetooth/BluetoothDbusError.h>
+#include <auralis/bluetooth/DeviceOperation.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/bluetooth/IBlueZClient.h>
 #include <auralis/bluetooth/ReconnectPolicy.h>
@@ -38,8 +39,10 @@ DeviceLifecycleManager::DeviceLifecycleManager(
     if (reconnect_ != nullptr) {
         connect(reconnect_, &ReconnectPolicy::reconnectDue, this, [this](const QString& devicePath, int attempt, int) {
             registry_->setReconnectAttempt(devicePath, attempt);
-            registry_->setOperation(devicePath, DeviceOperation::Reconnecting);
-            emit deviceOperationChanged(devicePath);
+            if (!beginOperation(devicePath, DeviceOperation::Reconnecting)) {
+                return;
+            }
+            qCInfo(auralisBluetooth) << "AutoReconnectRequested" << devicePath << "attempt=" << attempt;
             client_->connectDevice(devicePath);
         });
     }
@@ -47,6 +50,10 @@ DeviceLifecycleManager::DeviceLifecycleManager(
 
 void DeviceLifecycleManager::shutdown()
 {
+    const QStringList activePaths = pending_.keys();
+    for (const QString& path : activePaths) {
+        stopOperationTimeout(path);
+    }
     pending_.clear();
     if (reconnect_ != nullptr) {
         reconnect_->cancelAll();
@@ -56,7 +63,10 @@ void DeviceLifecycleManager::shutdown()
 void DeviceLifecycleManager::onBlueZAvailabilityChanged(bool available)
 {
     if (!available) {
-        pending_.clear();
+        const QStringList activePaths = pending_.keys();
+        for (const QString& path : activePaths) {
+            abortPendingOperation(path, QStringLiteral("BlueZ became unavailable"), BluetoothError::BlueZUnavailable);
+        }
         if (reconnect_ != nullptr) {
             reconnect_->pauseAll();
         }
@@ -209,11 +219,112 @@ void DeviceLifecycleManager::reconnectDevice(const QString& objectPath)
         return;
     }
     registry_->setUserDisconnectRequested(objectPath, false);
+    if (reconnect_ != nullptr) {
+        reconnect_->cancelReconnect(objectPath);
+    }
     if (!beginOperation(objectPath, DeviceOperation::Reconnecting)) {
         return;
     }
     qCInfo(auralisBluetooth) << "ReconnectRequested" << objectPath;
     client_->connectDevice(objectPath);
+}
+
+void DeviceLifecycleManager::cancelDeviceOperation(const QString& objectPath)
+{
+    const BluetoothDeviceData* device = requireDevice(objectPath);
+    if (device == nullptr) {
+        return;
+    }
+    if (device->operation == DeviceOperation::Pairing) {
+        cancelPairing(objectPath);
+        return;
+    }
+    if (!canCancelOperation(*device)) {
+        return;
+    }
+    qCInfo(auralisBluetooth) << "OperationCancelRequested" << objectPath << toString(device->operation);
+    abortPendingOperation(objectPath, QStringLiteral("Operation cancelled by user"));
+}
+
+int DeviceLifecycleManager::operationTimeoutMs(DeviceOperation operation) const
+{
+    switch (operation) {
+    case DeviceOperation::Connecting:
+    case DeviceOperation::Reconnecting:
+        return 60000;
+    case DeviceOperation::Pairing:
+    case DeviceOperation::CancellingPairing:
+        return 120000;
+    default:
+        return 45000;
+    }
+}
+
+void DeviceLifecycleManager::startOperationTimeout(const QString& objectPath, DeviceOperation operation)
+{
+    const int timeoutMs = operationTimeoutMs(operation);
+    if (timeoutMs <= 0) {
+        return;
+    }
+    PendingOp op = pending_.value(objectPath);
+    if (op.timeoutTimer == nullptr) {
+        op.timeoutTimer = new QTimer(this);
+        op.timeoutTimer->setSingleShot(true);
+        connect(op.timeoutTimer, &QTimer::timeout, this, [this, objectPath]() {
+            qCWarning(auralisBluetooth) << "OperationTimedOut" << objectPath;
+            abortPendingOperation(objectPath, QStringLiteral("Operation timed out"), BluetoothError::TimedOut);
+        });
+    }
+    op.timeoutTimer->start(timeoutMs);
+    pending_.insert(objectPath, op);
+}
+
+void DeviceLifecycleManager::stopOperationTimeout(const QString& objectPath)
+{
+    PendingOp op = pending_.value(objectPath);
+    if (op.timeoutTimer == nullptr) {
+        return;
+    }
+    op.timeoutTimer->stop();
+    op.timeoutTimer->deleteLater();
+    op.timeoutTimer = nullptr;
+    pending_.insert(objectPath, op);
+}
+
+void DeviceLifecycleManager::abortPendingOperation(
+    const QString& objectPath,
+    const QString& reason,
+    BluetoothError error)
+{
+    PendingOp op = pending_.value(objectPath);
+    DeviceOperation activeOp = op.operation;
+    const BluetoothDeviceData* device = registry_->findByObjectPath(objectPath);
+    if (activeOp == DeviceOperation::Idle && device != nullptr) {
+        activeOp = device->operation;
+    }
+
+    bumpGeneration(objectPath);
+    stopOperationTimeout(objectPath);
+
+    if (activeOp == DeviceOperation::Connecting || activeOp == DeviceOperation::Reconnecting) {
+        if (reconnect_ != nullptr) {
+            reconnect_->cancelReconnect(objectPath);
+        }
+        registry_->setUserDisconnectRequested(objectPath, true);
+        registry_->setReconnectAttempt(objectPath, 0);
+        if (client_ != nullptr && client_->isBlueZAvailable()) {
+            client_->disconnectDevice(objectPath);
+        }
+    }
+
+    pending_.remove(objectPath);
+    if (device != nullptr) {
+        registry_->clearOperation(objectPath);
+        if (error != BluetoothError::None) {
+            registry_->setLastError(objectPath, error, {}, reason);
+        }
+    }
+    emit deviceOperationChanged(objectPath);
 }
 
 bool DeviceLifecycleManager::beginOperation(const QString& objectPath, DeviceOperation operation)
@@ -228,6 +339,7 @@ bool DeviceLifecycleManager::beginOperation(const QString& objectPath, DeviceOpe
     pending_.insert(objectPath, op);
     registry_->setOperation(objectPath, operation);
     registry_->clearLastError(objectPath);
+    startOperationTimeout(objectPath, operation);
     emit deviceOperationChanged(objectPath);
     return true;
 }
@@ -243,6 +355,7 @@ void DeviceLifecycleManager::finishOperation(
     if (isStale(objectPath, generation)) {
         return;
     }
+    stopOperationTimeout(objectPath);
     clearPending(objectPath);
     if (!success && error != BluetoothError::None) {
         registry_->setLastError(objectPath, error, errorName, message);
@@ -255,6 +368,7 @@ void DeviceLifecycleManager::finishOperation(
 
 void DeviceLifecycleManager::clearPending(const QString& objectPath)
 {
+    stopOperationTimeout(objectPath);
     pending_.remove(objectPath);
     if (registry_ != nullptr && registry_->findByObjectPath(objectPath) != nullptr) {
         registry_->clearOperation(objectPath);

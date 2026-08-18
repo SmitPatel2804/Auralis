@@ -72,6 +72,7 @@ public:
     Q_INVOKABLE void disconnectDevice(const QString& deviceId);
     Q_INVOKABLE void forgetDevice(const QString& deviceId);
     Q_INVOKABLE void reconnectDevice(const QString& deviceId);
+    Q_INVOKABLE void cancelDeviceOperation(const QString& deviceId);
     Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
     Q_INVOKABLE void rejectPairingRequest(const QString& requestId);
     Q_INVOKABLE void submitPinCode(const QString& requestId, const QString& pin);
