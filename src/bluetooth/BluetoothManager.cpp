@@ -348,8 +348,8 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
     snapshotError_ = BluetoothError::None;
     snapshotErrorMessage_.clear();
     discovery_->onSelectedAdapterChanged();
-    if (adapters_->hasAdapter() && adapters_->selected().discovering) {
-        discovery_->onAdapterDiscoveringPropertyChanged(true);
+    if (adapters_->hasAdapter()) {
+        discovery_->onAdapterDiscoveringPropertyChanged(adapters_->selected().discovering);
     }
     qCInfo(auralisBluetooth) << "BlueZSnapshotApplied adapters=" << adapterPaths.size()
                              << "devices=" << devicePaths.size();

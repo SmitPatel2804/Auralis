@@ -321,6 +321,24 @@ private slots:
         QVERIFY(!manager.errorText().isEmpty());
     }
 
+    void snapshotDiscoveringFalseReconcilesLocalOwnership()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        BluetoothManager manager(client);
+        QVERIFY(manager.initialize());
+        QVERIFY(manager.canStartScan());
+
+        manager.startScan();
+        QVERIFY(manager.scanning());
+
+        client->replaceAdapter(QStringLiteral("/org/bluez/hci0"), poweredAdapter(false));
+        manager.refresh();
+        QVERIFY(!manager.scanning());
+        QVERIFY(!manager.adapterDiscovering());
+        QVERIFY(manager.canStartScan());
+    }
+
     void globalDiscoveringRemainsTrueAfterLocalStop()
     {
         auto* client = new FakeBlueZClient;

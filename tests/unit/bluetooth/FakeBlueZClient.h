@@ -162,6 +162,13 @@ public:
         emit interfacesAdded(path, interfaces);
     }
 
+    void replaceAdapter(const QString& path, const QVariantMap& properties)
+    {
+        QVariantMap interfaces = objects_.value(path).toMap();
+        interfaces.insert(QStringLiteral("org.bluez.Adapter1"), properties);
+        objects_.insert(path, interfaces);
+    }
+
     void updateAdapter(const QString& path, const QVariantMap& changed, const QStringList& invalidated = {})
     {
         QVariantMap interfaces = objects_.value(path).toMap();
