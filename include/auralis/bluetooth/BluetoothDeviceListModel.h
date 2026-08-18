@@ -34,7 +34,19 @@ public:
         HasAppearanceRole,
         UuidsRole,
         LastSeenRole,
-        TransportHintRole
+        TransportHintRole,
+        OperationRole,
+        LogicalStateRole,
+        OperationTextRole,
+        LastErrorMessageRole,
+        CanPairRole,
+        CanCancelPairingRole,
+        CanTrustRole,
+        CanUntrustRole,
+        CanConnectRole,
+        CanDisconnectRole,
+        CanForgetRole,
+        CanReconnectRole
     };
 
     explicit BluetoothDeviceListModel(DeviceRegistry* registry, QObject* parent = nullptr);

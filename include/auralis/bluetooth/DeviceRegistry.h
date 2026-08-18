@@ -10,6 +10,8 @@
 #include <QVariantMap>
 #include <QVector>
 
+#include <functional>
+
 namespace auralis::bluetooth {
 
 class DeviceRegistry final : public QObject {
@@ -38,6 +40,13 @@ public:
     BluetoothDeviceData at(int index) const;
     QVector<BluetoothDeviceData> devices() const;
 
+    bool setOperation(const QString& objectPath, DeviceOperation operation);
+    bool clearOperation(const QString& objectPath);
+    bool setLastError(const QString& objectPath, BluetoothError error, const QString& errorName, const QString& message);
+    bool clearLastError(const QString& objectPath);
+    bool setUserDisconnectRequested(const QString& objectPath, bool requested);
+    bool setReconnectAttempt(const QString& objectPath, int attempt);
+
 signals:
     void deviceAboutToBeAdded(int index);
     void deviceAdded(int index);
@@ -48,8 +57,8 @@ signals:
     void parseWarning(const QString& objectPath, const QString& property, const QString& message);
 
 private:
-    void reindex();
     void touchLastSeen(BluetoothDeviceData& device) const;
+    bool mutateDevice(const QString& objectPath, const std::function<void(BluetoothDeviceData&)>& mutator);
 
     QStringList order_;
     QHash<QString, BluetoothDeviceData> byPath_;

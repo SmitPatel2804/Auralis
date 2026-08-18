@@ -6,11 +6,48 @@ import Auralis 1.0
 ApplicationWindow {
     id: root
     visible: true
-    width: 760
-    height: 720
+    width: 860
+    height: 820
     title: "Auralis"
 
     readonly property QtObject bluetooth: AppCore.bluetooth
+
+    Dialog {
+        id: servicesDialog
+        title: "Device Services"
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Close
+        implicitWidth: 440
+        implicitHeight: 360
+        property var serviceEntries: []
+
+        contentItem: ListView {
+            clip: true
+            implicitWidth: 400
+            implicitHeight: 280
+            model: servicesDialog.serviceEntries
+            delegate: Item {
+                required property string uuid
+                required property string name
+                width: ListView.view.width
+                height: 40
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    Text { text: name; font.bold: true }
+                    Text { text: uuid; font.pixelSize: 11; color: "#666666" }
+                }
+            }
+        }
+    }
+
+    PairingPrompt {
+        id: pairingPrompt
+        bluetooth: root.bluetooth
+        request: root.bluetooth ? root.bluetooth.pendingPairingRequest : null
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -77,6 +114,11 @@ ApplicationWindow {
         StatusRow {
             label: "BlueZ"
             status: root.bluetooth && root.bluetooth.available ? "Ready" : "Unavailable"
+        }
+
+        StatusRow {
+            label: "Agent"
+            status: root.bluetooth && root.bluetooth.agentRegistered ? "Registered" : "Not registered"
         }
 
         StatusRow {
@@ -147,7 +189,7 @@ ApplicationWindow {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 200
+            Layout.minimumHeight: 220
 
             ListView {
                 id: deviceList
@@ -159,6 +201,7 @@ ApplicationWindow {
 
                 delegate: Item {
                     id: wrapper
+                    required property string objectPath
                     required property string displayName
                     required property string address
                     required property string addressType
@@ -167,7 +210,19 @@ ApplicationWindow {
                     required property int rssi
                     required property bool paired
                     required property bool connected
+                    required property bool trusted
                     required property bool servicesResolved
+                    required property string operationText
+                    required property string lastErrorMessage
+                    required property bool canPair
+                    required property bool canCancelPairing
+                    required property bool canTrust
+                    required property bool canUntrust
+                    required property bool canConnect
+                    required property bool canDisconnect
+                    required property bool canForget
+                    required property bool canReconnect
+                    required property var uuids
 
                     width: deviceList.width
                     height: row.implicitHeight
@@ -175,6 +230,7 @@ ApplicationWindow {
                     DeviceRow {
                         id: row
                         width: parent.width
+                        objectPath: wrapper.objectPath
                         displayName: wrapper.displayName
                         address: wrapper.address
                         addressType: wrapper.addressType
@@ -183,7 +239,40 @@ ApplicationWindow {
                         rssi: wrapper.rssi
                         paired: wrapper.paired
                         connected: wrapper.connected
+                        trusted: wrapper.trusted
                         servicesResolved: wrapper.servicesResolved
+                        operationText: wrapper.operationText
+                        lastErrorMessage: wrapper.lastErrorMessage
+                        canPair: wrapper.canPair
+                        canCancelPairing: wrapper.canCancelPairing
+                        canTrust: wrapper.canTrust
+                        canUntrust: wrapper.canUntrust
+                        canConnect: wrapper.canConnect
+                        canDisconnect: wrapper.canDisconnect
+                        canForget: wrapper.canForget
+                        canReconnect: wrapper.canReconnect
+                        uuids: wrapper.uuids
+
+                        onPairRequested: root.bluetooth.pairDevice(wrapper.objectPath)
+                        onCancelPairingRequested: root.bluetooth.cancelPairing(wrapper.objectPath)
+                        onTrustRequested: root.bluetooth.trustDevice(wrapper.objectPath)
+                        onUntrustRequested: root.bluetooth.untrustDevice(wrapper.objectPath)
+                        onConnectRequested: root.bluetooth.connectDevice(wrapper.objectPath)
+                        onDisconnectRequested: root.bluetooth.disconnectDevice(wrapper.objectPath)
+                        onForgetRequested: root.bluetooth.forgetDevice(wrapper.objectPath)
+                        onReconnectRequested: root.bluetooth.reconnectDevice(wrapper.objectPath)
+                        onShowServicesRequested: {
+                            var entries = []
+                            for (var i = 0; i < wrapper.uuids.length; ++i) {
+                                var uuid = wrapper.uuids[i]
+                                entries.push({
+                                    uuid: uuid,
+                                    name: root.bluetooth.serviceFriendlyName(uuid)
+                                })
+                            }
+                            servicesDialog.serviceEntries = entries
+                            servicesDialog.open()
+                        }
                     }
                 }
             }

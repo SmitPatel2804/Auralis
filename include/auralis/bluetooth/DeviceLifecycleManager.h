@@ -1,0 +1,83 @@
+#pragma once
+
+#include <auralis/bluetooth/BluetoothError.h>
+#include <auralis/bluetooth/DeviceOperation.h>
+
+#include <QVariantMap>
+#include <QObject>
+#include <QString>
+
+namespace auralis::bluetooth {
+
+class AdapterManager;
+class BlueZAgent;
+class DeviceRegistry;
+class IBlueZClient;
+class ReconnectPolicy;
+
+class DeviceLifecycleManager final : public QObject {
+    Q_OBJECT
+
+public:
+    DeviceLifecycleManager(
+        IBlueZClient* client,
+        DeviceRegistry* registry,
+        AdapterManager* adapters,
+        BlueZAgent* agent,
+        ReconnectPolicy* reconnect,
+        QObject* parent = nullptr);
+
+    void shutdown();
+    void onBlueZAvailabilityChanged(bool available);
+    void onDeviceRemoved(const QString& objectPath);
+    void onDevicePropertiesChanged(
+        const QString& objectPath,
+        const QVariantMap& changed,
+        const QStringList& invalidated);
+
+    void pairDevice(const QString& objectPath);
+    void cancelPairing(const QString& objectPath);
+    void trustDevice(const QString& objectPath);
+    void untrustDevice(const QString& objectPath);
+    void connectDevice(const QString& objectPath);
+    void disconnectDevice(const QString& objectPath);
+    void forgetDevice(const QString& objectPath);
+    void reconnectDevice(const QString& objectPath);
+
+signals:
+    void deviceOperationChanged(const QString& objectPath);
+
+private:
+    struct PendingOp {
+        DeviceOperation operation = DeviceOperation::Idle;
+        quint64 generation = 0;
+        bool waitingProperty = false;
+        bool expectedTrusted = false;
+    };
+
+    bool beginOperation(const QString& objectPath, DeviceOperation operation);
+    void finishOperation(const QString& objectPath, quint64 generation, bool success, BluetoothError error, const QString& errorName, const QString& message);
+    void clearPending(const QString& objectPath);
+    quint64 bumpGeneration(const QString& objectPath);
+    bool isStale(const QString& objectPath, quint64 generation) const;
+    const BluetoothDeviceData* requireDevice(const QString& objectPath) const;
+    void handleUnexpectedDisconnect(const QString& objectPath, const BluetoothDeviceData& device);
+
+    void handlePairFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void handleCancelPairingFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void handleConnectFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void handleDisconnectFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void handleTrustFinished(const QString& devicePath, bool trusted, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void handleRemoveFinished(const QString& adapterPath, const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
+    void checkPropertyCompletion(const QString& objectPath, const BluetoothDeviceData& device);
+
+    IBlueZClient* client_ = nullptr;
+    DeviceRegistry* registry_ = nullptr;
+    AdapterManager* adapters_ = nullptr;
+    BlueZAgent* agent_ = nullptr;
+    ReconnectPolicy* reconnect_ = nullptr;
+    QHash<QString, PendingOp> pending_;
+    QHash<QString, quint64> generations_;
+};
+
+} // namespace auralis::bluetooth

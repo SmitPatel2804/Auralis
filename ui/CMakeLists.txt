@@ -1,6 +1,7 @@
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(components/StatusRow.qml PROPERTIES QT_RESOURCE_ALIAS StatusRow.qml)
 set_source_files_properties(components/DeviceRow.qml PROPERTIES QT_RESOURCE_ALIAS DeviceRow.qml)
+set_source_files_properties(components/PairingPrompt.qml PROPERTIES QT_RESOURCE_ALIAS PairingPrompt.qml)
 
 qt_add_library(auralis-ui STATIC)
 
@@ -12,6 +13,7 @@ qt_add_qml_module(auralis-ui
         qml/Main.qml
         components/StatusRow.qml
         components/DeviceRow.qml
+        components/PairingPrompt.qml
 )
 
 add_library(Auralis::Ui ALIAS auralis-ui)

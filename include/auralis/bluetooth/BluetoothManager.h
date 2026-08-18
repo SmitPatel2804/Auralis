@@ -10,10 +10,14 @@
 namespace auralis::bluetooth {
 
 class AdapterManager;
+class BlueZAgent;
 class BluetoothDeviceListModel;
+class DeviceLifecycleManager;
 class DeviceRegistry;
 class DiscoveryManager;
 class IBlueZClient;
+class PairingRequest;
+class ReconnectPolicy;
 
 class BluetoothManager final : public QObject, public IBluetoothManager {
     Q_OBJECT
@@ -29,6 +33,8 @@ class BluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(QString adapterAddress READ adapterAddress NOTIFY adapterChanged)
     Q_PROPERTY(bool adapterDiscovering READ adapterDiscovering NOTIFY adapterChanged)
     Q_PROPERTY(QAbstractItemModel* devices READ devices CONSTANT)
+    Q_PROPERTY(QObject* pendingPairingRequest READ pendingPairingRequest NOTIFY pendingPairingRequestChanged)
+    Q_PROPERTY(bool agentRegistered READ agentRegistered NOTIFY agentRegisteredChanged)
 
 public:
     explicit BluetoothManager(QObject* parent = nullptr);
@@ -52,10 +58,25 @@ public:
     QString adapterAddress() const;
     bool adapterDiscovering() const;
     QAbstractItemModel* devices() const;
+    QObject* pendingPairingRequest() const;
+    bool agentRegistered() const;
 
     Q_INVOKABLE void startScan();
     Q_INVOKABLE void stopScan();
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void pairDevice(const QString& deviceId);
+    Q_INVOKABLE void cancelPairing(const QString& deviceId);
+    Q_INVOKABLE void trustDevice(const QString& deviceId);
+    Q_INVOKABLE void untrustDevice(const QString& deviceId);
+    Q_INVOKABLE void connectDevice(const QString& deviceId);
+    Q_INVOKABLE void disconnectDevice(const QString& deviceId);
+    Q_INVOKABLE void forgetDevice(const QString& deviceId);
+    Q_INVOKABLE void reconnectDevice(const QString& deviceId);
+    Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
+    Q_INVOKABLE void rejectPairingRequest(const QString& requestId);
+    Q_INVOKABLE void submitPinCode(const QString& requestId, const QString& pin);
+    Q_INVOKABLE void submitPasskey(const QString& requestId, uint passkey);
+    Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
 
 signals:
     void availableChanged();
@@ -64,6 +85,8 @@ signals:
     void deviceCountChanged();
     void statusTextChanged();
     void errorTextChanged();
+    void pendingPairingRequestChanged();
+    void agentRegisteredChanged();
 
 private:
     void connectClientSignals();
@@ -88,6 +111,9 @@ private:
     DiscoveryManager* discovery_ = nullptr;
     DeviceRegistry* registry_ = nullptr;
     BluetoothDeviceListModel* model_ = nullptr;
+    DeviceLifecycleManager* lifecycle_ = nullptr;
+    BlueZAgent* agent_ = nullptr;
+    ReconnectPolicy* reconnect_ = nullptr;
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;
     bool available_ = false;
     bool signalsWired_ = false;

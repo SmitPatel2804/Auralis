@@ -29,6 +29,17 @@ public:
     void startDiscovery(const QString& adapterPath) override;
     void stopDiscovery(const QString& adapterPath) override;
 
+    void pairDevice(const QString& devicePath) override;
+    void cancelPairing(const QString& devicePath) override;
+    void connectDevice(const QString& devicePath) override;
+    void disconnectDevice(const QString& devicePath) override;
+    void setDeviceTrusted(const QString& devicePath, bool trusted) override;
+    void removeDevice(const QString& adapterPath, const QString& devicePath) override;
+
+    void registerAgent(const QString& agentPath, const QString& capability) override;
+    void unregisterAgent(const QString& agentPath) override;
+    bool isAgentRegistered() const noexcept override;
+
 private slots:
     void onBlueZRegistered(const QString& serviceName);
     void onBlueZUnregistered(const QString& serviceName);
@@ -52,6 +63,7 @@ private:
     bool systemBusConnected_ = false;
     bool blueZAvailable_ = false;
     bool signalsSubscribed_ = false;
+    bool agentRegistered_ = false;
 };
 
 } // namespace auralis::bluetooth

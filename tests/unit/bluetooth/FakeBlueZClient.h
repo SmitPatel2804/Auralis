@@ -78,6 +78,107 @@ public:
         emitStopFinished();
     }
 
+    void pairDevice(const QString& devicePath) override
+    {
+        ++pairRequests_;
+        lastPairPath_ = devicePath;
+        if (!autoCompleteDeviceOps_) {
+            return;
+        }
+        emit pairDeviceFinished(devicePath, pairSucceeds_, pairSucceeds_ ? QString() : pairErrorName_, pairSucceeds_ ? QString() : pairErrorMessage_);
+    }
+
+    void cancelPairing(const QString& devicePath) override
+    {
+        ++cancelPairRequests_;
+        emit cancelPairingFinished(devicePath, true, {}, {});
+    }
+
+    void connectDevice(const QString& devicePath) override
+    {
+        ++connectRequests_;
+        lastConnectPath_ = devicePath;
+        if (!autoCompleteDeviceOps_) {
+            return;
+        }
+        emit connectDeviceFinished(devicePath, connectSucceeds_, connectSucceeds_ ? QString() : connectErrorName_, connectSucceeds_ ? QString() : connectErrorMessage_);
+    }
+
+    void disconnectDevice(const QString& devicePath) override
+    {
+        ++disconnectRequests_;
+        emit disconnectDeviceFinished(devicePath, true, {}, {});
+    }
+
+    void setDeviceTrusted(const QString& devicePath, bool trusted) override
+    {
+        ++trustRequests_;
+        emit setDeviceTrustedFinished(devicePath, trusted, true, {}, {});
+    }
+
+    void removeDevice(const QString& adapterPath, const QString& devicePath) override
+    {
+        ++removeRequests_;
+        lastRemoveAdapterPath_ = adapterPath;
+        lastRemoveDevicePath_ = devicePath;
+        if (!autoCompleteDeviceOps_) {
+            return;
+        }
+        objects_.remove(devicePath);
+        emit removeDeviceFinished(adapterPath, devicePath, true, {}, {});
+        emit interfacesRemoved(devicePath, QStringList{QStringLiteral("org.bluez.Device1")});
+    }
+
+    void registerAgent(const QString& agentPath, const QString& capability) override
+    {
+        Q_UNUSED(agentPath);
+        Q_UNUSED(capability);
+        ++registerAgentRequests_;
+        agentRegistered_ = true;
+        emit registerAgentFinished(true, {}, {});
+    }
+
+    void unregisterAgent(const QString& agentPath) override
+    {
+        Q_UNUSED(agentPath);
+        agentRegistered_ = false;
+        emit unregisterAgentFinished(true, {}, {});
+    }
+
+    bool isAgentRegistered() const noexcept override
+    {
+        return agentRegistered_;
+    }
+
+    void setAutoCompleteDeviceOps(bool enabled) { autoCompleteDeviceOps_ = enabled; }
+    void setPairResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
+    {
+        pairSucceeds_ = succeeds;
+        pairErrorName_ = errorName;
+        pairErrorMessage_ = errorMessage;
+    }
+    void setConnectResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
+    {
+        connectSucceeds_ = succeeds;
+        connectErrorName_ = errorName;
+        connectErrorMessage_ = errorMessage;
+    }
+    void completePairSuccess(const QString& devicePath)
+    {
+        emit pairDeviceFinished(devicePath, true, {}, {});
+    }
+    void completeConnectSuccess(const QString& devicePath)
+    {
+        emit connectDeviceFinished(devicePath, true, {}, {});
+    }
+
+    int pairRequests() const { return pairRequests_; }
+    int connectRequests() const { return connectRequests_; }
+    int removeRequests() const { return removeRequests_; }
+    int registerAgentRequests() const { return registerAgentRequests_; }
+    QString lastPairPath() const { return lastPairPath_; }
+    QString lastConnectPath() const { return lastConnectPath_; }
+
     void setSystemBusConnected(bool connected)
     {
         systemBusConnected_ = connected;
@@ -252,6 +353,14 @@ private:
     bool snapshotSucceeds_ = true;
     bool autoCompleteStart_ = true;
     bool autoCompleteStop_ = true;
+    bool autoCompleteDeviceOps_ = true;
+    bool pairSucceeds_ = true;
+    bool connectSucceeds_ = true;
+    bool agentRegistered_ = false;
+    QString pairErrorName_;
+    QString pairErrorMessage_;
+    QString connectErrorName_;
+    QString connectErrorMessage_;
     QString startErrorName_;
     QString startErrorMessage_;
     QString stopErrorName_;
@@ -262,8 +371,19 @@ private:
     int snapshotRequests_ = 0;
     int startRequests_ = 0;
     int stopRequests_ = 0;
+    int pairRequests_ = 0;
+    int cancelPairRequests_ = 0;
+    int connectRequests_ = 0;
+    int disconnectRequests_ = 0;
+    int trustRequests_ = 0;
+    int removeRequests_ = 0;
+    int registerAgentRequests_ = 0;
     QString lastStartPath_;
     QString lastStopPath_;
+    QString lastPairPath_;
+    QString lastConnectPath_;
+    QString lastRemoveAdapterPath_;
+    QString lastRemoveDevicePath_;
     QString pendingStartPath_;
     QString pendingStopPath_;
 };

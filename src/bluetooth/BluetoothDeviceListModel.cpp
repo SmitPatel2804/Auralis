@@ -1,6 +1,7 @@
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
 
 #include <auralis/bluetooth/BlueZTypes.h>
+#include <auralis/bluetooth/DeviceOperation.h>
 
 namespace auralis::bluetooth {
 
@@ -88,6 +89,30 @@ QVariant BluetoothDeviceListModel::data(const QModelIndex& index, int role) cons
         return device.lastSeen;
     case TransportHintRole:
         return device.transportHint();
+    case OperationRole:
+        return static_cast<int>(device.operation);
+    case LogicalStateRole:
+        return static_cast<int>(deriveLogicalState(device));
+    case OperationTextRole:
+        return operationStatusText(device.operation, device.reconnectAttempt, 5);
+    case LastErrorMessageRole:
+        return device.lastErrorMessage;
+    case CanPairRole:
+        return canPair(device);
+    case CanCancelPairingRole:
+        return canCancelPairing(device);
+    case CanTrustRole:
+        return canTrust(device);
+    case CanUntrustRole:
+        return canUntrust(device);
+    case CanConnectRole:
+        return canConnect(device);
+    case CanDisconnectRole:
+        return canDisconnect(device);
+    case CanForgetRole:
+        return canForget(device);
+    case CanReconnectRole:
+        return canReconnect(device);
     default:
         return {};
     }
@@ -118,6 +143,18 @@ QHash<int, QByteArray> BluetoothDeviceListModel::roleNames() const
         {UuidsRole, "uuids"},
         {LastSeenRole, "lastSeen"},
         {TransportHintRole, "transportHint"},
+        {OperationRole, "operation"},
+        {LogicalStateRole, "logicalState"},
+        {OperationTextRole, "operationText"},
+        {LastErrorMessageRole, "lastErrorMessage"},
+        {CanPairRole, "canPair"},
+        {CanCancelPairingRole, "canCancelPairing"},
+        {CanTrustRole, "canTrust"},
+        {CanUntrustRole, "canUntrust"},
+        {CanConnectRole, "canConnect"},
+        {CanDisconnectRole, "canDisconnect"},
+        {CanForgetRole, "canForget"},
+        {CanReconnectRole, "canReconnect"},
     };
 }
 

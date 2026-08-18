@@ -562,4 +562,156 @@ void BlueZDbusClient::onPropertiesChanged(
     emit propertiesChanged(message.path(), interfaceName, normalizeProperties(changed), invalidated);
 }
 
+void BlueZDbusClient::pairDevice(const QString& devicePath)
+{
+    if (!connection_.isConnected() || devicePath.isEmpty()) {
+        emit pairDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    const QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodPair.toString());
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit pairDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::cancelPairing(const QString& devicePath)
+{
+    if (!connection_.isConnected() || devicePath.isEmpty()) {
+        emit cancelPairingFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    const QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodCancelPairing.toString());
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit cancelPairingFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::connectDevice(const QString& devicePath)
+{
+    if (!connection_.isConnected() || devicePath.isEmpty()) {
+        emit connectDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    const QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodConnect.toString());
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit connectDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::disconnectDevice(const QString& devicePath)
+{
+    if (!connection_.isConnected() || devicePath.isEmpty()) {
+        emit disconnectDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    const QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodDisconnect.toString());
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit disconnectDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::setDeviceTrusted(const QString& devicePath, bool trusted)
+{
+    if (!connection_.isConnected() || devicePath.isEmpty()) {
+        emit setDeviceTrustedFinished(devicePath, trusted, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(),
+        devicePath,
+        bluez::kPropertiesInterface.toString(),
+        bluez::kMethodSet.toString());
+    message << bluez::kDeviceInterface.toString() << bluez::kPropTrusted.toString() << QVariant::fromValue(QDBusVariant(trusted));
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, trusted](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit setDeviceTrustedFinished(devicePath, trusted, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::removeDevice(const QString& adapterPath, const QString& devicePath)
+{
+    if (!connection_.isConnected() || adapterPath.isEmpty() || devicePath.isEmpty()) {
+        emit removeDeviceFinished(adapterPath, devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(),
+        adapterPath,
+        bluez::kAdapterInterface.toString(),
+        bluez::kMethodRemoveDevice.toString());
+    message << QVariant::fromValue(QDBusObjectPath(devicePath));
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, devicePath](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit removeDeviceFinished(adapterPath, devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::registerAgent(const QString& agentPath, const QString& capability)
+{
+    if (!connection_.isConnected()) {
+        emit registerAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(),
+        bluez::kAgentManagerPath.toString(),
+        bluez::kAgentManagerInterface.toString(),
+        bluez::kMethodRegisterAgent.toString());
+    message << QVariant::fromValue(QDBusObjectPath(agentPath)) << capability;
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        agentRegistered_ = !reply.isError();
+        emit registerAgentFinished(!reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::unregisterAgent(const QString& agentPath)
+{
+    if (!connection_.isConnected()) {
+        agentRegistered_ = false;
+        emit unregisterAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(),
+        bluez::kAgentManagerPath.toString(),
+        bluez::kAgentManagerInterface.toString(),
+        bluez::kMethodUnregisterAgent.toString());
+    message << QVariant::fromValue(QDBusObjectPath(agentPath));
+    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        agentRegistered_ = false;
+        emit unregisterAgentFinished(!reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+bool BlueZDbusClient::isAgentRegistered() const noexcept
+{
+    return agentRegistered_;
+}
+
 } // namespace auralis::bluetooth

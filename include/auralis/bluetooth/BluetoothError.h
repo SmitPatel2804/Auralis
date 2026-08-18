@@ -14,7 +14,24 @@ enum class BluetoothError {
     DiscoveryStopFailed,
     DbusCallFailed,
     MalformedDbusPayload,
-    AdapterRemoved
+    AdapterRemoved,
+    DeviceUnavailable,
+    NotReady,
+    InProgress,
+    AlreadyConnected,
+    NotConnected,
+    AuthenticationCanceled,
+    AuthenticationFailed,
+    AuthenticationRejected,
+    AuthenticationTimeout,
+    ConnectionFailed,
+    NotSupported,
+    InvalidArguments,
+    TimedOut,
+    PermissionDenied,
+    OperationFailed,
+    AgentNotRegistered,
+    OperationInProgress
 };
 
 QString toString(BluetoothError error);

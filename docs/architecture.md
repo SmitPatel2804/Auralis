@@ -1,4 +1,4 @@
-# Auralis Architecture — Phase 2
+# Auralis Architecture — Phase 3
 
 ## Target architecture
 
@@ -29,14 +29,16 @@
 +---------+---------+      +-----------+-----------+
 ```
 
-Phase 2 implements Bluetooth discovery over the Linux **system D-Bus**. PipeWire, high-level DeviceManager, and sessions remain Phase 1 stubs.
+Phase 3 extends Bluetooth with device lifecycle operations and an exported `org.bluez.Agent1`. PipeWire, high-level DeviceManager, and sessions remain stubs.
 
-## Bluetooth discovery
+## Bluetooth stack
 
 ```text
 QML
   -> AppCore.bluetooth (BluetoothManager)
        -> DeviceRegistry + BluetoothDeviceListModel
+       -> DeviceLifecycleManager + ReconnectPolicy
+       -> BlueZAgent (Agent1 at /auralis/agent)
        -> AdapterManager + DiscoveryManager
        -> IBlueZClient
             -> BlueZDbusClient (QDBusConnection::systemBus)
@@ -45,22 +47,21 @@ QML
 ```
 
 - Production talks to `org.bluez` only through QtDBus. There is no `bluetoothctl` backend.
-- `GetManagedObjects` bootstraps adapters/devices; `InterfacesAdded` / `InterfacesRemoved` / `PropertiesChanged` keep state live.
-- Signal subscriptions are established before snapshot reconciliation so devices are not missed.
-- Device identity is the BlueZ object path. Name is never used as identity. LE random addresses are not durable across restarts.
-- `scanning` means Auralis owns a `StartDiscovery` session. Adapter1 `Discovering` is also exposed because other clients may scan.
-- Phase 2 does not set Adapter1 `Powered` and does not apply a discovery UUID filter.
+- BlueZ properties (`Paired`, `Trusted`, `Connected`, `UUIDs`, …) are authoritative.
+- Auralis tracks transient `DeviceOperation` state only; UI logical state is derived.
+- Per-device generation tokens drop stale D-Bus callbacks after forget/removal.
+- Agent replies are async via delayed D-Bus replies; QML uses `pendingPairingRequest`.
 
 ## Module responsibilities
 
 | Module | Responsibility |
 |---|---|
 | `auralis-core` | `ServiceStatus`, `Logger`, `ConfigurationManager`, `ApplicationCore` |
-| `auralis-bluetooth` | BlueZ discovery: client, adapters, registry, model, scan lifecycle |
+| `auralis-bluetooth` | BlueZ discovery + lifecycle: client, registry, model, agent, reconnect |
 | `auralis-audio` | Future PipeWire data/control plane. Phase 1 stub. |
 | `auralis-devices` | Future high-level Auralis device state. Not equal to a BlueZ Device1 object. |
 | `auralis-session` | Future multi-device session orchestration. |
-| `auralis-ui` | QML module (`Auralis.Ui`) with status + discovery UI. |
+| `auralis-ui` | QML module (`Auralis.Ui`) with status, discovery, device actions, pairing prompt. |
 | `auralis-desktop` | Process bootstrap. |
 
 `auralis-bluetooth` is the only target that links `Qt6::DBus`.
@@ -76,19 +77,13 @@ Desktop App / Presentation Bridge
   v
 ApplicationCore
   |
-  +--> DeviceManager
-  +--> SessionManager
+  +--> DeviceManager (stub)
+  +--> SessionManager (stub)
   +--> BluetoothManager (IBluetoothManager + QObject uiObject)
   +--> PipeWireManager interface/stub
   +--> ConfigurationManager
   +--> Logger
 ```
-
-`ApplicationCore` still depends only on `IBluetoothManager`. Production `BluetoothManager` is a `QObject` exposed as `AppCore.bluetooth`. Fakes return `uiObject() == nullptr`.
-
-## Lifecycle ownership
-
-Startup order is unchanged. `BluetoothManager::initialize()` returns true even if BlueZ is missing so the desktop still launches. Unavailability is reported through `available` / `statusText`.
 
 ## QML backend exposure
 
@@ -96,12 +91,18 @@ Startup order is unchanged. `BluetoothManager::initialize()` returns true even i
 qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 ```
 
-QML uses `AppCore.bluetooth.startScan()`, `stopScan()`, `refresh()`, and `AppCore.bluetooth.devices`. QML does not own the manager.
+QML uses `AppCore.bluetooth` for scan controls, the device list, lifecycle invokables, and `pendingPairingRequest`. Device id for invokables is the model `objectPath` role. QML does not own the manager and never talks D-Bus.
 
-## Testing seams
+## Phase 3 operations
 
-`IBlueZClient` is injected into `BluetoothManager`. Unit tests use `FakeBlueZClient`. Live tests require `AURALIS_RUN_BLUETOOTH_INTEGRATION=1`.
+| Operation | BlueZ surface |
+|---|---|
+| Pair / CancelPairing | `Device1.Pair`, `Device1.CancelPairing` |
+| Trust / Untrust | `Properties.Set(Device1, Trusted, bool)` |
+| Connect / Disconnect | `Device1.Connect`, `Device1.Disconnect` |
+| Forget | `Adapter1.RemoveDevice` |
+| Agent | `AgentManager1.RegisterAgent`, exported `Agent1` |
 
-## No shell-command production rule
+Auto-reconnect is bounded via `ReconnectPolicy` and suppressed after explicit disconnect/forget.
 
-Production code must not execute or parse `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, or `pw-cli`. Bluetooth discovery uses BlueZ D-Bus APIs. Future audio integration uses the native PipeWire API where practical.
+See [docs/phase-3-validation.md](phase-3-validation.md) for validation steps and environment variables.

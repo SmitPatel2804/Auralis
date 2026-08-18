@@ -4,6 +4,8 @@
 
 #include <QDateTime>
 
+#include <functional>
+
 namespace auralis::bluetooth {
 
 DeviceRegistry::DeviceRegistry(QObject* parent)
@@ -25,6 +27,15 @@ bool DeviceRegistry::upsertDevice(BluetoothDeviceData device)
     touchLastSeen(device);
     const int existing = indexOf(device.objectPath);
     if (existing >= 0) {
+        const BluetoothDeviceData previous = byPath_.value(device.objectPath);
+        device.operation = previous.operation;
+        device.lastError = previous.lastError;
+        device.lastErrorName = previous.lastErrorName;
+        device.lastErrorMessage = previous.lastErrorMessage;
+        device.lastErrorTimestamp = previous.lastErrorTimestamp;
+        device.reconnectAttempt = previous.reconnectAttempt;
+        device.userDisconnectRequested = previous.userDisconnectRequested;
+        device.autoReconnectEnabled = previous.autoReconnectEnabled;
         byPath_.insert(device.objectPath, device);
         if (!device.addressIndexKey().isEmpty()) {
             byAddressKey_.insert(device.addressIndexKey(), device.objectPath);
@@ -63,6 +74,14 @@ bool DeviceRegistry::applyPropertyChanges(
         emit parseWarning(objectPath, warning.property, warning.message);
     }
     touchLastSeen(parsed.device);
+    parsed.device.operation = current.operation;
+    parsed.device.lastError = current.lastError;
+    parsed.device.lastErrorName = current.lastErrorName;
+    parsed.device.lastErrorMessage = current.lastErrorMessage;
+    parsed.device.lastErrorTimestamp = current.lastErrorTimestamp;
+    parsed.device.reconnectAttempt = current.reconnectAttempt;
+    parsed.device.userDisconnectRequested = current.userDisconnectRequested;
+    parsed.device.autoReconnectEnabled = current.autoReconnectEnabled;
     byPath_.insert(objectPath, parsed.device);
 
     if (previousKey != parsed.device.addressIndexKey()) {
@@ -167,6 +186,65 @@ QVector<BluetoothDeviceData> DeviceRegistry::devices() const
         result.push_back(byPath_.value(path));
     }
     return result;
+}
+
+bool DeviceRegistry::mutateDevice(const QString& objectPath, const std::function<void(BluetoothDeviceData&)>& mutator)
+{
+    const int index = indexOf(objectPath);
+    if (index < 0) {
+        return false;
+    }
+    BluetoothDeviceData device = byPath_.value(objectPath);
+    mutator(device);
+    byPath_.insert(objectPath, device);
+    emit deviceUpdated(index, {});
+    return true;
+}
+
+bool DeviceRegistry::setOperation(const QString& objectPath, DeviceOperation operation)
+{
+    return mutateDevice(objectPath, [operation](BluetoothDeviceData& device) { device.operation = operation; });
+}
+
+bool DeviceRegistry::clearOperation(const QString& objectPath)
+{
+    return setOperation(objectPath, DeviceOperation::Idle);
+}
+
+bool DeviceRegistry::setLastError(
+    const QString& objectPath,
+    BluetoothError error,
+    const QString& errorName,
+    const QString& message)
+{
+    return mutateDevice(objectPath, [&](BluetoothDeviceData& device) {
+        device.lastError = error;
+        device.lastErrorName = errorName;
+        device.lastErrorMessage = message;
+        device.lastErrorTimestamp = QDateTime::currentDateTimeUtc();
+    });
+}
+
+bool DeviceRegistry::clearLastError(const QString& objectPath)
+{
+    return mutateDevice(objectPath, [](BluetoothDeviceData& device) {
+        device.lastError = BluetoothError::None;
+        device.lastErrorName.clear();
+        device.lastErrorMessage.clear();
+        device.lastErrorTimestamp = {};
+    });
+}
+
+bool DeviceRegistry::setUserDisconnectRequested(const QString& objectPath, bool requested)
+{
+    return mutateDevice(objectPath, [requested](BluetoothDeviceData& device) {
+        device.userDisconnectRequested = requested;
+    });
+}
+
+bool DeviceRegistry::setReconnectAttempt(const QString& objectPath, int attempt)
+{
+    return mutateDevice(objectPath, [attempt](BluetoothDeviceData& device) { device.reconnectAttempt = attempt; });
 }
 
 } // namespace auralis::bluetooth

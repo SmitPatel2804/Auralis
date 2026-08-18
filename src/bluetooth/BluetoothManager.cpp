@@ -1,13 +1,18 @@
 #include <auralis/bluetooth/BluetoothManager.h>
 
 #include <auralis/bluetooth/AdapterManager.h>
+#include <auralis/bluetooth/BlueZAgent.h>
 #include <auralis/bluetooth/BlueZConstants.h>
 #include <auralis/bluetooth/BlueZDbusClient.h>
 #include <auralis/bluetooth/BlueZPropertyParser.h>
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
+#include <auralis/bluetooth/DeviceLifecycleManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/bluetooth/DiscoveryManager.h>
 #include <auralis/bluetooth/IBlueZClient.h>
+#include <auralis/bluetooth/PairingRequest.h>
+#include <auralis/bluetooth/ReconnectPolicy.h>
+#include <auralis/bluetooth/UuidCatalog.h>
 
 #include <auralis/core/LoggingCategories.h>
 
@@ -58,6 +63,9 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     discovery_ = new DiscoveryManager(client_, adapters_, this);
     registry_ = new DeviceRegistry(this);
     model_ = new BluetoothDeviceListModel(registry_, this);
+    reconnect_ = new ReconnectPolicy(this);
+    agent_ = new BlueZAgent(client_, this);
+    lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, this);
     statusText_ = defaultMessage(BluetoothError::BlueZUnavailable);
 }
 
@@ -114,6 +122,19 @@ void BluetoothManager::connectClientSignals()
         updateStatusText();
     });
     connect(registry_, &DeviceRegistry::countChanged, this, &BluetoothManager::deviceCountChanged);
+    if (agent_ != nullptr) {
+        connect(agent_, &BlueZAgent::pendingRequestChanged, this, [this]() {
+            if (agent_ != nullptr && registry_ != nullptr) {
+                if (PairingRequest* request = agent_->pendingRequest()) {
+                    if (const BluetoothDeviceData* device = registry_->findByObjectPath(request->devicePath())) {
+                        request->setDeviceName(device->displayName());
+                    }
+                }
+            }
+            emit pendingPairingRequestChanged();
+        });
+        connect(agent_, &BlueZAgent::registeredChanged, this, &BluetoothManager::agentRegisteredChanged);
+    }
 }
 
 void BluetoothManager::refreshDisplayedError()
@@ -166,6 +187,9 @@ bool BluetoothManager::initialize()
     qCInfo(auralisBluetooth) << "BluetoothSubsystemInitializing";
     connectClientSignals();
     client_->initialize();
+    if (agent_ != nullptr) {
+        agent_->initialize();
+    }
     handleBlueZAvailable(client_->isBlueZAvailable());
     status_ = auralis::core::ServiceStatus::Ready;
     qCInfo(auralisBluetooth) << "Bluetooth manager ready (BlueZ available =" << available_ << ")";
@@ -180,6 +204,12 @@ void BluetoothManager::shutdown()
 
     if (discovery_ != nullptr) {
         discovery_->shutdown();
+    }
+    if (lifecycle_ != nullptr) {
+        lifecycle_->shutdown();
+    }
+    if (agent_ != nullptr) {
+        agent_->shutdown();
     }
     if (registry_ != nullptr) {
         registry_->clear();
@@ -296,6 +326,9 @@ void BluetoothManager::handleBlueZAvailable(bool available)
     if (discovery_ != nullptr) {
         discovery_->onBlueZAvailabilityChanged(available);
     }
+    if (lifecycle_ != nullptr) {
+        lifecycle_->onBlueZAvailabilityChanged(available);
+    }
     emit adapterChanged();
     emit scanningChanged();
     updateStatusText();
@@ -385,6 +418,9 @@ void BluetoothManager::handleInterfacesRemoved(const QString& objectPath, const 
     }
     if (interfaces.contains(bluez::kDeviceInterface.toString()) || interfaces.isEmpty()) {
         qCInfo(auralisBluetooth) << "DeviceRemoved" << objectPath;
+        if (lifecycle_ != nullptr) {
+            lifecycle_->onDeviceRemoved(objectPath);
+        }
         registry_->removeDevice(objectPath);
     }
 }
@@ -406,7 +442,109 @@ void BluetoothManager::handlePropertiesChanged(
     }
     if (interfaceName == bluez::kDeviceInterface.toString()) {
         registry_->applyPropertyChanges(objectPath, changed, invalidated);
+        if (lifecycle_ != nullptr) {
+            lifecycle_->onDevicePropertiesChanged(objectPath, changed, invalidated);
+        }
     }
+}
+
+QObject* BluetoothManager::pendingPairingRequest() const
+{
+    return agent_ != nullptr ? agent_->pendingRequest() : nullptr;
+}
+
+bool BluetoothManager::agentRegistered() const
+{
+    return agent_ != nullptr && agent_->isRegistered();
+}
+
+void BluetoothManager::pairDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->pairDevice(deviceId);
+    }
+}
+
+void BluetoothManager::cancelPairing(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->cancelPairing(deviceId);
+    }
+}
+
+void BluetoothManager::trustDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->trustDevice(deviceId);
+    }
+}
+
+void BluetoothManager::untrustDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->untrustDevice(deviceId);
+    }
+}
+
+void BluetoothManager::connectDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->connectDevice(deviceId);
+    }
+}
+
+void BluetoothManager::disconnectDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->disconnectDevice(deviceId);
+    }
+}
+
+void BluetoothManager::forgetDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->forgetDevice(deviceId);
+    }
+}
+
+void BluetoothManager::reconnectDevice(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr) {
+        lifecycle_->reconnectDevice(deviceId);
+    }
+}
+
+void BluetoothManager::acceptPairingRequest(const QString& requestId)
+{
+    if (agent_ != nullptr) {
+        agent_->acceptPairingRequest(requestId);
+    }
+}
+
+void BluetoothManager::rejectPairingRequest(const QString& requestId)
+{
+    if (agent_ != nullptr) {
+        agent_->rejectPairingRequest(requestId);
+    }
+}
+
+void BluetoothManager::submitPinCode(const QString& requestId, const QString& pin)
+{
+    if (agent_ != nullptr) {
+        agent_->submitPinCode(requestId, pin);
+    }
+}
+
+void BluetoothManager::submitPasskey(const QString& requestId, uint passkey)
+{
+    if (agent_ != nullptr) {
+        agent_->submitPasskey(requestId, passkey);
+    }
+}
+
+QString BluetoothManager::serviceFriendlyName(const QString& uuid) const
+{
+    return UuidCatalog::friendlyName(uuid);
 }
 
 } // namespace auralis::bluetooth

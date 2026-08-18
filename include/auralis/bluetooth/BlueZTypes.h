@@ -1,5 +1,8 @@
 #pragma once
 
+#include <auralis/bluetooth/BluetoothError.h>
+#include <auralis/bluetooth/DeviceOperation.h>
+
 #include <QByteArray>
 #include <QDateTime>
 #include <QHash>
@@ -53,6 +56,15 @@ struct BluetoothDeviceData {
     bool legacyPairing = false;
     QString modalias;
     bool bonded = false;
+
+    DeviceOperation operation = DeviceOperation::Idle;
+    BluetoothError lastError = BluetoothError::None;
+    QString lastErrorName;
+    QString lastErrorMessage;
+    QDateTime lastErrorTimestamp;
+    int reconnectAttempt = 0;
+    bool userDisconnectRequested = false;
+    bool autoReconnectEnabled = true;
 
     QString displayName() const;
     QString transportHint() const;

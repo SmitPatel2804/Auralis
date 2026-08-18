@@ -119,11 +119,79 @@ private slots:
             "and rerun with AURALIS_RUN_BLUETOOTH_INTEGRATION=1.");
 
         const QString expectedAddress = qEnvironmentVariable("AURALIS_EXPECT_DEVICE_ADDRESS").trimmed();
+        QString expectedObjectPath;
         if (!expectedAddress.isEmpty()) {
             QTRY_VERIFY_WITH_TIMEOUT(modelContainsAddress(model, expectedAddress), 15000);
             QVERIFY2(
                 modelContainsAddress(model, expectedAddress),
                 qPrintable(QStringLiteral("Expected device address %1 was not observed").arg(expectedAddress)));
+
+            for (int row = 0; row < model->rowCount(); ++row) {
+                const QString address =
+                    model->data(model->index(row, 0), BluetoothDeviceListModel::AddressRole).toString().trimmed().toUpper();
+                if (address == expectedAddress.trimmed().toUpper()) {
+                    expectedObjectPath =
+                        model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString();
+                    break;
+                }
+            }
+            QVERIFY2(!expectedObjectPath.isEmpty(), "Expected device address was seen but object path was missing");
+
+            bool paired = false;
+            for (int row = 0; row < model->rowCount(); ++row) {
+                if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
+                    == expectedObjectPath) {
+                    paired = model->data(model->index(row, 0), BluetoothDeviceListModel::PairedRole).toBool();
+                    break;
+                }
+            }
+            if (!paired) {
+                manager.pairDevice(expectedObjectPath);
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    [&]() {
+                        for (int row = 0; row < model->rowCount(); ++row) {
+                            if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
+                                == expectedObjectPath) {
+                                return model->data(model->index(row, 0), BluetoothDeviceListModel::PairedRole).toBool();
+                            }
+                        }
+                        return false;
+                    }(),
+                    30000);
+            }
+
+            manager.connectDevice(expectedObjectPath);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                [&]() {
+                    for (int row = 0; row < model->rowCount(); ++row) {
+                        if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
+                            == expectedObjectPath) {
+                            return model->data(model->index(row, 0), BluetoothDeviceListModel::ConnectedRole).toBool();
+                        }
+                    }
+                    return false;
+                }(),
+                30000);
+
+            manager.disconnectDevice(expectedObjectPath);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                [&]() {
+                    for (int row = 0; row < model->rowCount(); ++row) {
+                        if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
+                            == expectedObjectPath) {
+                            return !model->data(model->index(row, 0), BluetoothDeviceListModel::ConnectedRole).toBool();
+                        }
+                    }
+                    return false;
+                }(),
+                15000);
+
+            if (qEnvironmentVariableIntValue("AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS") == 1) {
+                manager.forgetDevice(expectedObjectPath);
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    !objectPaths(model).contains(expectedObjectPath),
+                    15000);
+            }
         }
 
         const QSet<QString> firstCyclePaths = objectPaths(model);
