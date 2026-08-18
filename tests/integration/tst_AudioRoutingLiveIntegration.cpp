@@ -2,6 +2,7 @@
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/audio/AudioSource.h>
 #include <auralis/audio/PipeWireManager.h>
+#include <auralis/audio/PipeWireObjectStore.h>
 #include <auralis/bluetooth/BluetoothManager.h>
 
 #include <QElapsedTimer>
@@ -29,6 +30,7 @@ using auralis::audio::AudioSourceType;
 using auralis::audio::PipeWireConnectionState;
 using auralis::audio::PipeWireManager;
 using auralis::audio::RouteState;
+using auralis::audio::toString;
 using auralis::bluetooth::BluetoothManager;
 
 namespace {
@@ -181,6 +183,63 @@ private:
         return audio.diagnosticsText();
     }
 
+    static QString endpointDump(const PipeWireManager& audio)
+    {
+        QString text = QStringLiteral("Playback endpoints:\n");
+        if (audio.endpointRegistry() == nullptr) {
+            return text + QStringLiteral("(no registry)\n");
+        }
+        for (const auto& endpoint : audio.endpointRegistry()->playbackEndpoints()) {
+            text += QStringLiteral("  id=%1 name=%2 addr=%3 avail=%4 transport=%5 node=%6\n")
+                        .arg(endpoint.id,
+                             endpoint.name,
+                             endpoint.bluetoothAddress,
+                             toString(endpoint.availability),
+                             toString(endpoint.transport),
+                             endpoint.nodeName);
+        }
+        return text;
+    }
+
+    static int auralisTaggedLinkCount(const PipeWireManager& audio)
+    {
+        const auto* store = audio.objectStore();
+        if (store == nullptr) {
+            return 0;
+        }
+        int count = 0;
+        for (const auto& link : store->links()) {
+            if (!link.properties.value(QStringLiteral("auralis.route.id")).isEmpty()) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+    static QString auralisLinkDump(const PipeWireManager& audio)
+    {
+        QString text = QStringLiteral("Links with auralis.route.id:\n");
+        const auto* store = audio.objectStore();
+        if (store == nullptr) {
+            return text + QStringLiteral("(no object store)\n");
+        }
+        for (const auto& link : store->links()) {
+            const QString routeId = link.properties.value(QStringLiteral("auralis.route.id"));
+            if (routeId.isEmpty()) {
+                continue;
+            }
+            text += QStringLiteral("  pw=%1 route=%2 out=%3:%4 in=%5:%6 state=%7\n")
+                        .arg(link.globalId)
+                        .arg(routeId)
+                        .arg(link.outputNode.value_or(0))
+                        .arg(link.outputPort.value_or(0))
+                        .arg(link.inputNode.value_or(0))
+                        .arg(link.inputPort.value_or(0))
+                        .arg(toString(link.state));
+        }
+        return text;
+    }
+
     static bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
     {
         QElapsedTimer timer;
@@ -245,17 +304,14 @@ private slots:
             destinationId = endpoint.id;
             break;
         }
-        if (destinationId.isEmpty() && !expectedAddress.isEmpty()) {
-            for (const auto& endpoint : audio.endpointRegistry()->playbackEndpoints()) {
-                if (endpoint.availability == AudioEndpointAvailability::Available) {
-                    destinationId = endpoint.id;
-                    break;
-                }
-            }
+        if (destinationId.isEmpty()) {
+            const QString message = !expectedAddress.isEmpty()
+                ? QStringLiteral("Expected Bluetooth destination %1 was not found. No speaker fallback.\n%2\n%3")
+                      .arg(expectedAddress, endpointDump(audio), diagnostics(audio))
+                : QStringLiteral("No available playback destination.\n%1\n%2")
+                      .arg(endpointDump(audio), diagnostics(audio));
+            QFAIL(qPrintable(message));
         }
-        QVERIFY2(
-            !destinationId.isEmpty(),
-            qPrintable(QStringLiteral("No available playback destination. %1").arg(diagnostics(audio))));
 
         TestToneStream tone;
         QVERIFY2(tone.start(), "Failed to start test-only low-volume pw_stream sine source");
@@ -313,6 +369,11 @@ private slots:
                            .arg(router->ownedLinkCount())
                            .arg(diagnostics(audio))));
         QCOMPARE(router->ownedLinkCount(), 0);
+        QVERIFY2(
+            waitUntil([&audio]() { return auralisTaggedLinkCount(audio) == 0; }, 5000),
+            qPrintable(QStringLiteral("PipeWire graph still has Auralis-owned links after deactivate.\n%1\n%2")
+                           .arg(auralisLinkDump(audio), diagnostics(audio))));
+        QCOMPARE(auralisTaggedLinkCount(audio), 0);
 
         tone.stop();
         audio.shutdown();

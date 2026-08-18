@@ -17,6 +17,7 @@ public:
     void destroyLinks(QVector<OwnedLink>& links);
     void destroyLink(OwnedLink& link);
     void forgetRuntime(QVector<OwnedLink>& links);
+    void refreshGlobalIds(QVector<OwnedLink>& links);
 
 private:
     IPipeWireLinkBackend* backend_ = nullptr;

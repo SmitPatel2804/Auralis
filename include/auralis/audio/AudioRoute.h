@@ -62,6 +62,7 @@ struct OwnedLink {
     quint32 outputPortId = 0;
     quint32 inputNodeId = 0;
     quint32 inputPortId = 0;
+    quint64 ownershipToken = 0;
     quint32 globalId = 0;
     QString channel;
 };

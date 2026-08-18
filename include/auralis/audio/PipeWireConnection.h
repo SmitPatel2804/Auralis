@@ -37,14 +37,15 @@ public:
     void stop();
     bool isStarted() const noexcept;
 
-    std::optional<quint32> createLink(
+    std::optional<LinkCreateResult> createLink(
         quint32 outputNode,
         quint32 outputPort,
         quint32 inputNode,
         quint32 inputPort,
         const QString& routeId,
         const QHash<QString, QString>& extraProps = {}) override;
-    bool destroyOwnedLink(quint32 globalId) override;
+    bool destroyOwnedLink(quint64 ownershipToken) override;
+    quint32 ownedLinkGlobalId(quint64 ownershipToken) const override;
     bool setNodeVolume(quint32 nodeId, double volume) override;
     bool setNodeMuted(quint32 nodeId, bool muted) override;
     bool volumeSupported(quint32 nodeId) const override;

@@ -29,14 +29,14 @@ class AudioRouter final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QAbstractItemModel* sources READ sources CONSTANT)
     Q_PROPERTY(int sourceCount READ sourceCount NOTIFY sourcesChanged)
-    Q_PROPERTY(QString currentRouteId READ currentRouteId NOTIFY routeChanged)
-    Q_PROPERTY(QString routeStateText READ routeStateText NOTIFY routeStateChanged)
-    Q_PROPERTY(QString lastErrorText READ lastErrorText NOTIFY routeError)
-    Q_PROPERTY(bool routeEnabled READ routeEnabled NOTIFY routeStateChanged)
-    Q_PROPERTY(double routeVolume READ routeVolume NOTIFY routeChanged)
-    Q_PROPERTY(bool routeMuted READ routeMuted NOTIFY routeChanged)
-    Q_PROPERTY(bool volumeCapable READ volumeCapable NOTIFY routeChanged)
-    Q_PROPERTY(int ownedLinkCount READ ownedLinkCount NOTIFY routeChanged)
+    Q_PROPERTY(QString currentRouteId READ currentRouteId NOTIFY currentRouteIdChanged)
+    Q_PROPERTY(QString routeStateText READ routeStateText NOTIFY routeStateTextChanged)
+    Q_PROPERTY(QString lastErrorText READ lastErrorText NOTIFY lastErrorTextChanged)
+    Q_PROPERTY(bool routeEnabled READ routeEnabled NOTIFY routeEnabledChanged)
+    Q_PROPERTY(double routeVolume READ routeVolume NOTIFY routeVolumeChanged)
+    Q_PROPERTY(bool routeMuted READ routeMuted NOTIFY routeMutedChanged)
+    Q_PROPERTY(bool volumeCapable READ volumeCapable NOTIFY volumeCapableChanged)
+    Q_PROPERTY(int ownedLinkCount READ ownedLinkCount NOTIFY ownedLinkCountChanged)
 
 public:
     AudioRouter(
@@ -44,6 +44,7 @@ public:
         AudioEndpointRegistry* endpoints,
         IPipeWireLinkBackend* backend,
         QObject* parent = nullptr);
+    ~AudioRouter() override;
 
     QAbstractItemModel* sources() const;
     int sourceCount() const;
@@ -55,6 +56,9 @@ public:
     bool routeMuted() const;
     bool volumeCapable() const;
     int ownedLinkCount() const;
+
+    void setActivationTimeoutMs(int milliseconds);
+    int activationTimeoutMs() const noexcept;
 
     QVector<AudioSource> sourceList() const;
     QVector<AudioRoute> routes() const;
@@ -84,11 +88,20 @@ signals:
     void routeRemoved(const QString& routeId);
     void routeStateChanged(const QString& routeId, RouteState state);
     void routeError(const QString& routeId, RouteError error, const QString& detail);
+    void currentRouteIdChanged();
+    void routeStateTextChanged();
+    void lastErrorTextChanged();
+    void routeEnabledChanged();
+    void routeVolumeChanged();
+    void routeMutedChanged();
+    void volumeCapableChanged();
+    void ownedLinkCountChanged();
 
 private:
     void setState(AudioRoute& route, RouteState state);
     void setError(AudioRoute& route, RouteError category, const QString& detail);
     void emitRouteSignals(const AudioRoute& route);
+    void emitQmlPropertyNotifications();
     bool validateSelection(const QString& sourceId, const QStringList& destinationIds, RouteErrorInfo* error) const;
     void beginActivation(AudioRoute& route, quint64 generation);
     void finishActivationIfReady(AudioRoute& route);
@@ -96,7 +109,11 @@ private:
     void replanIfEnabled(AudioRoute& route);
     bool linksOperational(const AudioRoute& route) const;
     bool linksHaveError(const AudioRoute& route) const;
-    void bindPendingLinkIds(AudioRoute& route);
+    void refreshOwnedLinkIds(AudioRoute& route);
+    void armActivationTimeout(const QString& routeId, quint64 generation);
+    void stopActivationTimeout(const QString& routeId);
+    void stopAllActivationTimeouts();
+    void invalidateOwnedLinks(AudioRoute& route);
     QVector<QPair<QString, quint32>> destinationNodes(const AudioRoute& route) const;
 
     PipeWireObjectStore* store_ = nullptr;
@@ -109,10 +126,19 @@ private:
     QVector<AudioSource> sources_;
     QVector<AudioRoute> routes_;
     QHash<QString, quint64> generations_;
-    QTimer activationTimer_;
+    QHash<QString, QTimer*> activationTimers_;
+    int activationTimeoutMs_ = 5000;
     PipeWireConnectionState connectionState_ = PipeWireConnectionState::Stopped;
     bool initialSyncComplete_ = false;
     quint64 nextGeneration_ = 1;
+    QString qmlCurrentRouteId_;
+    QString qmlRouteStateText_;
+    QString qmlLastErrorText_;
+    bool qmlRouteEnabled_ = false;
+    double qmlRouteVolume_ = 1.0;
+    bool qmlRouteMuted_ = false;
+    bool qmlVolumeCapable_ = false;
+    int qmlOwnedLinkCount_ = 0;
 };
 
 } // namespace auralis::audio

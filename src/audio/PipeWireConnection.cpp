@@ -18,8 +18,10 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include <pipewire/pipewire.h>
+#include <spa/param/param.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
+#include <spa/utils/dict.h>
 #pragma GCC diagnostic pop
 
 namespace auralis::audio {
@@ -111,11 +113,13 @@ struct PipeWireConnection::Impl {
     struct BoundProxy {
         Impl* impl = nullptr;
         quint32 globalId = 0;
+        quint64 ownershipToken = 0;
         PipeWireObjectKind kind = PipeWireObjectKind::Unknown;
         pw_proxy* proxy = nullptr;
         spa_hook objectListener{};
         spa_hook proxyListener{};
         bool created = false;
+        bool propsWritable = false;
     };
 
     EventHandler handler;
@@ -126,8 +130,11 @@ struct PipeWireConnection::Impl {
     spa_hook coreListener{};
     spa_hook registryListener{};
     QHash<quint32, BoundProxy*> proxies;
+    QHash<quint64, BoundProxy*> ownedByToken;
+    QHash<quint64, quint32> tokenToGlobalId;
     QVector<BoundProxy*> pendingCreated;
     QSet<quint32> createdLinkIds;
+    quint64 nextOwnershipToken = 1;
     int pendingSync = 0;
     bool started = false;
     bool stopping = false;
@@ -209,6 +216,16 @@ struct PipeWireConnection::Impl {
         }
     }
 
+    void forgetOwned(BoundProxy* bound)
+    {
+        if (bound == nullptr || bound->ownershipToken == 0) {
+            return;
+        }
+        ownedByToken.remove(bound->ownershipToken);
+        tokenToGlobalId.remove(bound->ownershipToken);
+        bound->ownershipToken = 0;
+    }
+
     void destroyProxy(quint32 globalId)
     {
         BoundProxy* bound = proxies.take(globalId);
@@ -216,6 +233,7 @@ struct PipeWireConnection::Impl {
             return;
         }
         createdLinkIds.remove(globalId);
+        forgetOwned(bound);
         spa_hook_remove(&bound->objectListener);
         spa_hook_remove(&bound->proxyListener);
         pw_proxy* proxy = bound->proxy;
@@ -229,6 +247,7 @@ struct PipeWireConnection::Impl {
     void destroyPending(BoundProxy* bound)
     {
         pendingCreated.removeAll(bound);
+        forgetOwned(bound);
         spa_hook_remove(&bound->objectListener);
         spa_hook_remove(&bound->proxyListener);
         pw_proxy* proxy = bound->proxy;
@@ -255,9 +274,13 @@ struct PipeWireConnection::Impl {
         }
     }
 
-    void bindIfNeeded(quint32 id, const char* type, uint32_t version, PipeWireObjectKind kind)
+    void bindIfNeeded(quint32 id, const char* type, uint32_t version, PipeWireObjectKind kind, const spa_dict* props)
     {
-        if (registry == nullptr || proxies.contains(id)) {
+        if (registry == nullptr || proxies.contains(id) || createdLinkIds.contains(id)) {
+            return;
+        }
+        if (kind == PipeWireObjectKind::Link && props != nullptr
+            && spa_dict_lookup(props, "auralis.route.id") != nullptr) {
             return;
         }
         if (kind != PipeWireObjectKind::Device && kind != PipeWireObjectKind::Node && kind != PipeWireObjectKind::Port
@@ -278,6 +301,8 @@ struct PipeWireConnection::Impl {
         bound->kind = kind;
         bound->proxy = proxy;
         bound->created = false;
+        bound->ownershipToken = 0;
+        bound->propsWritable = false;
         pw_proxy_add_listener(bound->proxy, &bound->proxyListener, &kProxyEvents, bound);
         addObjectListener(bound);
         proxies.insert(id, bound);
@@ -288,8 +313,10 @@ struct PipeWireConnection::Impl {
         if (loop == nullptr || !started || stopping) {
             return false;
         }
+        pw_thread_loop_lock(loop);
         BoundProxy* bound = proxies.value(nodeId);
         if (bound == nullptr || bound->kind != PipeWireObjectKind::Node || bound->proxy == nullptr) {
+            pw_thread_loop_unlock(loop);
             return false;
         }
 
@@ -307,9 +334,9 @@ struct PipeWireConnection::Impl {
         }
         const spa_pod* pod = static_cast<spa_pod*>(spa_pod_builder_pop(&builder, &frame));
         if (pod == nullptr) {
+            pw_thread_loop_unlock(loop);
             return false;
         }
-        pw_thread_loop_lock(loop);
         const int rc = pw_node_set_param(reinterpret_cast<pw_node*>(bound->proxy), SPA_PARAM_Props, 0, pod);
         pw_thread_loop_unlock(loop);
         return rc >= 0;
@@ -369,7 +396,7 @@ const pw_registry_events PipeWireConnection::Impl::kRegistryEvents = {
             }
             const PipeWireObjectKind kind = kindFromInterfaceType(QString::fromUtf8(type));
             impl->emitSnapshot(PipeWireClientEvent::Type::GlobalAdded, id, type, props);
-            impl->bindIfNeeded(id, type, version, kind);
+            impl->bindIfNeeded(id, type, version, kind, props);
         },
     .global_remove =
         [](void* data, uint32_t id) {
@@ -399,6 +426,10 @@ const pw_proxy_events PipeWireConnection::Impl::kProxyEvents = {
                 bound->impl->pendingCreated.removeAll(bound);
                 bound->impl->proxies.insert(global, bound);
                 bound->impl->createdLinkIds.insert(global);
+                if (bound->ownershipToken != 0) {
+                    bound->impl->ownedByToken.insert(bound->ownershipToken, bound);
+                    bound->impl->tokenToGlobalId.insert(bound->ownershipToken, global);
+                }
             }
         },
     .removed =
@@ -438,6 +469,16 @@ const pw_node_events PipeWireConnection::Impl::kNodeEvents = {
             auto* bound = static_cast<BoundProxy*>(data);
             if (bound == nullptr || bound->impl == nullptr || info == nullptr || bound->impl->stopping) {
                 return;
+            }
+            bound->propsWritable = false;
+            if (info->params != nullptr) {
+                for (uint32_t i = 0; i < info->n_params; ++i) {
+                    if (info->params[i].id == SPA_PARAM_Props
+                        && (info->params[i].flags & SPA_PARAM_INFO_WRITE) != 0) {
+                        bound->propsWritable = true;
+                        break;
+                    }
+                }
             }
             bound->impl->emitSnapshot(
                 PipeWireClientEvent::Type::GlobalUpdated,
@@ -618,7 +659,7 @@ void PipeWireConnection::stop()
     impl_ = nullptr;
 }
 
-std::optional<quint32> PipeWireConnection::createLink(
+std::optional<LinkCreateResult> PipeWireConnection::createLink(
     quint32 outputNode,
     quint32 outputPort,
     quint32 inputNode,
@@ -677,39 +718,63 @@ std::optional<quint32> PipeWireConnection::createLink(
     bound->kind = PipeWireObjectKind::Link;
     bound->proxy = proxy;
     bound->created = true;
+    bound->propsWritable = false;
+    bound->ownershipToken = impl_->nextOwnershipToken++;
     pw_proxy_add_listener(bound->proxy, &bound->proxyListener, &Impl::kProxyEvents, bound);
     impl_->addObjectListener(bound);
     impl_->pendingCreated.push_back(bound);
+    impl_->ownedByToken.insert(bound->ownershipToken, bound);
     const uint32_t boundId = pw_proxy_get_bound_id(proxy);
     if (boundId != SPA_ID_INVALID && boundId != 0) {
         bound->globalId = boundId;
         impl_->pendingCreated.removeAll(bound);
         impl_->proxies.insert(boundId, bound);
         impl_->createdLinkIds.insert(boundId);
+        impl_->tokenToGlobalId.insert(bound->ownershipToken, boundId);
     }
+    const LinkCreateResult result{bound->ownershipToken, bound->globalId};
     pw_thread_loop_unlock(impl_->loop);
 
     qCInfo(auralisAudio) << "PipeWire LinkCreateRequested route=" << routeId << "out=" << outputNode << ":" << outputPort
-                         << "in=" << inputNode << ":" << inputPort << "id=" << bound->globalId;
-    if (bound->globalId == 0) {
-        return quint32{0};
-    }
-    return bound->globalId;
+                         << "in=" << inputNode << ":" << inputPort << "token=" << result.ownershipToken
+                         << "id=" << result.globalId;
+    return result;
 }
 
-bool PipeWireConnection::destroyOwnedLink(quint32 globalId)
+bool PipeWireConnection::destroyOwnedLink(quint64 ownershipToken)
 {
-    if (impl_ == nullptr || impl_->loop == nullptr || globalId == 0) {
-        return false;
+    if (ownershipToken == 0) {
+        return true;
     }
-    if (!impl_->createdLinkIds.contains(globalId)) {
+    if (impl_ == nullptr || impl_->loop == nullptr) {
         return false;
     }
     pw_thread_loop_lock(impl_->loop);
-    impl_->destroyProxy(globalId);
+    Impl::BoundProxy* bound = impl_->ownedByToken.value(ownershipToken);
+    if (bound == nullptr) {
+        pw_thread_loop_unlock(impl_->loop);
+        return true;
+    }
+    const quint32 globalId = bound->globalId;
+    if (globalId != 0) {
+        impl_->destroyProxy(globalId);
+    } else {
+        impl_->destroyPending(bound);
+    }
     pw_thread_loop_unlock(impl_->loop);
-    qCInfo(auralisAudio) << "PipeWire LinkDestroyed id=" << globalId;
+    qCInfo(auralisAudio) << "PipeWire LinkDestroyed token=" << ownershipToken << "id=" << globalId;
     return true;
+}
+
+quint32 PipeWireConnection::ownedLinkGlobalId(quint64 ownershipToken) const
+{
+    if (impl_ == nullptr || impl_->loop == nullptr || ownershipToken == 0) {
+        return 0;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    const quint32 globalId = impl_->tokenToGlobalId.value(ownershipToken, 0);
+    pw_thread_loop_unlock(impl_->loop);
+    return globalId;
 }
 
 bool PipeWireConnection::setNodeVolume(quint32 nodeId, double volume)
@@ -731,11 +796,15 @@ bool PipeWireConnection::setNodeMuted(quint32 nodeId, bool muted)
 
 bool PipeWireConnection::volumeSupported(quint32 nodeId) const
 {
-    if (impl_ == nullptr) {
+    if (impl_ == nullptr || impl_->loop == nullptr) {
         return false;
     }
+    pw_thread_loop_lock(impl_->loop);
     const Impl::BoundProxy* bound = impl_->proxies.value(nodeId);
-    return bound != nullptr && bound->kind == PipeWireObjectKind::Node;
+    const bool supported =
+        bound != nullptr && bound->kind == PipeWireObjectKind::Node && bound->propsWritable;
+    pw_thread_loop_unlock(impl_->loop);
+    return supported;
 }
 
 } // namespace auralis::audio

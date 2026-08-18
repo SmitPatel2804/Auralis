@@ -21,6 +21,16 @@ QStringList uniqueIds(const QStringList& ids)
     return unique;
 }
 
+bool hasLiveOwnership(const AudioRoute& route)
+{
+    for (const OwnedLink& owned : route.ownedLinks) {
+        if (owned.ownershipToken != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 AudioRouter::AudioRouter(
@@ -35,15 +45,13 @@ AudioRouter::AudioRouter(
     , links_(backend)
     , volume_(backend)
     , sourceModel_(new AudioSourceListModel(this))
+    , qmlRouteStateText_(toString(RouteState::Inactive))
 {
-    activationTimer_.setSingleShot(true);
-    connect(&activationTimer_, &QTimer::timeout, this, [this]() {
-        for (AudioRoute& route : routes_) {
-            if (route.state == RouteState::Activating) {
-                rollback(route, RouteError::LinkCreationFailed, QStringLiteral("Activation timed out"), true);
-            }
-        }
-    });
+}
+
+AudioRouter::~AudioRouter()
+{
+    stopAllActivationTimeouts();
 }
 
 QAbstractItemModel* AudioRouter::sources() const
@@ -115,6 +123,16 @@ int AudioRouter::ownedLinkCount() const
     return count;
 }
 
+void AudioRouter::setActivationTimeoutMs(int milliseconds)
+{
+    activationTimeoutMs_ = std::max(1, milliseconds);
+}
+
+int AudioRouter::activationTimeoutMs() const noexcept
+{
+    return activationTimeoutMs_;
+}
+
 QVector<AudioSource> AudioRouter::sourceList() const
 {
     return sources_;
@@ -151,6 +169,7 @@ QString AudioRouter::createRoute(const QString& sourceId, const QStringList& des
     const QStringList dests = uniqueIds(destinationEndpointIds);
     if (!validateSelection(sourceId, dests, &error)) {
         emit routeError({}, error.category, error.detail);
+        emitQmlPropertyNotifications();
         return {};
     }
 
@@ -174,10 +193,9 @@ void AudioRouter::removeRoute(const QString& routeId)
     if (route == nullptr) {
         return;
     }
-    if (route->state == RouteState::Activating) {
-        generations_[routeId] = ++nextGeneration_;
-    }
+    generations_[routeId] = ++nextGeneration_;
     route->enabled = false;
+    stopActivationTimeout(routeId);
     links_.destroyLinks(route->ownedLinks);
     emit routeRemoved(routeId);
     for (int i = 0; i < routes_.size(); ++i) {
@@ -187,6 +205,7 @@ void AudioRouter::removeRoute(const QString& routeId)
         }
     }
     emit routeChanged(routeId);
+    emitQmlPropertyNotifications();
 }
 
 void AudioRouter::activateRoute(const QString& routeId)
@@ -194,12 +213,13 @@ void AudioRouter::activateRoute(const QString& routeId)
     AudioRoute* route = mutableRoute(routeId);
     if (route == nullptr) {
         emit routeError(routeId, RouteError::InternalError, QStringLiteral("Unknown route"));
+        emitQmlPropertyNotifications();
         return;
     }
     if (route->state == RouteState::Active || route->state == RouteState::Activating) {
         return;
     }
-    if (connectionState_ != PipeWireConnectionState::Connected) {
+    if (connectionState_ != PipeWireConnectionState::Connected || !initialSyncComplete_) {
         setError(*route, RouteError::PipeWireDisconnected, QStringLiteral("PipeWire is not connected"));
         setState(*route, RouteState::Failed);
         return;
@@ -217,8 +237,9 @@ void AudioRouter::deactivateRoute(const QString& routeId)
     }
     generations_[routeId] = ++nextGeneration_;
     route->enabled = false;
-    activationTimer_.stop();
+    stopActivationTimeout(routeId);
     if (route->state == RouteState::Inactive && route->ownedLinks.isEmpty()) {
+        emitQmlPropertyNotifications();
         return;
     }
     setState(*route, RouteState::Deactivating);
@@ -272,11 +293,13 @@ void AudioRouter::setDestinationVolume(const QString& endpointId, double value)
     const AudioEndpoint* endpoint = endpoints_->findById(endpointId);
     if (endpoint == nullptr) {
         emit routeError(currentRouteId(), RouteError::DestinationNotFound, QStringLiteral("Unknown endpoint"));
+        emitQmlPropertyNotifications();
         return;
     }
     const VolumeApplyResult result = volume_.setDestinationVolume(endpoint->pipeWireObjectId, endpointId, value);
     if (!result.allSucceeded) {
         emit routeError(currentRouteId(), result.error.category, result.error.detail);
+        emitQmlPropertyNotifications();
     }
 }
 
@@ -288,11 +311,13 @@ void AudioRouter::setDestinationMuted(const QString& endpointId, bool muted)
     const AudioEndpoint* endpoint = endpoints_->findById(endpointId);
     if (endpoint == nullptr) {
         emit routeError(currentRouteId(), RouteError::DestinationNotFound, QStringLiteral("Unknown endpoint"));
+        emitQmlPropertyNotifications();
         return;
     }
     const VolumeApplyResult result = volume_.setDestinationMuted(endpoint->pipeWireObjectId, endpointId, muted);
     if (!result.allSucceeded) {
         emit routeError(currentRouteId(), result.error.category, result.error.detail);
+        emitQmlPropertyNotifications();
     }
 }
 
@@ -307,6 +332,7 @@ void AudioRouter::setRouteVolume(const QString& routeId, double value)
     emitRouteSignals(*route);
     if (!result.allSucceeded) {
         emit routeError(routeId, result.error.category, result.error.detail);
+        emitQmlPropertyNotifications();
     }
 }
 
@@ -321,6 +347,7 @@ void AudioRouter::setRouteMuted(const QString& routeId, bool muted)
     emitRouteSignals(*route);
     if (!result.allSucceeded) {
         emit routeError(routeId, result.error.category, result.error.detail);
+        emitQmlPropertyNotifications();
     }
 }
 
@@ -337,7 +364,7 @@ void AudioRouter::handleGraphChanged()
 {
     refreshSources();
     for (AudioRoute& route : routes_) {
-        bindPendingLinkIds(route);
+        refreshOwnedLinkIds(route);
         if (!route.enabled) {
             continue;
         }
@@ -363,11 +390,13 @@ void AudioRouter::handleGraphChanged()
                 }
             }
             if (!sourcePresent) {
+                invalidateOwnedLinks(route);
                 setError(route, RouteError::SourceRemoved, QStringLiteral("Source disappeared"));
                 setState(route, RouteState::Degraded);
                 continue;
             }
             if (!destPresent) {
+                invalidateOwnedLinks(route);
                 setError(route, RouteError::DestinationRemoved, QStringLiteral("Destination disappeared"));
                 setState(route, RouteState::Degraded);
                 continue;
@@ -391,9 +420,12 @@ void AudioRouter::handleConnectionState(PipeWireConnectionState state, bool init
     if (state == PipeWireConnectionState::Error || state == PipeWireConnectionState::Stopped
         || state == PipeWireConnectionState::Stopping) {
         for (AudioRoute& route : routes_) {
-            links_.forgetRuntime(route.ownedLinks);
+            generations_[route.id] = ++nextGeneration_;
+            stopActivationTimeout(route.id);
+            invalidateOwnedLinks(route);
             if (route.enabled) {
                 setError(route, RouteError::PipeWireDisconnected, QStringLiteral("PipeWire disconnected"));
+                setState(route, RouteState::Degraded);
             }
         }
         return;
@@ -409,7 +441,7 @@ void AudioRouter::handleConnectionState(PipeWireConnectionState state, bool init
 
 void AudioRouter::shutdown()
 {
-    activationTimer_.stop();
+    stopAllActivationTimeouts();
     for (AudioRoute& route : routes_) {
         route.enabled = false;
         links_.destroyLinks(route.ownedLinks);
@@ -420,11 +452,13 @@ void AudioRouter::shutdown()
     if (sourceModel_ != nullptr) {
         sourceModel_->setSources({});
     }
+    emitQmlPropertyNotifications();
 }
 
 void AudioRouter::setState(AudioRoute& route, RouteState state)
 {
     if (route.state == state) {
+        emitQmlPropertyNotifications();
         return;
     }
     route.state = state;
@@ -438,11 +472,57 @@ void AudioRouter::setError(AudioRoute& route, RouteError category, const QString
     route.error = {category, detail};
     qCWarning(auralisAudio) << "AudioRouter RouteError id=" << route.id << toString(category) << detail;
     emit routeError(route.id, category, detail);
+    emitQmlPropertyNotifications();
 }
 
 void AudioRouter::emitRouteSignals(const AudioRoute& route)
 {
     emit routeChanged(route.id);
+    emitQmlPropertyNotifications();
+}
+
+void AudioRouter::emitQmlPropertyNotifications()
+{
+    const QString id = currentRouteId();
+    if (qmlCurrentRouteId_ != id) {
+        qmlCurrentRouteId_ = id;
+        emit currentRouteIdChanged();
+    }
+    const QString stateText = routeStateText();
+    if (qmlRouteStateText_ != stateText) {
+        qmlRouteStateText_ = stateText;
+        emit routeStateTextChanged();
+    }
+    const QString errorText = lastErrorText();
+    if (qmlLastErrorText_ != errorText) {
+        qmlLastErrorText_ = errorText;
+        emit lastErrorTextChanged();
+    }
+    const bool enabled = routeEnabled();
+    if (qmlRouteEnabled_ != enabled) {
+        qmlRouteEnabled_ = enabled;
+        emit routeEnabledChanged();
+    }
+    const double volume = routeVolume();
+    if (qmlRouteVolume_ != volume) {
+        qmlRouteVolume_ = volume;
+        emit routeVolumeChanged();
+    }
+    const bool muted = routeMuted();
+    if (qmlRouteMuted_ != muted) {
+        qmlRouteMuted_ = muted;
+        emit routeMutedChanged();
+    }
+    const bool capable = volumeCapable();
+    if (qmlVolumeCapable_ != capable) {
+        qmlVolumeCapable_ = capable;
+        emit volumeCapableChanged();
+    }
+    const int owned = ownedLinkCount();
+    if (qmlOwnedLinkCount_ != owned) {
+        qmlOwnedLinkCount_ = owned;
+        emit ownedLinkCountChanged();
+    }
 }
 
 bool AudioRouter::validateSelection(const QString& sourceId, const QStringList& destinationIds, RouteErrorInfo* error) const
@@ -500,17 +580,17 @@ void AudioRouter::beginActivation(AudioRoute& route, quint64 generation)
     }
     route.ownedLinks = std::move(created);
     route.activatedAt = QDateTime::currentDateTimeUtc();
-    activationTimer_.start(5000);
+    armActivationTimeout(route.id, generation);
     finishActivationIfReady(route);
 }
 
 void AudioRouter::finishActivationIfReady(AudioRoute& route)
 {
-    bindPendingLinkIds(route);
+    refreshOwnedLinkIds(route);
     if (!linksOperational(route)) {
         return;
     }
-    activationTimer_.stop();
+    stopActivationTimeout(route.id);
     route.error = {};
     setState(route, RouteState::Active);
     qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route.id << "links=" << route.ownedLinks.size();
@@ -518,7 +598,7 @@ void AudioRouter::finishActivationIfReady(AudioRoute& route)
 
 void AudioRouter::rollback(AudioRoute& route, RouteError category, const QString& detail, bool disable)
 {
-    activationTimer_.stop();
+    stopActivationTimeout(route.id);
     links_.destroyLinks(route.ownedLinks);
     if (disable) {
         route.enabled = false;
@@ -545,6 +625,7 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
         return;
     }
 
+    refreshOwnedLinkIds(route);
     bool needsRebuild = route.ownedLinks.size() != plan.pairs.size() || !linksOperational(route);
     if (!needsRebuild) {
         for (int i = 0; i < plan.pairs.size(); ++i) {
@@ -567,6 +648,7 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
 
     const quint64 generation = ++nextGeneration_;
     generations_[route.id] = generation;
+    stopActivationTimeout(route.id);
     links_.destroyLinks(route.ownedLinks);
     beginActivation(route, generation);
 }
@@ -577,21 +659,18 @@ bool AudioRouter::linksOperational(const AudioRoute& route) const
         return false;
     }
     for (const OwnedLink& owned : route.ownedLinks) {
-        const PipeWireLinkInfo* info = owned.globalId != 0 ? store_->link(owned.globalId) : nullptr;
+        if (owned.ownershipToken == 0) {
+            return false;
+        }
+        const quint32 globalId =
+            owned.globalId != 0 ? owned.globalId
+                                : (backend_ != nullptr ? backend_->ownedLinkGlobalId(owned.ownershipToken) : 0);
+        if (globalId == 0) {
+            return false;
+        }
+        const PipeWireLinkInfo* info = store_->link(globalId);
         if (info == nullptr) {
-            bool matched = false;
-            for (const PipeWireLinkInfo& link : store_->links()) {
-                if (link.outputPort == owned.outputPortId && link.inputPort == owned.inputPortId) {
-                    if (link.state == PipeWireLinkState::Active || link.state == PipeWireLinkState::Paused) {
-                        matched = true;
-                        break;
-                    }
-                }
-            }
-            if (!matched) {
-                return false;
-            }
-            continue;
+            return false;
         }
         if (info->state != PipeWireLinkState::Active && info->state != PipeWireLinkState::Paused) {
             return false;
@@ -606,10 +685,16 @@ bool AudioRouter::linksHaveError(const AudioRoute& route) const
         return false;
     }
     for (const OwnedLink& owned : route.ownedLinks) {
-        if (owned.globalId == 0) {
+        if (owned.ownershipToken == 0) {
             continue;
         }
-        const PipeWireLinkInfo* info = store_->link(owned.globalId);
+        const quint32 globalId =
+            owned.globalId != 0 ? owned.globalId
+                                : (backend_ != nullptr ? backend_->ownedLinkGlobalId(owned.ownershipToken) : 0);
+        if (globalId == 0) {
+            continue;
+        }
+        const PipeWireLinkInfo* info = store_->link(globalId);
         if (info != nullptr && info->state == PipeWireLinkState::Error) {
             return true;
         }
@@ -617,22 +702,52 @@ bool AudioRouter::linksHaveError(const AudioRoute& route) const
     return false;
 }
 
-void AudioRouter::bindPendingLinkIds(AudioRoute& route)
+void AudioRouter::refreshOwnedLinkIds(AudioRoute& route)
 {
-    if (store_ == nullptr) {
+    links_.refreshGlobalIds(route.ownedLinks);
+}
+
+void AudioRouter::armActivationTimeout(const QString& routeId, quint64 generation)
+{
+    stopActivationTimeout(routeId);
+    auto* timer = new QTimer(this);
+    timer->setSingleShot(true);
+    QObject::connect(timer, &QTimer::timeout, this, [this, routeId, generation]() {
+        if (generations_.value(routeId) != generation) {
+            return;
+        }
+        AudioRoute* route = mutableRoute(routeId);
+        if (route == nullptr || route->state != RouteState::Activating) {
+            return;
+        }
+        rollback(*route, RouteError::LinkCreationFailed, QStringLiteral("Activation timed out"), true);
+    });
+    activationTimers_.insert(routeId, timer);
+    timer->start(activationTimeoutMs_);
+}
+
+void AudioRouter::stopActivationTimeout(const QString& routeId)
+{
+    if (QTimer* timer = activationTimers_.take(routeId)) {
+        timer->stop();
+        timer->deleteLater();
+    }
+}
+
+void AudioRouter::stopAllActivationTimeouts()
+{
+    const QList<QString> ids = activationTimers_.keys();
+    for (const QString& routeId : ids) {
+        stopActivationTimeout(routeId);
+    }
+}
+
+void AudioRouter::invalidateOwnedLinks(AudioRoute& route)
+{
+    if (!hasLiveOwnership(route) && route.ownedLinks.isEmpty()) {
         return;
     }
-    for (OwnedLink& owned : route.ownedLinks) {
-        if (owned.globalId != 0) {
-            continue;
-        }
-        for (const PipeWireLinkInfo& link : store_->links()) {
-            if (link.outputPort == owned.outputPortId && link.inputPort == owned.inputPortId) {
-                owned.globalId = link.globalId;
-                break;
-            }
-        }
-    }
+    links_.destroyLinks(route.ownedLinks);
 }
 
 QVector<QPair<QString, quint32>> AudioRouter::destinationNodes(const AudioRoute& route) const
