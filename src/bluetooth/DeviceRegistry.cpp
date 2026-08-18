@@ -242,6 +242,13 @@ bool DeviceRegistry::setUserDisconnectRequested(const QString& objectPath, bool 
     });
 }
 
+bool DeviceRegistry::setAutoReconnectEnabled(const QString& objectPath, bool enabled)
+{
+    return mutateDevice(objectPath, [enabled](BluetoothDeviceData& device) {
+        device.autoReconnectEnabled = enabled;
+    });
+}
+
 bool DeviceRegistry::setReconnectAttempt(const QString& objectPath, int attempt)
 {
     return mutateDevice(objectPath, [attempt](BluetoothDeviceData& device) { device.reconnectAttempt = attempt; });

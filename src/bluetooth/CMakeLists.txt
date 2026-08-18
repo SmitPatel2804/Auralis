@@ -24,6 +24,7 @@ add_library(auralis-bluetooth
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZDbusClient.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceLifecycleManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceReconnectMetadata.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceRegistry.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DiscoveryManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/IBlueZClient.h"

@@ -2,7 +2,9 @@
 
 #include <auralis/bluetooth/BluetoothError.h>
 #include <auralis/bluetooth/DeviceOperation.h>
+#include <auralis/bluetooth/DeviceReconnectMetadata.h>
 
+#include <QHash>
 #include <QVariantMap>
 #include <QObject>
 #include <QString>
@@ -31,6 +33,7 @@ public:
     void shutdown();
     void onBlueZAvailabilityChanged(bool available);
     void onSnapshotApplied();
+    void applyStoredMetadataToRegistry();
     void onDeviceRemoved(const QString& objectPath);
     void onDevicePropertiesChanged(
         const QString& objectPath,
@@ -72,6 +75,10 @@ private:
     const BluetoothDeviceData* requireDevice(const QString& objectPath) const;
     void handleUnexpectedDisconnect(const QString& objectPath, const BluetoothDeviceData& device);
     void reevaluateReconnectCandidates();
+    void syncReconnectMetadataFromDevice(const BluetoothDeviceData& device);
+    void removeReconnectMetadata(const BluetoothDeviceData& device);
+    void setUserDisconnectRequested(const QString& objectPath, bool requested);
+    void clearUserDisconnectSuppression(const QString& objectPath);
 
     void handlePairFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
     void handleCancelPairingFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
@@ -88,6 +95,7 @@ private:
     ReconnectPolicy* reconnect_ = nullptr;
     QHash<QString, PendingOp> pending_;
     QHash<QString, quint64> generations_;
+    QHash<QString, DeviceReconnectMetadata> reconnectMetadata_;
 };
 
 } // namespace auralis::bluetooth

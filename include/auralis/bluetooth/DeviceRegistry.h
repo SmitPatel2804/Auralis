@@ -45,6 +45,7 @@ public:
     bool setLastError(const QString& objectPath, BluetoothError error, const QString& errorName, const QString& message);
     bool clearLastError(const QString& objectPath);
     bool setUserDisconnectRequested(const QString& objectPath, bool requested);
+    bool setAutoReconnectEnabled(const QString& objectPath, bool enabled);
     bool setReconnectAttempt(const QString& objectPath, int attempt);
 
 signals:

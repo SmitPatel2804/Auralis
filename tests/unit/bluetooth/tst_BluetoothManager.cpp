@@ -2,6 +2,7 @@
 
 #include <auralis/bluetooth/BluetoothManager.h>
 
+#include <auralis/bluetooth/ReconnectPolicy.h>
 #include <auralis/core/ServiceStatus.h>
 
 #include <QAbstractItemModel>
@@ -9,6 +10,7 @@
 #include <QtTest>
 
 using auralis::bluetooth::BluetoothManager;
+using auralis::bluetooth::ReconnectPolicyConfig;
 using auralis::test::FakeBlueZClient;
 
 class TstBluetoothManager : public QObject {
@@ -39,6 +41,27 @@ private:
     {
         client->setAdapter(QStringLiteral("/org/bluez/hci0"), poweredAdapter(discovering));
     }
+
+    static QVariantMap pairedConnectedDevice()
+    {
+        QVariantMap device = classicDevice();
+        device.insert(QStringLiteral("Paired"), true);
+        device.insert(QStringLiteral("Connected"), true);
+        return device;
+    }
+
+    static void configureFastReconnect(BluetoothManager& manager)
+    {
+        ReconnectPolicyConfig config;
+        config.initialDelayMs = 50;
+        config.maxAttempts = 3;
+        config.maxDelayMs = 100;
+        config.backoffMultiplier = 1.0;
+        manager.setReconnectPolicyConfig(config);
+    }
+
+    static const QString kDevicePath;
+    static const QString kAdapterPath;
 
 private slots:
     void lifecycleWithoutHardware()
@@ -422,7 +445,103 @@ private slots:
         QVERIFY(manager.scanning());
         QVERIFY(manager.errorText().isEmpty());
     }
+
+    void explicitDisconnectSurvivesBlueZRestart()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        client->setDevice(kDevicePath, pairedConnectedDevice());
+
+        BluetoothManager manager(client);
+        configureFastReconnect(manager);
+        QVERIFY(manager.initialize());
+        QCOMPARE(manager.deviceCount(), 1);
+
+        manager.disconnectDevice(kDevicePath);
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(manager.userDisconnectRequestedForDevice(kDevicePath));
+
+        client->setBlueZAvailable(false);
+        QCOMPARE(manager.deviceCount(), 0);
+
+        client->setBlueZAvailable(true);
+        client->requestSnapshot();
+        QCOMPARE(manager.deviceCount(), 1);
+        QVERIFY(manager.userDisconnectRequestedForDevice(kDevicePath));
+
+        QTRY_COMPARE_WITH_TIMEOUT(client->connectRequests(), 0, 500);
+    }
+
+    void unexpectedDisconnectReconnectsAfterBlueZRestart()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        client->setDevice(kDevicePath, pairedConnectedDevice());
+
+        BluetoothManager manager(client);
+        configureFastReconnect(manager);
+        QVERIFY(manager.initialize());
+
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(!manager.userDisconnectRequestedForDevice(kDevicePath));
+
+        client->setBlueZAvailable(false);
+        QCOMPARE(manager.deviceCount(), 0);
+
+        client->setBlueZAvailable(true);
+        client->requestSnapshot();
+        QCOMPARE(manager.deviceCount(), 1);
+
+        QTRY_VERIFY_WITH_TIMEOUT(client->connectRequests() >= 1, 500);
+    }
+
+    void forgetClearsRetainedReconnectMetadata()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        client->setDevice(kDevicePath, pairedConnectedDevice());
+
+        BluetoothManager manager(client);
+        configureFastReconnect(manager);
+        QVERIFY(manager.initialize());
+
+        manager.disconnectDevice(kDevicePath);
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(manager.userDisconnectRequestedForDevice(kDevicePath));
+
+        manager.forgetDevice(kDevicePath);
+        QCOMPARE(manager.deviceCount(), 0);
+
+        client->setDevice(kDevicePath, classicDevice());
+        QCOMPARE(manager.deviceCount(), 1);
+        QVERIFY(!manager.userDisconnectRequestedForDevice(kDevicePath));
+    }
+
+    void manualReconnectClearsDisconnectSuppression()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        client->setDevice(kDevicePath, pairedConnectedDevice());
+
+        BluetoothManager manager(client);
+        configureFastReconnect(manager);
+        QVERIFY(manager.initialize());
+
+        manager.disconnectDevice(kDevicePath);
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(manager.userDisconnectRequestedForDevice(kDevicePath));
+
+        manager.reconnectDevice(kDevicePath);
+        QVERIFY(!manager.userDisconnectRequestedForDevice(kDevicePath));
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), true}}, {});
+
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(client->connectRequests() >= 1, 500);
+    }
 };
+
+const QString TstBluetoothManager::kDevicePath = QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_01");
+const QString TstBluetoothManager::kAdapterPath = QStringLiteral("/org/bluez/hci0");
 
 QTEST_GUILESS_MAIN(TstBluetoothManager)
 #include "tst_BluetoothManager.moc"

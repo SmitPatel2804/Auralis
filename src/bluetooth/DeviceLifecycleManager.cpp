@@ -70,11 +70,6 @@ void DeviceLifecycleManager::onBlueZAvailabilityChanged(bool available)
         if (reconnect_ != nullptr) {
             reconnect_->pauseAll();
         }
-        return;
-    }
-
-    if (reconnect_ != nullptr) {
-        reconnect_->resumeAll();
     }
 }
 
@@ -86,6 +81,24 @@ void DeviceLifecycleManager::onSnapshotApplied()
 
     reconnect_->resumeAll();
     reevaluateReconnectCandidates();
+}
+
+void DeviceLifecycleManager::applyStoredMetadataToRegistry()
+{
+    if (registry_ == nullptr) {
+        return;
+    }
+
+    const QVector<BluetoothDeviceData> devices = registry_->devices();
+    for (const BluetoothDeviceData& device : devices) {
+        const QString key = device.addressIndexKey();
+        if (key.isEmpty() || !reconnectMetadata_.contains(key)) {
+            continue;
+        }
+        const DeviceReconnectMetadata metadata = reconnectMetadata_.value(key);
+        registry_->setUserDisconnectRequested(device.objectPath, metadata.userDisconnectRequested);
+        registry_->setAutoReconnectEnabled(device.objectPath, metadata.autoReconnectEnabled);
+    }
 }
 
 void DeviceLifecycleManager::onDeviceRemoved(const QString& objectPath)
@@ -107,12 +120,17 @@ void DeviceLifecycleManager::onDevicePropertiesChanged(
     }
     checkPropertyCompletion(objectPath, *device);
 
+    device = registry_->findByObjectPath(objectPath);
+    if (device == nullptr) {
+        return;
+    }
+
     if (changed.contains(bluez::kPropConnected.toString()) && !device->connected && device->paired
         && device->operation == DeviceOperation::Idle) {
         handleUnexpectedDisconnect(objectPath, *device);
     }
     if (changed.contains(bluez::kPropConnected.toString()) && device->connected) {
-        registry_->setUserDisconnectRequested(objectPath, false);
+        clearUserDisconnectSuppression(objectPath);
         registry_->clearLastError(objectPath);
         if (reconnect_ != nullptr) {
             reconnect_->onConnected(objectPath);
@@ -190,6 +208,7 @@ void DeviceLifecycleManager::connectDevice(const QString& objectPath)
     if (device == nullptr || !canConnect(*device) || client_ == nullptr) {
         return;
     }
+    clearUserDisconnectSuppression(objectPath);
     if (!beginOperation(objectPath, DeviceOperation::Connecting)) {
         return;
     }
@@ -203,7 +222,7 @@ void DeviceLifecycleManager::disconnectDevice(const QString& objectPath)
     if (device == nullptr || !canDisconnect(*device) || client_ == nullptr) {
         return;
     }
-    registry_->setUserDisconnectRequested(objectPath, true);
+    setUserDisconnectRequested(objectPath, true);
     if (reconnect_ != nullptr) {
         reconnect_->cancelReconnect(objectPath);
     }
@@ -223,6 +242,7 @@ void DeviceLifecycleManager::forgetDevice(const QString& objectPath)
     if (reconnect_ != nullptr) {
         reconnect_->cancelReconnect(objectPath);
     }
+    removeReconnectMetadata(*device);
     if (!beginOperation(objectPath, DeviceOperation::Forgetting)) {
         return;
     }
@@ -237,7 +257,7 @@ void DeviceLifecycleManager::reconnectDevice(const QString& objectPath)
     if (device == nullptr || !canReconnect(*device) || client_ == nullptr) {
         return;
     }
-    registry_->setUserDisconnectRequested(objectPath, false);
+    clearUserDisconnectSuppression(objectPath);
     if (reconnect_ != nullptr) {
         reconnect_->cancelReconnect(objectPath);
     }
@@ -330,6 +350,10 @@ void DeviceLifecycleManager::abortPendingOperation(
             reconnect_->cancelReconnect(objectPath);
         }
         registry_->setUserDisconnectRequested(objectPath, true);
+        const BluetoothDeviceData* updated = registry_->findByObjectPath(objectPath);
+        if (updated != nullptr) {
+            syncReconnectMetadataFromDevice(*updated);
+        }
         registry_->setReconnectAttempt(objectPath, 0);
         if (client_ != nullptr && client_->isBlueZAvailable()) {
             client_->disconnectDevice(objectPath);
@@ -471,6 +495,42 @@ void DeviceLifecycleManager::reevaluateReconnectCandidates()
                                  << "attempt=" << reconnect_->attempt(device.objectPath) + 1;
         reconnect_->scheduleReconnect(device.objectPath);
     }
+}
+
+void DeviceLifecycleManager::syncReconnectMetadataFromDevice(const BluetoothDeviceData& device)
+{
+    const QString key = device.addressIndexKey();
+    if (key.isEmpty()) {
+        return;
+    }
+    reconnectMetadata_.insert(
+        key,
+        DeviceReconnectMetadata{device.userDisconnectRequested, device.autoReconnectEnabled});
+}
+
+void DeviceLifecycleManager::removeReconnectMetadata(const BluetoothDeviceData& device)
+{
+    const QString key = device.addressIndexKey();
+    if (!key.isEmpty()) {
+        reconnectMetadata_.remove(key);
+    }
+}
+
+void DeviceLifecycleManager::setUserDisconnectRequested(const QString& objectPath, bool requested)
+{
+    if (registry_ == nullptr) {
+        return;
+    }
+    registry_->setUserDisconnectRequested(objectPath, requested);
+    const BluetoothDeviceData* device = registry_->findByObjectPath(objectPath);
+    if (device != nullptr) {
+        syncReconnectMetadataFromDevice(*device);
+    }
+}
+
+void DeviceLifecycleManager::clearUserDisconnectSuppression(const QString& objectPath)
+{
+    setUserDisconnectRequested(objectPath, false);
 }
 
 void DeviceLifecycleManager::handlePairFinished(

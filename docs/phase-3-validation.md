@@ -55,12 +55,90 @@ Pair/trust/connect/disconnect/reconnect live steps run only when `AURALIS_EXPECT
 - Explicit `Disconnect` and `Forget` suppress reconnect and cancel any pending retry timer.
 - BlueZ loss pauses reconnect scheduling. Reconnect evaluation resumes only after BlueZ returns and the object-manager snapshot has rebuilt the registry.
 
-## Unit tests (always on)
+## Auralis-owned reconnect metadata
 
-- `tst_DeviceLifecycle` — trust/connect/pair/forget, duplicate ops, pairing cancellation, stale callback protection, reconnect retry/resume, and disconnect/forget suppression
-- `tst_ReconnectPolicy` — backoff, max attempts, cancel, pause, resume, and onConnected reset
-- `tst_BlueZAgent` — capability mapping, configured registration, pending requests, accept/reject/PIN/passkey validation, cancel, stale ids, and duplicate response rejection
-- `tst_BluetoothDbusError` — BlueZ error name mapping
+BlueZ-owned state (`Paired`, `Connected`, `Trusted`, `UUIDs`, object paths) may disappear when `bluetoothd` restarts. Auralis-owned reconnect intent must survive that rebuild.
+
+`DeviceLifecycleManager` retains a small in-memory map:
+
+```text
+QHash<addressIndexKey, DeviceReconnectMetadata>
+```
+
+where `DeviceReconnectMetadata` holds:
+
+```text
+userDisconnectRequested
+autoReconnectEnabled
+```
+
+**Stable identity:** `addressIndexKey(adapterPath, address, addressType)` — the same key used by `DeviceRegistry` for deduplication. Metadata is **not** keyed by display name, alias, or object path.
+
+**Update rules:**
+
+| Event | Metadata |
+|---|---|
+| Explicit `Disconnect` | `userDisconnectRequested = true` |
+| Explicit `Connect` / `Reconnect` | `userDisconnectRequested = false` |
+| Successful `Connected=true` | suppression cleared |
+| `Forget` | entry removed |
+| `autoReconnectEnabled` change | retained when user-controlled |
+
+## BlueZ loss and snapshot restoration order
+
+**On BlueZ loss (`BluetoothManager::handleBlueZAvailable(false)`):**
+
+```text
+notify lifecycle (pause reconnect, abort pending ops)
+clear live DeviceRegistry
+clear AdapterRegistry
+```
+
+Auralis reconnect metadata remains in `DeviceLifecycleManager` (not stored in the disposable registry).
+
+**On BlueZ return + snapshot (`handleSnapshot`):**
+
+```text
+rebuild adapters from ObjectManager
+rebuild devices from ObjectManager
+reconcile live paths
+applyStoredMetadataToRegistry()   // restore userDisconnectRequested / autoReconnectEnabled
+onSnapshotApplied()               // resume reconnect policy + evaluate candidates
+```
+
+`ReconnectPolicy::resumeAll()` is **not** called before metadata restoration. `DeviceLifecycleManager::onDevicePropertiesChanged()` reacquires the device pointer after `checkPropertyCompletion()` because registry mutation may invalidate prior references.
+
+## Manager-level BlueZ restart tests
+
+`tst_BluetoothManager` exercises the production recovery path (including `DeviceRegistry::clear()`):
+
+- `explicitDisconnectSurvivesBlueZRestart` — intentional disconnect stays suppressed after BlueZ loss/return
+- `unexpectedDisconnectReconnectsAfterBlueZRestart` — eligible devices still auto-reconnect after recovery
+- `forgetClearsRetainedReconnectMetadata` — forget removes retained metadata; rediscovered devices do not inherit suppression
+- `manualReconnectClearsDisconnectSuppression` — manual reconnect clears suppression; subsequent unexpected disconnect is eligible again
+
+`tst_DeviceLifecycle::disconnectPropertyCompletionSurvivesRegistryMutation` covers registry pointer safety during property completion.
+
+## Manual BlueZ restart validation
+
+Perform these developer-only scenarios when hardware is available (do not add daemon-control commands to production code):
+
+**Intentional disconnect survives restart:**
+
+1. Pair/trust/connect a test device.
+2. Explicitly Disconnect from Auralis.
+3. Restart `bluetoothd` (or otherwise simulate BlueZ daemon restart).
+4. Let Auralis recover via ObjectManager snapshot.
+5. Confirm the device remains paired and disconnected.
+6. Confirm Auralis does **not** auto-reconnect.
+7. Click Reconnect manually; confirm connection succeeds.
+
+**Unexpected disconnect recovers:**
+
+1. Connect a device without an explicit user disconnect.
+2. Restart `bluetoothd` while the device is paired but disconnected (or disconnect unexpectedly, then restart BlueZ before reconnect completes).
+3. Confirm Auralis resumes bounded auto-reconnect for the eligible device.
+
 
 Phase 2 tests must remain green.
 

@@ -437,6 +437,27 @@ private slots:
         QTest::qWait(150);
         QCOMPARE(dueSpy.count(), 0);
     }
+
+    void disconnectPropertyCompletionSurvivesRegistryMutation()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.lifecycle.disconnectDevice(path);
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Idle);
+        QVERIFY(device->userDisconnectRequested);
+        QVERIFY(!h.reconnect.isScheduled(path));
+        QCOMPARE(dueSpy.count(), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDeviceLifecycle)

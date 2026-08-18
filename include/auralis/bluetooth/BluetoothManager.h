@@ -2,6 +2,7 @@
 
 #include <auralis/bluetooth/BluetoothError.h>
 #include <auralis/bluetooth/IBluetoothManager.h>
+#include <auralis/bluetooth/ReconnectPolicy.h>
 
 #include <QAbstractItemModel>
 #include <QObject>
@@ -78,6 +79,9 @@ public:
     Q_INVOKABLE void submitPinCode(const QString& requestId, const QString& pin);
     Q_INVOKABLE void submitPasskey(const QString& requestId, uint passkey);
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
+    Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
+
+    void setReconnectPolicyConfig(const ReconnectPolicyConfig& config);
 
 signals:
     void availableChanged();

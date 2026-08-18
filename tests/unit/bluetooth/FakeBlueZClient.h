@@ -335,6 +335,16 @@ public:
 
     void updateDevice(const QString& path, const QVariantMap& changed, const QStringList& invalidated = {})
     {
+        QVariantMap interfaces = objects_.value(path).toMap();
+        QVariantMap properties = interfaces.value(QStringLiteral("org.bluez.Device1")).toMap();
+        for (auto it = changed.constBegin(); it != changed.constEnd(); ++it) {
+            properties.insert(it.key(), it.value());
+        }
+        for (const QString& key : invalidated) {
+            properties.remove(key);
+        }
+        interfaces.insert(QStringLiteral("org.bluez.Device1"), properties);
+        objects_.insert(path, interfaces);
         emit propertiesChanged(path, QStringLiteral("org.bluez.Device1"), changed, invalidated);
     }
 

@@ -395,6 +395,7 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
     qCInfo(auralisBluetooth) << "BlueZSnapshotApplied adapters=" << adapterPaths.size()
                              << "devices=" << devicePaths.size();
     if (lifecycle_ != nullptr) {
+        lifecycle_->applyStoredMetadataToRegistry();
         lifecycle_->onSnapshotApplied();
     }
     emit adapterChanged();
@@ -414,6 +415,9 @@ void BluetoothManager::handleInterfacesAdded(const QString& objectPath, const QV
         DeviceParseResult parsed = parseDevice(objectPath, deviceProperties(interfaces));
         logParseWarnings(objectPath, bluez::kDeviceInterface.toString(), parsed.warnings);
         registry_->upsertDevice(parsed.device);
+        if (lifecycle_ != nullptr) {
+            lifecycle_->applyStoredMetadataToRegistry();
+        }
         qCInfo(auralisBluetooth) << "DeviceAdded" << objectPath << parsed.device.displayName();
     }
 }
@@ -563,6 +567,25 @@ void BluetoothManager::submitPasskey(const QString& requestId, uint passkey)
 QString BluetoothManager::serviceFriendlyName(const QString& uuid) const
 {
     return UuidCatalog::friendlyName(uuid);
+}
+
+bool BluetoothManager::userDisconnectRequestedForDevice(const QString& deviceId) const
+{
+    if (registry_ == nullptr) {
+        return false;
+    }
+    const BluetoothDeviceData* device = registry_->findByObjectPath(deviceId);
+    if (device != nullptr) {
+        return device->userDisconnectRequested;
+    }
+    return false;
+}
+
+void BluetoothManager::setReconnectPolicyConfig(const ReconnectPolicyConfig& config)
+{
+    if (reconnect_ != nullptr) {
+        reconnect_->setConfig(config);
+    }
 }
 
 } // namespace auralis::bluetooth
