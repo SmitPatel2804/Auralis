@@ -10,10 +10,27 @@
 #include <QMetaType>
 
 namespace auralis::bluetooth {
+namespace {
 
-BlueZAgent::BlueZAgent(IBlueZClient* client, QObject* parent)
+constexpr int kMaxPinLength = 16;
+constexpr uint kMaxBluetoothPasskey = 999999;
+
+bool isValidPinCode(const QString& pin)
+{
+    return !pin.isEmpty() && pin.size() <= kMaxPinLength && !pin.contains(QChar(u'\0'));
+}
+
+bool isValidPasskey(uint passkey)
+{
+    return passkey <= kMaxBluetoothPasskey;
+}
+
+} // namespace
+
+BlueZAgent::BlueZAgent(IBlueZClient* client, AgentCapability capability, QObject* parent)
     : QObject(parent)
     , client_(client)
+    , capability_(capability)
 {
     if (client_ != nullptr) {
         connect(client_, &IBlueZClient::blueZAvailableChanged, this, &BlueZAgent::onBlueZAvailableChanged);
@@ -65,15 +82,26 @@ PairingRequest* BlueZAgent::pendingRequest() const
     return activeRequest_;
 }
 
+AgentCapability BlueZAgent::capability() const noexcept
+{
+    return capability_;
+}
+
+void BlueZAgent::setCapability(AgentCapability capability)
+{
+    capability_ = capability;
+}
+
 void BlueZAgent::registerWithBlueZ()
 {
     if (!exported_ || client_ == nullptr || !client_->isBlueZAvailable() || registered_) {
         return;
     }
-    qCInfo(auralisBluetooth) << "AgentRegisterRequested" << bluez::kAuralisAgentPath;
+    qCInfo(auralisBluetooth) << "AgentRegisterRequested" << bluez::kAuralisAgentPath
+                             << "capability=" << toBlueZCapability(capability_);
     client_->registerAgent(
         bluez::kAuralisAgentPath.toString(),
-        bluez::kAgentCapabilityKeyboardDisplay.toString());
+        toBlueZCapability(capability_).toString());
 }
 
 void BlueZAgent::unregisterFromBlueZ()
@@ -108,7 +136,8 @@ void BlueZAgent::onRegisterAgentFinished(bool succeeded, const QString& errorNam
         return;
     }
     registered_ = true;
-    qCInfo(auralisBluetooth) << "AgentRegistered" << bluez::kAuralisAgentPath;
+    qCInfo(auralisBluetooth) << "AgentRegistered" << bluez::kAuralisAgentPath
+                             << "capability=" << toBlueZCapability(capability_);
     emit registeredChanged(true);
 }
 
@@ -201,6 +230,40 @@ void BlueZAgent::handleCancel()
     invalidateAllRequests(QStringLiteral("Pairing canceled"));
 }
 
+void BlueZAgent::invalidateRequestsForDevice(const QString& devicePath, const QString& reason)
+{
+    if (devicePath.isEmpty()) {
+        return;
+    }
+
+    bool changed = false;
+    for (auto it = pendingCalls_.begin(); it != pendingCalls_.end();) {
+        if (it->request == nullptr || it->request->devicePath() != devicePath) {
+            ++it;
+            continue;
+        }
+
+        PendingCall call = it.value();
+        it = pendingCalls_.erase(it);
+        changed = true;
+
+        if (call.replyPending && call.message.isReplyRequired()) {
+            QDBusConnection::systemBus().send(call.message.createErrorReply(
+                bluez::kAgentErrorCanceled.toString(),
+                reason.isEmpty() ? QStringLiteral("Pairing request invalidated") : reason));
+        }
+        clearSecrets(call.request);
+        if (activeRequest_ == call.request) {
+            activeRequest_->deleteLater();
+            activeRequest_ = nullptr;
+        }
+    }
+
+    if (changed) {
+        emit pendingRequestChanged();
+    }
+}
+
 PairingRequest* BlueZAgent::createRequest(
     const QString& devicePath,
     PairingRequestType type,
@@ -261,6 +324,10 @@ void BlueZAgent::submitPinCode(const QString& requestId, const QString& pin)
     if (call == nullptr || call->request->requestType() != PairingRequestType::EnterPin) {
         return;
     }
+    if (!isValidPinCode(pin)) {
+        qCWarning(auralisBluetooth) << "AgentPinRejected" << requestId;
+        return;
+    }
     completeRequest(requestId, pin);
 }
 
@@ -268,6 +335,10 @@ void BlueZAgent::submitPasskey(const QString& requestId, uint passkey)
 {
     auto* call = callForRequest(requestId);
     if (call == nullptr || call->request->requestType() != PairingRequestType::EnterPasskey) {
+        return;
+    }
+    if (!isValidPasskey(passkey)) {
+        qCWarning(auralisBluetooth) << "AgentPasskeyRejected" << requestId;
         return;
     }
     completeRequest(requestId, passkey);

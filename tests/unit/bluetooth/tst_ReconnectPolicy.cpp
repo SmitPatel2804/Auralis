@@ -66,6 +66,24 @@ private slots:
         QVERIFY(!policy.isScheduled(QStringLiteral("/dev/1")));
     }
 
+    void resumeAllRestoresScheduling()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.initialDelayMs = 50;
+        policy.setConfig(config);
+
+        QSignalSpy dueSpy(&policy, &ReconnectPolicy::reconnectDue);
+        policy.pauseAll();
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTest::qWait(100);
+        QCOMPARE(dueSpy.count(), 0);
+
+        policy.resumeAll();
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+    }
+
     void onConnectedClearsAttempts()
     {
         ReconnectPolicy policy;

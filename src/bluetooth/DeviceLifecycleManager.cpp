@@ -70,7 +70,22 @@ void DeviceLifecycleManager::onBlueZAvailabilityChanged(bool available)
         if (reconnect_ != nullptr) {
             reconnect_->pauseAll();
         }
+        return;
     }
+
+    if (reconnect_ != nullptr) {
+        reconnect_->resumeAll();
+    }
+}
+
+void DeviceLifecycleManager::onSnapshotApplied()
+{
+    if (reconnect_ == nullptr || client_ == nullptr || !client_->isBlueZAvailable()) {
+        return;
+    }
+
+    reconnect_->resumeAll();
+    reevaluateReconnectCandidates();
 }
 
 void DeviceLifecycleManager::onDeviceRemoved(const QString& objectPath)
@@ -124,9 +139,13 @@ void DeviceLifecycleManager::cancelPairing(const QString& objectPath)
     if (device == nullptr || !canCancelPairing(*device) || client_ == nullptr) {
         return;
     }
-    if (!beginOperation(objectPath, DeviceOperation::CancellingPairing)) {
+    if (!transitionOperation(objectPath, DeviceOperation::Pairing, DeviceOperation::CancellingPairing)) {
         return;
     }
+    if (agent_ != nullptr) {
+        agent_->invalidateRequestsForDevice(objectPath, QStringLiteral("Pairing canceled"));
+    }
+    qCInfo(auralisBluetooth) << "PairingCancelTransitioned" << objectPath;
     qCInfo(auralisBluetooth) << "CancelPairingRequested" << objectPath;
     client_->cancelPairing(objectPath);
 }
@@ -344,6 +363,36 @@ bool DeviceLifecycleManager::beginOperation(const QString& objectPath, DeviceOpe
     return true;
 }
 
+bool DeviceLifecycleManager::transitionOperation(
+    const QString& objectPath,
+    DeviceOperation from,
+    DeviceOperation to)
+{
+    auto it = pending_.find(objectPath);
+    if (it == pending_.end()) {
+        return false;
+    }
+    if (it->operation == to) {
+        return true;
+    }
+    if (it->operation != from) {
+        return false;
+    }
+
+    const quint64 generation = bumpGeneration(objectPath);
+    PendingOp next = it.value();
+    next.operation = to;
+    next.generation = generation;
+    next.waitingProperty = false;
+    next.expectedTrusted = false;
+    pending_.insert(objectPath, next);
+    registry_->setOperation(objectPath, to);
+    registry_->clearLastError(objectPath);
+    startOperationTimeout(objectPath, to);
+    emit deviceOperationChanged(objectPath);
+    return true;
+}
+
 void DeviceLifecycleManager::finishOperation(
     const QString& objectPath,
     quint64 generation,
@@ -400,7 +449,28 @@ void DeviceLifecycleManager::handleUnexpectedDisconnect(const QString& objectPat
     if (device.userDisconnectRequested || !device.autoReconnectEnabled || reconnect_ == nullptr) {
         return;
     }
+    qCInfo(auralisBluetooth) << "ReconnectScheduled" << objectPath << "attempt=" << reconnect_->attempt(objectPath) + 1;
     reconnect_->scheduleReconnect(objectPath);
+}
+
+void DeviceLifecycleManager::reevaluateReconnectCandidates()
+{
+    if (registry_ == nullptr || reconnect_ == nullptr) {
+        return;
+    }
+
+    const QVector<BluetoothDeviceData> devices = registry_->devices();
+    for (const BluetoothDeviceData& device : devices) {
+        if (!device.paired || device.connected || !device.autoReconnectEnabled || device.userDisconnectRequested) {
+            continue;
+        }
+        if (device.operation != DeviceOperation::Idle || reconnect_->isScheduled(device.objectPath)) {
+            continue;
+        }
+        qCInfo(auralisBluetooth) << "ReconnectResumed" << device.objectPath
+                                 << "attempt=" << reconnect_->attempt(device.objectPath) + 1;
+        reconnect_->scheduleReconnect(device.objectPath);
+    }
 }
 
 void DeviceLifecycleManager::handlePairFinished(
@@ -463,6 +533,18 @@ void DeviceLifecycleManager::handleConnectFinished(
         }
         if (mapped.category == BluetoothError::InProgress) {
             return;
+        }
+        if (op.operation == DeviceOperation::Reconnecting && reconnect_ != nullptr) {
+            if (mapped.retryable) {
+                qCWarning(auralisBluetooth) << "ReconnectFailedRetryable" << devicePath << errorName << errorMessage;
+                finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
+                if (client_ != nullptr && client_->isBlueZAvailable()) {
+                    reconnect_->scheduleReconnect(devicePath);
+                }
+                return;
+            }
+            qCWarning(auralisBluetooth) << "ReconnectFailedTerminal" << devicePath << errorName << errorMessage;
+            reconnect_->cancelReconnect(devicePath);
         }
         finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
         return;

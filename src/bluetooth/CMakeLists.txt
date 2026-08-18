@@ -16,6 +16,7 @@ add_library(auralis-bluetooth
     PairingRequest.cpp
     ReconnectPolicy.cpp
     UuidCatalog.cpp
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/AgentCapability.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/AdapterManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgent.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgentAdaptor.h"

@@ -27,6 +27,7 @@ public:
     void cancelReconnect(const QString& devicePath);
     void cancelAll();
     void pauseAll();
+    void resumeAll();
     void onConnected(const QString& devicePath);
     bool isScheduled(const QString& devicePath) const;
     int attempt(const QString& devicePath) const;

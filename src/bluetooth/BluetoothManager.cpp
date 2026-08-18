@@ -1,6 +1,7 @@
 #include <auralis/bluetooth/BluetoothManager.h>
 
 #include <auralis/bluetooth/AdapterManager.h>
+#include <auralis/bluetooth/AgentCapability.h>
 #include <auralis/bluetooth/BlueZAgent.h>
 #include <auralis/bluetooth/BlueZConstants.h>
 #include <auralis/bluetooth/BlueZDbusClient.h>
@@ -21,6 +22,8 @@
 namespace auralis::bluetooth {
 namespace {
 
+constexpr auto kEnvAgentCapability = "AURALIS_BLUETOOTH_AGENT_CAPABILITY";
+
 int errorPriority(BluetoothError error)
 {
     switch (error) {
@@ -40,6 +43,11 @@ int errorPriority(BluetoothError error)
     default:
         return 100;
     }
+}
+
+AgentCapability defaultAgentCapability()
+{
+    return parseAgentCapability(QString::fromLocal8Bit(qgetenv(kEnvAgentCapability)));
 }
 
 } // namespace
@@ -64,7 +72,7 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     registry_ = new DeviceRegistry(this);
     model_ = new BluetoothDeviceListModel(registry_, this);
     reconnect_ = new ReconnectPolicy(this);
-    agent_ = new BlueZAgent(client_, this);
+    agent_ = new BlueZAgent(client_, defaultAgentCapability(), this);
     lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, this);
     statusText_ = defaultMessage(BluetoothError::BlueZUnavailable);
 }
@@ -386,6 +394,9 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
     }
     qCInfo(auralisBluetooth) << "BlueZSnapshotApplied adapters=" << adapterPaths.size()
                              << "devices=" << devicePaths.size();
+    if (lifecycle_ != nullptr) {
+        lifecycle_->onSnapshotApplied();
+    }
     emit adapterChanged();
     updateStatusText();
     refreshDisplayedError();

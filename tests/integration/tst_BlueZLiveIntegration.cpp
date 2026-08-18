@@ -17,6 +17,19 @@ class TstBlueZLiveIntegration : public QObject {
     Q_OBJECT
 
 private:
+    static QVariant roleValue(QAbstractItemModel* model, const QString& objectPath, int role)
+    {
+        if (model == nullptr || objectPath.isEmpty()) {
+            return {};
+        }
+        for (int row = 0; row < model->rowCount(); ++row) {
+            if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString() == objectPath) {
+                return model->data(model->index(row, 0), role);
+            }
+        }
+        return {};
+    }
+
     static QSet<QString> objectPaths(QAbstractItemModel* model)
     {
         QSet<QString> paths;
@@ -87,6 +100,7 @@ private slots:
         BluetoothManager manager;
         QVERIFY(manager.initialize());
         QVERIFY2(manager.available(), "BlueZ is registered but Auralis did not mark it available");
+        QTRY_VERIFY_WITH_TIMEOUT(manager.agentRegistered(), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(!manager.adapterAddress().isEmpty(), 5000);
         QVERIFY2(
             !manager.adapterAddress().isEmpty(),
@@ -136,54 +150,41 @@ private slots:
                 }
             }
             QVERIFY2(!expectedObjectPath.isEmpty(), "Expected device address was seen but object path was missing");
+            QVERIFY2(manager.agentRegistered(), "Agent was not registered before lifecycle operations");
 
-            bool paired = false;
-            for (int row = 0; row < model->rowCount(); ++row) {
-                if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
-                    == expectedObjectPath) {
-                    paired = model->data(model->index(row, 0), BluetoothDeviceListModel::PairedRole).toBool();
-                    break;
-                }
-            }
+            bool paired = roleValue(model, expectedObjectPath, BluetoothDeviceListModel::PairedRole).toBool();
             if (!paired) {
                 manager.pairDevice(expectedObjectPath);
                 QTRY_VERIFY_WITH_TIMEOUT(
-                    [&]() {
-                        for (int row = 0; row < model->rowCount(); ++row) {
-                            if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
-                                == expectedObjectPath) {
-                                return model->data(model->index(row, 0), BluetoothDeviceListModel::PairedRole).toBool();
-                            }
-                        }
-                        return false;
-                    }(),
+                    roleValue(model, expectedObjectPath, BluetoothDeviceListModel::PairedRole).toBool(),
                     30000);
+            }
+
+            if (!roleValue(model, expectedObjectPath, BluetoothDeviceListModel::TrustedRole).toBool()) {
+                manager.trustDevice(expectedObjectPath);
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    roleValue(model, expectedObjectPath, BluetoothDeviceListModel::TrustedRole).toBool(),
+                    15000);
             }
 
             manager.connectDevice(expectedObjectPath);
             QTRY_VERIFY_WITH_TIMEOUT(
-                [&]() {
-                    for (int row = 0; row < model->rowCount(); ++row) {
-                        if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
-                            == expectedObjectPath) {
-                            return model->data(model->index(row, 0), BluetoothDeviceListModel::ConnectedRole).toBool();
-                        }
-                    }
-                    return false;
-                }(),
+                roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
                 30000);
 
             manager.disconnectDevice(expectedObjectPath);
             QTRY_VERIFY_WITH_TIMEOUT(
-                [&]() {
-                    for (int row = 0; row < model->rowCount(); ++row) {
-                        if (model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString()
-                            == expectedObjectPath) {
-                            return !model->data(model->index(row, 0), BluetoothDeviceListModel::ConnectedRole).toBool();
-                        }
-                    }
-                    return false;
-                }(),
+                !roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
+                15000);
+
+            manager.reconnectDevice(expectedObjectPath);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
+                30000);
+
+            manager.disconnectDevice(expectedObjectPath);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
                 15000);
 
             if (qEnvironmentVariableIntValue("AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS") == 1) {
@@ -191,6 +192,8 @@ private slots:
                 QTRY_VERIFY_WITH_TIMEOUT(
                     !objectPaths(model).contains(expectedObjectPath),
                     15000);
+            } else {
+                qInfo("SKIPPED: destructive Bluetooth operations not enabled");
             }
         }
 

@@ -8,6 +8,7 @@
 
 #include "FakeBlueZClient.h"
 
+#include <QDBusMessage>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -19,6 +20,7 @@ using auralis::bluetooth::DeviceLifecycleManager;
 using auralis::bluetooth::DeviceOperation;
 using auralis::bluetooth::DeviceRegistry;
 using auralis::bluetooth::ReconnectPolicy;
+using auralis::bluetooth::ReconnectPolicyConfig;
 using auralis::bluetooth::parseDevice;
 using auralis::test::FakeBlueZClient;
 
@@ -57,6 +59,16 @@ private:
             adapter.powered = true;
             adapter.available = true;
             adapters.upsertAdapter(adapter);
+        }
+
+        void setReconnectConfig(int initialDelayMs = 20, int maxAttempts = 3, int maxDelayMs = 50)
+        {
+            ReconnectPolicyConfig config;
+            config.initialDelayMs = initialDelayMs;
+            config.maxAttempts = maxAttempts;
+            config.maxDelayMs = maxDelayMs;
+            config.backoffMultiplier = 1.0;
+            reconnect.setConfig(config);
         }
     };
 
@@ -124,6 +136,102 @@ private slots:
         QVERIFY(device != nullptr);
         QVERIFY(device->operation == DeviceOperation::Idle);
         QVERIFY(device->paired);
+    }
+
+    void cancelPairingTransitionsAndCallsBlueZ()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path));
+        h.client.setAutoCompleteDeviceOps(false);
+        h.client.setAutoCompleteCancelPairing(false);
+
+        h.lifecycle.pairDevice(path);
+        h.lifecycle.cancelPairing(path);
+
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::CancellingPairing);
+        QCOMPARE(h.client.cancelPairRequests(), 1);
+        QCOMPARE(h.client.lastCancelPairPath(), path);
+    }
+
+    void duplicateCancelPairingIsSafe()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path));
+        h.client.setAutoCompleteDeviceOps(false);
+        h.client.setAutoCompleteCancelPairing(false);
+
+        h.lifecycle.pairDevice(path);
+        h.lifecycle.cancelPairing(path);
+        h.lifecycle.cancelPairing(path);
+
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::CancellingPairing);
+        QCOMPARE(h.client.cancelPairRequests(), 1);
+    }
+
+    void cancelPairingInvalidatesPendingRequest()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path));
+        h.client.setAutoCompleteDeviceOps(false);
+        h.client.setAutoCompleteCancelPairing(false);
+
+        QDBusMessage call;
+        h.agent.handleRequestPinCode(path, call);
+        QVERIFY(h.agent.pendingRequest() != nullptr);
+
+        h.lifecycle.pairDevice(path);
+        h.lifecycle.cancelPairing(path);
+
+        QVERIFY(h.agent.pendingRequest() == nullptr);
+        QCOMPARE(h.client.cancelPairRequests(), 1);
+    }
+
+    void cancelPairingRejectedOutsidePairing()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        h.client.setAutoCompleteCancelPairing(false);
+
+        h.lifecycle.connectDevice(path);
+        h.lifecycle.cancelPairing(path);
+
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Connecting);
+        QCOMPARE(h.client.cancelPairRequests(), 0);
+    }
+
+    void latePairCallbackAfterCancelIsIgnored()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path));
+        h.client.setAutoCompleteDeviceOps(false);
+
+        h.lifecycle.pairDevice(path);
+        h.lifecycle.cancelPairing(path);
+        QCOMPARE(h.client.cancelPairRequests(), 1);
+        QCOMPARE(h.client.pairRequests(), 1);
+
+        h.client.completePairSuccess(path);
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Idle);
+        QVERIFY(!device->paired);
     }
 
     void inProgressConnectDoesNotFailImmediately()
@@ -198,6 +306,136 @@ private slots:
         h.lifecycle.cancelDeviceOperation(path);
         h.lifecycle.forgetDevice(path);
         QCOMPARE(h.client.removeRequests(), 1);
+    }
+
+    void reconnectFailureSchedulesNextAttempt()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        emit h.client.connectDeviceFinished(
+            path,
+            false,
+            QStringLiteral("org.bluez.Error.ConnectionAttemptFailed"),
+            QStringLiteral("try again"));
+
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 2, 500);
+        QCOMPARE(h.client.connectRequests(), 2);
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Reconnecting);
+        QCOMPARE(device->reconnectAttempt, 2);
+    }
+
+    void reconnectNonRetryableErrorStopsRetries()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        emit h.client.connectDeviceFinished(
+            path,
+            false,
+            QStringLiteral("org.bluez.Error.AuthenticationFailed"),
+            QStringLiteral("bad credentials"));
+
+        QTest::qWait(150);
+        QCOMPARE(dueSpy.count(), 1);
+    }
+
+    void reconnectSuccessResetsAttempts()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        h.client.completeConnectSuccess(path);
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), true}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), true}}, {});
+
+        QCOMPARE(h.reconnect.attempt(path), 0);
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Idle);
+    }
+
+    void blueZRecoveryResumesReconnectForEligibleDevice()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.lifecycle.onBlueZAvailabilityChanged(false);
+        h.lifecycle.onBlueZAvailabilityChanged(true);
+        h.lifecycle.onSnapshotApplied();
+
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+    }
+
+    void blueZRecoveryKeepsIntentionalDisconnectSuppressed()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        h.registry.setUserDisconnectRequested(path, true);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.lifecycle.onBlueZAvailabilityChanged(false);
+        h.lifecycle.onBlueZAvailabilityChanged(true);
+        h.lifecycle.onSnapshotApplied();
+
+        QTest::qWait(150);
+        QCOMPARE(dueSpy.count(), 0);
+    }
+
+    void forgetCancelsScheduledReconnect()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig(100, 3, 100);
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(h.reconnect.isScheduled(path));
+
+        h.lifecycle.forgetDevice(path);
+        QVERIFY(!h.reconnect.isScheduled(path));
+
+        QTest::qWait(150);
+        QCOMPARE(dueSpy.count(), 0);
     }
 };
 

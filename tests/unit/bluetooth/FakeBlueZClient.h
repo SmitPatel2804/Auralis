@@ -91,7 +91,15 @@ public:
     void cancelPairing(const QString& devicePath) override
     {
         ++cancelPairRequests_;
-        emit cancelPairingFinished(devicePath, true, {}, {});
+        lastCancelPairPath_ = devicePath;
+        if (!autoCompleteCancelPairing_) {
+            return;
+        }
+        emit cancelPairingFinished(
+            devicePath,
+            cancelPairingSucceeds_,
+            cancelPairingSucceeds_ ? QString() : cancelPairingErrorName_,
+            cancelPairingSucceeds_ ? QString() : cancelPairingErrorMessage_);
     }
 
     void connectDevice(const QString& devicePath) override
@@ -131,9 +139,9 @@ public:
 
     void registerAgent(const QString& agentPath, const QString& capability) override
     {
-        Q_UNUSED(agentPath);
-        Q_UNUSED(capability);
         ++registerAgentRequests_;
+        lastRegisterAgentPath_ = agentPath;
+        lastRegisterAgentCapability_ = capability;
         agentRegistered_ = true;
         emit registerAgentFinished(true, {}, {});
     }
@@ -151,11 +159,18 @@ public:
     }
 
     void setAutoCompleteDeviceOps(bool enabled) { autoCompleteDeviceOps_ = enabled; }
+    void setAutoCompleteCancelPairing(bool enabled) { autoCompleteCancelPairing_ = enabled; }
     void setPairResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
     {
         pairSucceeds_ = succeeds;
         pairErrorName_ = errorName;
         pairErrorMessage_ = errorMessage;
+    }
+    void setCancelPairingResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
+    {
+        cancelPairingSucceeds_ = succeeds;
+        cancelPairingErrorName_ = errorName;
+        cancelPairingErrorMessage_ = errorMessage;
     }
     void setConnectResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})
     {
@@ -171,13 +186,25 @@ public:
     {
         emit connectDeviceFinished(devicePath, true, {}, {});
     }
+    void completeCancelPairing(const QString& devicePath)
+    {
+        emit cancelPairingFinished(
+            devicePath,
+            cancelPairingSucceeds_,
+            cancelPairingSucceeds_ ? QString() : cancelPairingErrorName_,
+            cancelPairingSucceeds_ ? QString() : cancelPairingErrorMessage_);
+    }
 
     int pairRequests() const { return pairRequests_; }
+    int cancelPairRequests() const { return cancelPairRequests_; }
     int connectRequests() const { return connectRequests_; }
     int disconnectRequests() const { return disconnectRequests_; }
     int removeRequests() const { return removeRequests_; }
     int registerAgentRequests() const { return registerAgentRequests_; }
+    QString lastRegisterAgentPath() const { return lastRegisterAgentPath_; }
+    QString lastRegisterAgentCapability() const { return lastRegisterAgentCapability_; }
     QString lastPairPath() const { return lastPairPath_; }
+    QString lastCancelPairPath() const { return lastCancelPairPath_; }
     QString lastConnectPath() const { return lastConnectPath_; }
 
     void setSystemBusConnected(bool connected)
@@ -355,13 +382,17 @@ private:
     bool autoCompleteStart_ = true;
     bool autoCompleteStop_ = true;
     bool autoCompleteDeviceOps_ = true;
+    bool autoCompleteCancelPairing_ = true;
     bool pairSucceeds_ = true;
+    bool cancelPairingSucceeds_ = true;
     bool connectSucceeds_ = true;
     bool agentRegistered_ = false;
     QString pairErrorName_;
     QString pairErrorMessage_;
     QString connectErrorName_;
     QString connectErrorMessage_;
+    QString cancelPairingErrorName_;
+    QString cancelPairingErrorMessage_;
     QString startErrorName_;
     QString startErrorMessage_;
     QString stopErrorName_;
@@ -382,9 +413,12 @@ private:
     QString lastStartPath_;
     QString lastStopPath_;
     QString lastPairPath_;
+    QString lastCancelPairPath_;
     QString lastConnectPath_;
     QString lastRemoveAdapterPath_;
     QString lastRemoveDevicePath_;
+    QString lastRegisterAgentPath_;
+    QString lastRegisterAgentCapability_;
     QString pendingStartPath_;
     QString pendingStopPath_;
 };

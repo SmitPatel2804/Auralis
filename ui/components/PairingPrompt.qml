@@ -18,6 +18,12 @@ Dialog {
 
     readonly property bool needsInput: request && request.needsInput
     readonly property bool needsConfirmation: request && request.needsConfirmation
+    readonly property string trimmedPin: pinField.text.trim()
+    readonly property string trimmedPasskey: passkeyField.text.trim()
+    readonly property bool pinValid: !needsInput || !request || request.requestType !== 1
+        || (trimmedPin.length > 0 && trimmedPin.length <= 16)
+    readonly property bool passkeyValid: !needsInput || !request || request.requestType !== 3
+        || (/^\d{1,6}$/.test(trimmedPasskey))
 
     onRequestChanged: {
         pinField.text = ""
@@ -85,15 +91,15 @@ Dialog {
 
             Button {
                 text: needsInput ? "Submit" : "Accept"
-                enabled: request && bluetooth
+                enabled: request && bluetooth && pinValid && passkeyValid
                 onClicked: {
                     if (!request || !bluetooth) {
                         return
                     }
                     if (needsInput && request.requestType === 1) {
-                        bluetooth.submitPinCode(request.requestId, pinField.text)
+                        bluetooth.submitPinCode(request.requestId, trimmedPin)
                     } else if (needsInput && request.requestType === 3) {
-                        bluetooth.submitPasskey(request.requestId, parseInt(passkeyField.text, 10) || 0)
+                        bluetooth.submitPasskey(request.requestId, Number(trimmedPasskey))
                     } else {
                         bluetooth.acceptPairingRequest(request.requestId)
                     }

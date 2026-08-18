@@ -71,6 +71,11 @@ void ReconnectPolicy::pauseAll()
     cancelAll();
 }
 
+void ReconnectPolicy::resumeAll()
+{
+    paused_ = false;
+}
+
 void ReconnectPolicy::onConnected(const QString& devicePath)
 {
     cancelReconnect(devicePath);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auralis/bluetooth/AgentCapability.h>
 #include <auralis/bluetooth/PairingRequest.h>
 
 #include <QDBusMessage>
@@ -16,7 +17,10 @@ class BlueZAgent final : public QObject {
     Q_OBJECT
 
 public:
-    explicit BlueZAgent(IBlueZClient* client, QObject* parent = nullptr);
+    explicit BlueZAgent(
+        IBlueZClient* client,
+        AgentCapability capability = AgentCapability::KeyboardDisplay,
+        QObject* parent = nullptr);
     ~BlueZAgent() override;
 
     bool initialize();
@@ -24,6 +28,8 @@ public:
     bool isRegistered() const noexcept;
 
     PairingRequest* pendingRequest() const;
+    AgentCapability capability() const noexcept;
+    void setCapability(AgentCapability capability);
 
     void handleRelease();
     QString handleRequestPinCode(const QString& devicePath, const QDBusMessage& message);
@@ -43,6 +49,7 @@ public:
     Q_INVOKABLE void rejectPairingRequest(const QString& requestId);
     Q_INVOKABLE void submitPinCode(const QString& requestId, const QString& pin);
     Q_INVOKABLE void submitPasskey(const QString& requestId, uint passkey);
+    void invalidateRequestsForDevice(const QString& devicePath, const QString& reason = {});
 
 signals:
     void pendingRequestChanged();
@@ -77,6 +84,7 @@ private:
     BlueZAgentAdaptor* adaptor_ = nullptr;
     bool exported_ = false;
     bool registered_ = false;
+    AgentCapability capability_ = AgentCapability::KeyboardDisplay;
     PairingRequest* activeRequest_ = nullptr;
     QHash<QString, PendingCall> pendingCalls_;
 };

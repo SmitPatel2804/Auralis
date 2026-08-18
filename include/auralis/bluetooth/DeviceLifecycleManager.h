@@ -30,6 +30,7 @@ public:
 
     void shutdown();
     void onBlueZAvailabilityChanged(bool available);
+    void onSnapshotApplied();
     void onDeviceRemoved(const QString& objectPath);
     void onDevicePropertiesChanged(
         const QString& objectPath,
@@ -59,6 +60,7 @@ private:
     };
 
     bool beginOperation(const QString& objectPath, DeviceOperation operation);
+    bool transitionOperation(const QString& objectPath, DeviceOperation from, DeviceOperation to);
     void finishOperation(const QString& objectPath, quint64 generation, bool success, BluetoothError error, const QString& errorName, const QString& message);
     void abortPendingOperation(const QString& objectPath, const QString& reason, BluetoothError error = BluetoothError::OperationFailed);
     void clearPending(const QString& objectPath);
@@ -69,6 +71,7 @@ private:
     bool isStale(const QString& objectPath, quint64 generation) const;
     const BluetoothDeviceData* requireDevice(const QString& objectPath) const;
     void handleUnexpectedDisconnect(const QString& objectPath, const BluetoothDeviceData& device);
+    void reevaluateReconnectCandidates();
 
     void handlePairFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
     void handleCancelPairingFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
