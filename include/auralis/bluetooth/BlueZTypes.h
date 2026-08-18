@@ -10,6 +10,7 @@
 #include <QStringList>
 
 #include <cstdint>
+#include <optional>
 
 namespace auralis::bluetooth {
 
@@ -72,5 +73,6 @@ struct BluetoothDeviceData {
 };
 
 QString addressIndexKey(const QString& adapterPath, const QString& address, const QString& addressType);
+std::optional<QString> normalizeBluetoothAddress(const QString& raw);
 
 } // namespace auralis::bluetooth

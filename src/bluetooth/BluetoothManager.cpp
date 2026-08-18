@@ -87,6 +87,11 @@ QObject* BluetoothManager::uiObject()
     return this;
 }
 
+DeviceRegistry* BluetoothManager::deviceRegistry() const noexcept
+{
+    return registry_;
+}
+
 void BluetoothManager::connectClientSignals()
 {
     if (signalsWired_ || client_ == nullptr) {

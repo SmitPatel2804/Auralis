@@ -2,7 +2,7 @@
 
 Auralis is a Linux desktop application for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
 
-This repository currently contains **Phase 3**: the Phase 1 foundation, Phase 2 BlueZ discovery, and Phase 3 Bluetooth **device management** (pair/trust/connect/disconnect/forget/reconnect + Agent1).
+This repository currently contains **Phase 4**: Phase 1 foundation, Phase 2 BlueZ discovery, Phase 3 Bluetooth device management, and Phase 4 **PipeWire endpoint observation** with Bluetooth correlation. Audio routing is not implemented.
 
 ## Current status
 
@@ -11,10 +11,13 @@ Phase 0: Complete
 Phase 1: Implemented
 Phase 2: Implemented
 Phase 3: Implemented
-Phase 4+: Not implemented
+Phase 4: Implemented
+Phase 5+: Not implemented
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
+
+`PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. It does **not** mean a route exists.
 
 ## Requirements
 
@@ -41,7 +44,7 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-Configure fails if Qt 6 DBus is missing.
+Configure fails if Qt 6 DBus or `libpipewire-0.3` development files are missing.
 
 ## Run
 
@@ -56,6 +59,8 @@ QT_QPA_PLATFORM=offscreen ./build/apps/desktop/auralis-desktop
 ```
 
 In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, and per-device **Pair / Trust / Connect / Disconnect / Reconnect / Forget** actions. Pairing prompts appear when BlueZ invokes the exported Agent1.
+
+The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
 ## Test
 
@@ -73,19 +78,27 @@ Destructive forget in live tests requires `AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_T
 
 If that env var is set and BlueZ/system bus is missing, the live test fails with a clear message.
 
+Live PipeWire tests are skipped unless explicitly enabled:
+
+```bash
+AURALIS_RUN_PIPEWIRE_INTEGRATION=1 ctest --test-dir build -R tst_PipeWireLiveIntegration --output-on-failure
+```
+
+Add `AURALIS_EXPECT_DEVICE_ADDRESS=AA:BB:CC:DD:EE:FF` to also require a mapped Bluetooth audio endpoint.
+
 ## Architecture summary
 
 | Module | Target | Current role |
 |---|---|---|
 | `auralis-core` | Lifecycle, logging, configuration, `ApplicationCore` | Implemented |
 | `auralis-bluetooth` | BlueZ D-Bus discovery + device lifecycle (QtDBus / system bus) | Phase 3 |
-| `auralis-audio` | Future PipeWire manager | Lifecycle stub |
+| `auralis-audio` | Native PipeWire graph observation + endpoint registry | Phase 4 |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
 | `auralis-session` | Future multi-device sessions | Lifecycle stub |
-| `auralis-ui` | QML resources | Status + discovery + device actions |
+| `auralis-ui` | QML resources | Status + discovery + device actions + endpoints |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 
-QML uses `AppCore.bluetooth` for scan controls and the device list. QML never talks D-Bus.
+QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` for PipeWire status and endpoints. QML never talks D-Bus or native PipeWire.
 
 See [docs/architecture.md](docs/architecture.md).
 
@@ -93,10 +106,11 @@ See [docs/architecture.md](docs/architecture.md).
 
 | Location | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Modules, BlueZ discovery, QML exposure |
+| [docs/architecture.md](docs/architecture.md) | Modules, BlueZ, PipeWire observation, QML exposure |
 | [docs/phase-1-validation.md](docs/phase-1-validation.md) | Phase 1 clean-room checklist |
 | [docs/phase-2-validation.md](docs/phase-2-validation.md) | Phase 2 discovery validation |
 | [docs/phase-3-validation.md](docs/phase-3-validation.md) | Phase 3 device management validation |
+| [docs/phase-4-validation.md](docs/phase-4-validation.md) | Phase 4 PipeWire endpoint validation |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/) | Detailed phased development plan |
 | [docs/diagrams/](docs/diagrams/) | Architecture diagrams |
@@ -106,8 +120,8 @@ See [docs/architecture.md](docs/architecture.md).
 
 The current application does **not**:
 
-- enumerate PipeWire nodes, ports, or links;
 - route or duplicate audio;
+- create PipeWire links;
 - create multi-device sessions;
 - call `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, or `pw-cli`.
 

@@ -1,4 +1,4 @@
-# Auralis Architecture — Phase 3
+# Auralis Architecture — Phase 4
 
 ## Target architecture
 
@@ -20,7 +20,7 @@
           v                          v
 +-------------------+      +-----------------------+
 | BluetoothManager  |      | PipeWireManager       |
-| BlueZ / D-Bus     |      | Audio Graph Control   |
+| BlueZ / D-Bus     |      | Graph observation     |
 +---------+---------+      +-----------+-----------+
           |                            |
           v                            v
@@ -29,7 +29,7 @@
 +---------+---------+      +-----------+-----------+
 ```
 
-Phase 3 extends Bluetooth with device lifecycle operations and an exported `org.bluez.Agent1`. PipeWire, high-level DeviceManager, and sessions remain stubs.
+Phase 4 observes the PipeWire graph, classifies playback/capture endpoints, and correlates Bluetooth audio nodes with the Phase 3 `DeviceRegistry`. Routing, link creation, DeviceManager, and sessions remain unimplemented.
 
 ## Bluetooth stack
 
@@ -47,10 +47,48 @@ QML
 ```
 
 - Production talks to `org.bluez` only through QtDBus. There is no `bluetoothctl` backend.
-- BlueZ properties (`Paired`, `Trusted`, `Connected`, `UUIDs`, …) are authoritative.
-- Auralis tracks transient `DeviceOperation` state only; UI logical state is derived.
-- Per-device generation tokens drop stale D-Bus callbacks after forget/removal.
-- Agent replies are async via delayed D-Bus replies; QML uses `pendingPairingRequest`.
+- BlueZ properties (`Paired`, `Trusted`, `Connected`, `UUIDs`, …) are authoritative for Bluetooth state.
+- A Bluetooth device and an `AudioEndpoint` are different domain objects.
+
+## PipeWire stack
+
+```text
+QML
+  -> AppCore.audio (PipeWireManager)
+       -> AudioEndpointListModel
+       -> AudioEndpointRegistry
+       -> EndpointResolver  --non-owning--> DeviceRegistry
+       -> PipeWireObjectStore
+       -> PipeWireConnection (pw_thread_loop)
+            -> pw_context / pw_core / pw_registry
+```
+
+### Threading
+
+- PipeWire callbacks run on `pw_thread_loop` with the loop lock held.
+- Callbacks copy `id` / interface / `spa_dict` into value snapshots and return.
+- `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` delivers events to the Qt thread that owns `PipeWireManager`.
+- Shutdown bumps a generation token, stops the thread loop **without** holding the lock, then drains posted Qt events so callbacks cannot mutate destroyed objects.
+
+### Endpoint identity
+
+PipeWire global IDs are runtime-scoped. Logical endpoint IDs are:
+
+- Bluetooth: `bt:{normalizedAddress}:{direction}:{profileOrNodeName}`
+- Other: `pw:{serial|nodeName}:{direction}:{profileOrNodeName}`
+
+When a node is removed from the graph, the endpoint is **removed** from the current registry (not left Available).
+
+### Bluetooth mapping priority
+
+1. Normalized `api.bluez5.address`
+2. Exact `api.bluez5.path` / `api.bluez5.device` vs BlueZ `objectPath`
+3. Node `device.id` → PipeWire Device that maps by address/path
+4. Unique exact name/alias fallback only if a single Phase 3 device matches
+
+Ambiguous weak matches stay unresolved. The endpoint still exists.
+
+BlueZ `Connected=true` does not fabricate endpoint availability. The endpoint appears only after PipeWire exposes a classified node.
 
 ## Module responsibilities
 
@@ -58,13 +96,13 @@ QML
 |---|---|
 | `auralis-core` | `ServiceStatus`, `Logger`, `ConfigurationManager`, `ApplicationCore` |
 | `auralis-bluetooth` | BlueZ discovery + lifecycle: client, registry, model, agent, reconnect |
-| `auralis-audio` | Future PipeWire data/control plane. Phase 1 stub. |
-| `auralis-devices` | Future high-level Auralis device state. Not equal to a BlueZ Device1 object. |
+| `auralis-audio` | Native PipeWire observation, endpoint registry, Bluetooth correlation |
+| `auralis-devices` | Future high-level device state. Not equal to a BlueZ Device1 object. |
 | `auralis-session` | Future multi-device session orchestration. |
-| `auralis-ui` | QML module (`Auralis.Ui`) with status, discovery, device actions, pairing prompt. |
+| `auralis-ui` | QML module (`Auralis.Ui`) with status, devices, pairing, audio endpoints. |
 | `auralis-desktop` | Process bootstrap. |
 
-`auralis-bluetooth` is the only target that links `Qt6::DBus`.
+`auralis-bluetooth` is the only target that links `Qt6::DBus`. `auralis-audio` links `libpipewire-0.3` and may observe `DeviceRegistry` (Bluetooth does not depend on audio).
 
 ## Dependency direction
 
@@ -80,10 +118,12 @@ ApplicationCore
   +--> DeviceManager (stub)
   +--> SessionManager (stub)
   +--> BluetoothManager (IBluetoothManager + QObject uiObject)
-  +--> PipeWireManager interface/stub
+  +--> PipeWireManager (IPipeWireManager + QObject uiObject)
   +--> ConfigurationManager
   +--> Logger
 ```
+
+PipeWire initialize failure is non-fatal: ApplicationCore can still be Ready while `AppCore.audio` shows Error/Stopped.
 
 ## QML backend exposure
 
@@ -91,7 +131,7 @@ ApplicationCore
 qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 ```
 
-QML uses `AppCore.bluetooth` for scan controls, the device list, lifecycle invokables, and `pendingPairingRequest`. Device id for invokables is the model `objectPath` role. QML does not own the manager and never talks D-Bus.
+QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connection state and the endpoint list. Device id for Bluetooth invokables is the model `objectPath` role. QML never talks D-Bus or native PipeWire.
 
 ## Phase 3 operations
 
@@ -105,4 +145,4 @@ QML uses `AppCore.bluetooth` for scan controls, the device list, lifecycle invok
 
 Auto-reconnect is bounded via `ReconnectPolicy` and suppressed after explicit disconnect/forget.
 
-See [docs/phase-3-validation.md](phase-3-validation.md) for validation steps and environment variables.
+See [docs/phase-3-validation.md](phase-3-validation.md) and [docs/phase-4-validation.md](phase-4-validation.md).

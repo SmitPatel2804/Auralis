@@ -7,8 +7,11 @@ All project documentation lives here. Directory READMEs under `config/` and `too
 | Document | Purpose |
 |---|---|
 | [../README.md](../README.md) | Build, run, test, and Phase 1 status |
-| [architecture.md](architecture.md) | Phase 1 modules, dependency direction, lifecycle, QML exposure |
+| [architecture.md](architecture.md) | Modules, BlueZ, PipeWire observation, QML exposure |
 | [phase-1-validation.md](phase-1-validation.md) | Clean-room build/test checklist for Phase 1 |
+| [phase-2-validation.md](phase-2-validation.md) | Phase 2 discovery validation |
+| [phase-3-validation.md](phase-3-validation.md) | Phase 3 device management validation |
+| [phase-4-validation.md](phase-4-validation.md) | Phase 4 PipeWire endpoint validation |
 
 ## Product specification
 

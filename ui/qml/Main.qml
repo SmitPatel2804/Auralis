@@ -7,10 +7,11 @@ ApplicationWindow {
     id: root
     visible: true
     width: 860
-    height: 820
+    height: 980
     title: "Auralis"
 
     readonly property QtObject bluetooth: AppCore.bluetooth
+    readonly property QtObject audio: AppCore.audio
 
     Dialog {
         id: servicesDialog
@@ -79,11 +80,24 @@ ApplicationWindow {
         StatusRow {
             label: "Audio"
             status: AppCore.audioStatus
+            healthy: AppCore.audioStatus === "Ready"
         }
 
         StatusRow {
             label: "PipeWire"
-            status: AppCore.pipeWireStatus
+            status: root.audio && root.audio.connectionStateText.length > 0
+                    ? root.audio.connectionStateText
+                    : AppCore.pipeWireStatus
+            healthy: root.audio ? root.audio.connected : false
+        }
+
+        Text {
+            visible: root.audio && root.audio.lastError.length > 0
+            text: root.audio ? root.audio.lastError : ""
+            font.pixelSize: 13
+            color: "#c62828"
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
 
         Text {
@@ -225,6 +239,10 @@ ApplicationWindow {
                     required property bool canCancelOperation
                     required property var uuids
 
+                    readonly property string audioStatus: root.audio
+                            ? (root.audio.graphRevision, root.audio.audioStatusForDevice(wrapper.objectPath))
+                            : ""
+
                     width: deviceList.width
                     height: row.implicitHeight
 
@@ -254,6 +272,7 @@ ApplicationWindow {
                         canReconnect: wrapper.canReconnect
                         canCancelOperation: wrapper.canCancelOperation
                         uuids: wrapper.uuids
+                        audioStatus: wrapper.audioStatus
 
                         onPairRequested: root.bluetooth.pairDevice(wrapper.objectPath)
                         onCancelPairingRequested: root.bluetooth.cancelPairing(wrapper.objectPath)
@@ -284,6 +303,83 @@ ApplicationWindow {
                 visible: deviceList.count === 0
                 anchors.centerIn: parent
                 text: "No devices yet. Start a scan to discover nearby Bluetooth devices."
+                color: "#666666"
+            }
+        }
+
+        Text {
+            text: "Audio Endpoints"
+            font.pixelSize: 18
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: "#cccccc"
+        }
+
+        Text {
+            visible: AppCore.showDeveloperStatus && root.audio
+            text: root.audio ? root.audio.diagnosticsText : ""
+            font.pixelSize: 11
+            color: "#666666"
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 160
+
+            ListView {
+                id: endpointList
+                anchors.fill: parent
+                clip: true
+                spacing: 10
+                boundsBehavior: Flickable.StopAtBounds
+                model: root.audio ? root.audio.endpoints : null
+
+                delegate: Item {
+                    id: endpointWrapper
+                    required property string name
+                    required property string direction
+                    required property bool available
+                    required property string transport
+                    required property string profile
+                    required property string codec
+                    required property bool mapped
+                    required property string bluetoothDisplayName
+                    required property string bluetoothAddress
+                    required property int pipeWireObjectId
+
+                    width: endpointList.width
+                    height: endpointRow.implicitHeight
+
+                    EndpointRow {
+                        id: endpointRow
+                        width: parent.width
+                        name: endpointWrapper.name
+                        direction: endpointWrapper.direction
+                        available: endpointWrapper.available
+                        transport: endpointWrapper.transport
+                        profile: endpointWrapper.profile
+                        codec: endpointWrapper.codec
+                        mapped: endpointWrapper.mapped
+                        bluetoothDisplayName: endpointWrapper.bluetoothDisplayName
+                        bluetoothAddress: endpointWrapper.bluetoothAddress
+                        pipeWireObjectId: endpointWrapper.pipeWireObjectId
+                        showDeveloperDetail: AppCore.showDeveloperStatus
+                    }
+                }
+            }
+
+            Text {
+                visible: endpointList.count === 0
+                anchors.centerIn: parent
+                text: root.audio && root.audio.connected
+                      ? "No audio endpoints classified yet."
+                      : "PipeWire endpoints appear here once the audio graph is connected."
                 color: "#666666"
             }
         }

@@ -81,6 +81,7 @@ public:
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
 
+    DeviceRegistry* deviceRegistry() const noexcept;
     void setReconnectPolicyConfig(const ReconnectPolicyConfig& config);
 
 signals:

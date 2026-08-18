@@ -74,12 +74,14 @@ bool ApplicationCore::initialize()
     qCInfo(auralisCore) << "Bluetooth service skeleton initialized";
 
     if (!services_.pipeWire->initialize()) {
-        qCCritical(auralisCore) << "PipeWire service skeleton initialization failed";
-        rollbackInitializedServices();
-        setStatus(ServiceStatus::Error);
-        return false;
+        qCWarning(auralisCore) << "PipeWire service failed to start; continuing without a live audio graph";
+    } else {
+        qCInfo(auralisCore) << "PipeWire service initialized";
     }
-    qCInfo(auralisCore) << "PipeWire service skeleton initialized";
+    if (QObject* audioUi = services_.pipeWire->uiObject()) {
+        QObject::connect(audioUi, SIGNAL(statusChanged()), this, SIGNAL(statusChanged()));
+        QObject::connect(audioUi, SIGNAL(connectionStateChanged()), this, SIGNAL(statusChanged()));
+    }
 
     if (!services_.devices->initialize()) {
         qCCritical(auralisCore) << "Device service skeleton initialization failed";
@@ -135,8 +137,12 @@ QObject* ApplicationCore::bluetooth() const
 
 QString ApplicationCore::audioStatus() const
 {
-    // Phase 1: audio service readiness is derived from the PipeWire skeleton.
     return pipeWireStatus();
+}
+
+QObject* ApplicationCore::audio() const
+{
+    return services_.pipeWire ? services_.pipeWire->uiObject() : nullptr;
 }
 
 QString ApplicationCore::pipeWireStatus() const

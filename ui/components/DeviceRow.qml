@@ -28,6 +28,7 @@ Column {
     property bool canReconnect: false
     property bool canCancelOperation: false
     property var uuids: []
+    property string audioStatus: ""
 
     signal pairRequested()
     signal cancelPairingRequested()
@@ -78,6 +79,13 @@ Column {
               + (root.servicesResolved ? "Services resolved" : "")
         font.pixelSize: 12
         color: "#666666"
+    }
+
+    Text {
+        visible: root.audioStatus.length > 0
+        text: "Audio: " + root.audioStatus
+        font.pixelSize: 12
+        color: root.audioStatus === "Available" ? "#2e7d32" : "#1565c0"
     }
 
     Text {

@@ -3,18 +3,36 @@
 
 #include <QtTest>
 
+using auralis::audio::PipeWireConnectionState;
+using auralis::audio::PipeWireManager;
+using auralis::core::ServiceStatus;
+
 class TstPipeWireManager : public QObject {
     Q_OBJECT
 
 private slots:
-    void lifecycle()
+    void lifecycleWithoutRequiringLiveServer()
     {
-        auralis::audio::PipeWireManager manager;
-        QVERIFY(manager.status() == auralis::core::ServiceStatus::Uninitialized);
-        QVERIFY(manager.initialize());
-        QVERIFY(manager.status() == auralis::core::ServiceStatus::Ready);
+        PipeWireManager manager;
+        QVERIFY(manager.status() == ServiceStatus::Uninitialized);
+        QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
+        const bool started = manager.initialize();
+        QVERIFY(started);
+        QVERIFY(manager.status() != ServiceStatus::Uninitialized);
         manager.shutdown();
-        QVERIFY(manager.status() == auralis::core::ServiceStatus::Uninitialized);
+        QVERIFY(manager.status() == ServiceStatus::Uninitialized);
+        QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
+        manager.shutdown();
+    }
+
+    void repeatedStartStopIsSafe()
+    {
+        PipeWireManager manager;
+        QVERIFY(manager.initialize());
+        manager.shutdown();
+        QVERIFY(manager.initialize());
+        manager.shutdown();
+        QCOMPARE(manager.endpointCount(), 0);
     }
 };
 

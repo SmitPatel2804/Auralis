@@ -1,2 +1,13 @@
 auralis_add_test(tst_PipeWireManager tst_PipeWireManager.cpp)
 target_link_libraries(tst_PipeWireManager PRIVATE auralis-audio)
+
+auralis_add_test(tst_PipeWireProperties tst_PipeWireProperties.cpp)
+target_link_libraries(tst_PipeWireProperties PRIVATE auralis-audio)
+
+auralis_add_test(tst_AudioEndpoints tst_AudioEndpoints.cpp)
+target_link_libraries(tst_AudioEndpoints PRIVATE auralis-audio)
+target_include_directories(tst_AudioEndpoints PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_EndpointResolver tst_EndpointResolver.cpp)
+target_link_libraries(tst_EndpointResolver PRIVATE auralis-audio)
+target_include_directories(tst_EndpointResolver PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

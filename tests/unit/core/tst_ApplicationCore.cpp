@@ -124,7 +124,7 @@ private slots:
         QVERIFY(!sessionsPtr->initializeCalled());
     }
 
-    void pipeWireFailureRollsBackBluetooth()
+    void pipeWireFailureDoesNotAbortApplication()
     {
         auto bluetooth = std::make_unique<FakeBluetoothManager>(true);
         auto pipeWire = std::make_unique<FakePipeWireManager>(false);
@@ -139,13 +139,14 @@ private slots:
         services.sessions = std::make_unique<FakeSessionManager>(true);
 
         ApplicationCore core(std::move(services));
-        QVERIFY(!core.initialize());
-        QCOMPARE(core.coreStatus(), QStringLiteral("Error"));
+        QVERIFY(core.initialize());
+        QCOMPARE(core.coreStatus(), QStringLiteral("Ready"));
         QVERIFY(bluetoothPtr->initializeCalled());
-        QVERIFY(bluetoothPtr->shutdownCalled());
+        QVERIFY(!bluetoothPtr->shutdownCalled());
         QVERIFY(pipeWirePtr->initializeCalled());
-        QVERIFY(pipeWirePtr->shutdownCalled());
-        QCOMPARE(core.bluetoothStatus(), QStringLiteral("Uninitialized"));
+        QVERIFY(!pipeWirePtr->shutdownCalled());
+        QCOMPARE(core.bluetoothStatus(), QStringLiteral("Ready"));
+        QCOMPARE(core.pipeWireStatus(), QStringLiteral("Error"));
     }
 
     void deviceFailureSetsError()

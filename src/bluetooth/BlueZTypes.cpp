@@ -62,4 +62,43 @@ QString addressIndexKey(const QString& adapterPath, const QString& address, cons
     return adapterPath + QLatin1Char('|') + address.toUpper() + QLatin1Char('|') + addressType.toLower();
 }
 
+std::optional<QString> normalizeBluetoothAddress(const QString& raw)
+{
+    QString cleaned = raw.trimmed().toUpper();
+    if (cleaned.isEmpty()) {
+        return std::nullopt;
+    }
+    cleaned.replace(QLatin1Char('-'), QLatin1Char(':'));
+    cleaned.replace(QLatin1Char('_'), QLatin1Char(':'));
+    if (!cleaned.contains(QLatin1Char(':'))) {
+        if (cleaned.size() != 12) {
+            return std::nullopt;
+        }
+        QString grouped;
+        grouped.reserve(17);
+        for (int i = 0; i < 12; i += 2) {
+            if (i > 0) {
+                grouped.append(QLatin1Char(':'));
+            }
+            grouped.append(cleaned.mid(i, 2));
+        }
+        cleaned = grouped;
+    }
+    const QStringList parts = cleaned.split(QLatin1Char(':'));
+    if (parts.size() != 6) {
+        return std::nullopt;
+    }
+    for (const QString& part : parts) {
+        if (part.size() != 2) {
+            return std::nullopt;
+        }
+        bool ok = false;
+        part.toUInt(&ok, 16);
+        if (!ok) {
+            return std::nullopt;
+        }
+    }
+    return cleaned;
+}
+
 } // namespace auralis::bluetooth

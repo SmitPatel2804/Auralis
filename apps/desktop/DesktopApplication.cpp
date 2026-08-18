@@ -2,6 +2,7 @@
 
 #include <auralis/audio/PipeWireManager.h>
 #include <auralis/bluetooth/BluetoothManager.h>
+#include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/core/ApplicationCore.h>
 #include <auralis/core/Logger.h>
 #include <auralis/core/LoggingCategories.h>
@@ -25,8 +26,10 @@ auralis::core::ApplicationServices makeProductionServices()
 {
     auralis::core::ApplicationServices services;
     services.configuration = std::make_unique<auralis::core::ConfigurationManager>();
-    services.bluetooth = std::make_unique<auralis::bluetooth::BluetoothManager>();
-    services.pipeWire = std::make_unique<auralis::audio::PipeWireManager>();
+    auto bluetooth = std::make_unique<auralis::bluetooth::BluetoothManager>();
+    auralis::bluetooth::DeviceRegistry* registry = bluetooth->deviceRegistry();
+    services.bluetooth = std::move(bluetooth);
+    services.pipeWire = std::make_unique<auralis::audio::PipeWireManager>(registry);
     services.devices = std::make_unique<auralis::devices::DeviceManager>();
     services.sessions = std::make_unique<auralis::session::SessionManager>();
     return services;
