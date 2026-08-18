@@ -2,6 +2,7 @@
 
 #include <auralis/audio/AudioEndpointListModel.h>
 #include <auralis/audio/AudioEndpointRegistry.h>
+#include <auralis/audio/AudioRouter.h>
 #include <auralis/audio/EndpointResolver.h>
 #include <auralis/audio/PipeWireObjectStore.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
@@ -26,6 +27,7 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
     , model_(new AudioEndpointListModel(endpoints_.get(), this))
     , guard_(std::make_shared<Guard>())
 {
+    router_ = new AudioRouter(store_.get(), endpoints_.get(), connection_.get(), this);
     wireBluetoothRegistry();
 }
 
@@ -127,6 +129,16 @@ QAbstractItemModel* PipeWireManager::endpoints() const
     return model_;
 }
 
+QObject* PipeWireManager::router() const
+{
+    return router_;
+}
+
+AudioRouter* PipeWireManager::audioRouter() const noexcept
+{
+    return router_;
+}
+
 AudioEndpointRegistry* PipeWireManager::endpointRegistry() const noexcept
 {
     return endpoints_.get();
@@ -200,6 +212,9 @@ void PipeWireManager::shutdown()
     qCInfo(auralisAudio) << "PipeWire Stopping";
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
+    if (router_ != nullptr) {
+        router_->shutdown();
+    }
     connection_->stop();
     if (QCoreApplication::instance() != nullptr) {
         QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
@@ -227,8 +242,14 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         if (event.state == PipeWireConnectionState::Connected) {
             status_ = auralis::core::ServiceStatus::Ready;
             emit statusChanged();
+            if (router_ != nullptr) {
+                router_->handleConnectionState(event.state, initialSyncComplete_);
+            }
         } else if (event.state == PipeWireConnectionState::Error) {
             status_ = auralis::core::ServiceStatus::Error;
+            if (router_ != nullptr) {
+                router_->handleConnectionState(event.state, false);
+            }
             endpoints_->clear();
             store_->clear();
             initialSyncComplete_ = false;
@@ -255,6 +276,9 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
     case PipeWireClientEvent::Type::InitialSyncDone:
         initialSyncComplete_ = true;
         refreshGraph();
+        if (router_ != nullptr) {
+            router_->handleConnectionState(connectionState_, true);
+        }
         qCInfo(auralisAudio) << "PipeWire initial registry sync complete" << diagnosticsText();
         break;
     }
@@ -284,6 +308,9 @@ void PipeWireManager::refreshGraph()
         return;
     }
     refreshEndpointsFromStore(*store_, *endpoints_, *resolver_);
+    if (router_ != nullptr) {
+        router_->handleGraphChanged();
+    }
     bumpGraph();
 }
 

@@ -1,5 +1,7 @@
 #include <auralis/audio/PipeWireObjectStore.h>
 
+#include <algorithm>
+
 namespace auralis::audio {
 
 bool PipeWireObjectStore::occupiedByOtherKind(quint32 globalId, PipeWireObjectKind kind) const
@@ -8,6 +10,12 @@ bool PipeWireObjectStore::occupiedByOtherKind(quint32 globalId, PipeWireObjectKi
         return true;
     }
     if (nodes_.contains(globalId) && kind != PipeWireObjectKind::Node) {
+        return true;
+    }
+    if (ports_.contains(globalId) && kind != PipeWireObjectKind::Port) {
+        return true;
+    }
+    if (links_.contains(globalId) && kind != PipeWireObjectKind::Link) {
         return true;
     }
     const auto extra = extras_.constFind(globalId);
@@ -35,18 +43,20 @@ bool PipeWireObjectStore::upsert(const PipeWireObjectSnapshot& snapshot)
         extras_.remove(snapshot.globalId);
         return true;
     }
-    case PipeWireObjectKind::Port:
-        if (!extras_.contains(snapshot.globalId)) {
-            extras_.insert(snapshot.globalId, snapshot.kind);
-            ++portCount_;
-        }
+    case PipeWireObjectKind::Port: {
+        PipeWirePortInfo current = ports_.value(snapshot.globalId);
+        mergePortInfo(current, snapshot);
+        ports_.insert(snapshot.globalId, current);
+        extras_.remove(snapshot.globalId);
         return true;
-    case PipeWireObjectKind::Link:
-        if (!extras_.contains(snapshot.globalId)) {
-            extras_.insert(snapshot.globalId, snapshot.kind);
-            ++linkCount_;
-        }
+    }
+    case PipeWireObjectKind::Link: {
+        PipeWireLinkInfo current = links_.value(snapshot.globalId);
+        mergeLinkInfo(current, snapshot);
+        links_.insert(snapshot.globalId, current);
+        extras_.remove(snapshot.globalId);
         return true;
+    }
     case PipeWireObjectKind::Metadata:
         if (!extras_.contains(snapshot.globalId)) {
             extras_.insert(snapshot.globalId, snapshot.kind);
@@ -73,17 +83,17 @@ bool PipeWireObjectStore::remove(quint32 globalId)
     if (nodes_.remove(globalId) > 0) {
         return true;
     }
+    if (ports_.remove(globalId) > 0) {
+        return true;
+    }
+    if (links_.remove(globalId) > 0) {
+        return true;
+    }
     const auto it = extras_.constFind(globalId);
     if (it == extras_.cend()) {
         return false;
     }
     switch (it.value()) {
-    case PipeWireObjectKind::Port:
-        --portCount_;
-        break;
-    case PipeWireObjectKind::Link:
-        --linkCount_;
-        break;
     case PipeWireObjectKind::Metadata:
         --metadataCount_;
         break;
@@ -101,9 +111,9 @@ void PipeWireObjectStore::clear()
 {
     devices_.clear();
     nodes_.clear();
+    ports_.clear();
+    links_.clear();
     extras_.clear();
-    portCount_ = 0;
-    linkCount_ = 0;
     metadataCount_ = 0;
     otherCount_ = 0;
 }
@@ -121,6 +131,24 @@ const PipeWireNodeInfo* PipeWireObjectStore::node(quint32 globalId) const
 {
     const auto it = nodes_.constFind(globalId);
     if (it == nodes_.cend()) {
+        return nullptr;
+    }
+    return &it.value();
+}
+
+const PipeWirePortInfo* PipeWireObjectStore::port(quint32 globalId) const
+{
+    const auto it = ports_.constFind(globalId);
+    if (it == ports_.cend()) {
+        return nullptr;
+    }
+    return &it.value();
+}
+
+const PipeWireLinkInfo* PipeWireObjectStore::link(quint32 globalId) const
+{
+    const auto it = links_.constFind(globalId);
+    if (it == links_.cend()) {
         return nullptr;
     }
     return &it.value();
@@ -146,6 +174,40 @@ QVector<PipeWireNodeInfo> PipeWireObjectStore::nodes() const
     return result;
 }
 
+QVector<PipeWirePortInfo> PipeWireObjectStore::ports() const
+{
+    QVector<PipeWirePortInfo> result;
+    result.reserve(static_cast<qsizetype>(ports_.size()));
+    for (const PipeWirePortInfo& port : ports_) {
+        result.push_back(port);
+    }
+    return result;
+}
+
+QVector<PipeWireLinkInfo> PipeWireObjectStore::links() const
+{
+    QVector<PipeWireLinkInfo> result;
+    result.reserve(static_cast<qsizetype>(links_.size()));
+    for (const PipeWireLinkInfo& link : links_) {
+        result.push_back(link);
+    }
+    return result;
+}
+
+QVector<PipeWirePortInfo> PipeWireObjectStore::portsForNode(quint32 nodeId) const
+{
+    QVector<PipeWirePortInfo> result;
+    for (const PipeWirePortInfo& port : ports_) {
+        if (port.nodeId.value_or(0) == nodeId) {
+            result.push_back(port);
+        }
+    }
+    std::sort(result.begin(), result.end(), [](const PipeWirePortInfo& left, const PipeWirePortInfo& right) {
+        return left.globalId < right.globalId;
+    });
+    return result;
+}
+
 int PipeWireObjectStore::deviceCount() const noexcept
 {
     return static_cast<int>(devices_.size());
@@ -158,12 +220,12 @@ int PipeWireObjectStore::nodeCount() const noexcept
 
 int PipeWireObjectStore::portCount() const noexcept
 {
-    return portCount_;
+    return static_cast<int>(ports_.size());
 }
 
 int PipeWireObjectStore::linkCount() const noexcept
 {
-    return linkCount_;
+    return static_cast<int>(links_.size());
 }
 
 int PipeWireObjectStore::metadataCount() const noexcept

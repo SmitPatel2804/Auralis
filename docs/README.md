@@ -14,19 +14,20 @@ All project documentation lives here. Directory READMEs under `config/` and `too
 | Architecture diagrams | [diagrams/](diagrams/README.md) |
 | Historical implementation prompts | [prompts/](prompts/README.md) |
 
-`architecture.md` describes the **as-built** system (Phase 4). The specification pack describes **product intent**, including routing and multi-device sessions that are not implemented yet.
+`architecture.md` describes the **as-built** system (Phase 5). The specification pack describes **product intent**, including multi-device sessions that are not implemented yet.
 
 ## Current implementation
 
 | Document | Purpose |
 |---|---|
-| [../README.md](../README.md) | Build, run, test, and Phase 4 status |
-| [architecture.md](architecture.md) | Modules, BlueZ, PipeWire observation, QML exposure |
+| [../README.md](../README.md) | Build, run, test, and Phase 5 status |
+| [architecture.md](architecture.md) | Modules, BlueZ, PipeWire, AudioRouter, QML exposure |
 | [validation/phase-1.md](validation/phase-1.md) | Phase 1 foundation checklist |
 | [validation/phase-2.md](validation/phase-2.md) | Phase 2 discovery validation |
 | [validation/phase-3.md](validation/phase-3.md) | Phase 3 device management validation |
 | [validation/phase-4.md](validation/phase-4.md) | Phase 4 PipeWire endpoint validation |
 | [validation/phase-4-audit.md](validation/phase-4-audit.md) | Independent Phase 4 verification record |
+| [phase-5-validation.md](phase-5-validation.md) | Phase 5 routing validation |
 
 ## Product specification
 

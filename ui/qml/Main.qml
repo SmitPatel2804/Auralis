@@ -7,7 +7,7 @@ ApplicationWindow {
     id: root
     visible: true
     width: 860
-    height: 980
+    height: 1180
     title: "Auralis"
 
     readonly property QtObject bluetooth: AppCore.bluetooth
@@ -382,6 +382,23 @@ ApplicationWindow {
                       : "PipeWire endpoints appear here once the audio graph is connected."
                 color: "#666666"
             }
+        }
+
+        Text {
+            text: "Audio Routing"
+            font.pixelSize: 18
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: "#cccccc"
+        }
+
+        RoutePanel {
+            Layout.fillWidth: true
+            audio: root.audio
+            showDeveloperDetail: AppCore.showDeveloperStatus
         }
     }
 }

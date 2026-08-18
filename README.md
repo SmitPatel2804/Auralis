@@ -2,7 +2,7 @@
 
 Auralis is a Linux desktop application for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
 
-This repository currently contains **Phase 4**: Phase 1 foundation, Phase 2 BlueZ discovery, Phase 3 Bluetooth device management, and Phase 4 **PipeWire endpoint observation** with Bluetooth correlation. Audio routing is not implemented.
+This repository currently contains **Phase 5**: Phase 1 foundation, Phase 2 BlueZ discovery, Phase 3 Bluetooth device management, Phase 4 PipeWire endpoint observation, and Phase 5 **additive native PipeWire routing**.
 
 ## Current status
 
@@ -12,12 +12,13 @@ Phase 1: Implemented
 Phase 2: Implemented
 Phase 3: Implemented
 Phase 4: Implemented
-Phase 5+: Not implemented
+Phase 5: Implemented
+Phase 6+: Not implemented
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
 
-`PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. It does **not** mean a route exists.
+`PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. An **Active** route in the Audio Routing panel means Auralis-owned links exist for the current selection.
 
 ## Requirements
 
@@ -62,6 +63,8 @@ In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, an
 
 The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
+The **Audio Routing** panel selects a playback source and one or more playback endpoints, then Activate/Deactivate. Volume/mute appear when the destinations support `SPA_PROP_volume`.
+
 ## Test
 
 ```bash
@@ -86,19 +89,27 @@ AURALIS_RUN_PIPEWIRE_INTEGRATION=1 ctest --test-dir build -R tst_PipeWireLiveInt
 
 Add `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"` to also require a mapped Bluetooth audio endpoint.
 
+Live audio routing tests are skipped unless explicitly enabled:
+
+```bash
+AURALIS_RUN_AUDIO_ROUTING_INTEGRATION=1 ctest --test-dir build -R tst_AudioRoutingLiveIntegration --output-on-failure
+```
+
+Quote `AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:9D:B4:22"` to prefer that mapped Bluetooth sink as the live destination.
+
 ## Architecture summary
 
 | Module | Target | Current role |
 |---|---|---|
 | `auralis-core` | Lifecycle, logging, configuration, `ApplicationCore` | Implemented |
 | `auralis-bluetooth` | BlueZ D-Bus discovery + device lifecycle (QtDBus / system bus) | Phase 3 |
-| `auralis-audio` | Native PipeWire graph observation + endpoint registry | Phase 4 |
+| `auralis-audio` | Native PipeWire graph + additive routing (`AudioRouter`) | Phase 5 |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
 | `auralis-session` | Future multi-device sessions | Lifecycle stub |
-| `auralis-ui` | QML resources | Status + discovery + device actions + endpoints |
+| `auralis-ui` | QML resources | Status + discovery + device actions + endpoints + routing |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 
-QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` for PipeWire status and endpoints. QML never talks D-Bus or native PipeWire.
+QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` (including `AppCore.audio.router`) for PipeWire status, endpoints, and routing. QML never talks D-Bus or native PipeWire.
 
 See [docs/architecture.md](docs/architecture.md). The full documentation map is in [docs/README.md](docs/README.md).
 
@@ -107,8 +118,9 @@ See [docs/architecture.md](docs/architecture.md). The full documentation map is 
 | Location | Contents |
 |---|---|
 | [docs/README.md](docs/README.md) | Documentation hub |
-| [docs/architecture.md](docs/architecture.md) | As-built modules, BlueZ, PipeWire observation, QML exposure |
+| [docs/architecture.md](docs/architecture.md) | As-built modules, BlueZ, PipeWire observation, AudioRouter, QML exposure |
 | [docs/validation/](docs/validation/README.md) | Phase exit gates and the Phase 4 audit |
+| [docs/phase-5-validation.md](docs/phase-5-validation.md) | Phase 5 routing validation |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/README.md) | Detailed phased development plan |
 | [docs/diagrams/](docs/diagrams/README.md) | Architecture diagrams |
@@ -118,10 +130,11 @@ See [docs/architecture.md](docs/architecture.md). The full documentation map is 
 
 The current application does **not**:
 
-- route or duplicate audio;
-- create PipeWire links;
+- destroy WirePlumber or other clients' PipeWire links (AdditiveRouting);
+- hijack or replace WirePlumber session policy;
 - create multi-device sessions;
-- call `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, or `pw-cli`.
+- put `pw_stream` in the production application (test binary only);
+- call `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, `pw-cli`, or `pw-link`.
 
 ## License
 

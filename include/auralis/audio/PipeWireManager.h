@@ -19,6 +19,7 @@ namespace auralis::audio {
 
 class AudioEndpointListModel;
 class AudioEndpointRegistry;
+class AudioRouter;
 class EndpointResolver;
 class PipeWireConnection;
 class PipeWireObjectStore;
@@ -36,6 +37,7 @@ class PipeWireManager final : public QObject, public IPipeWireManager {
     Q_PROPERTY(int graphRevision READ graphRevision NOTIFY graphRevisionChanged)
     Q_PROPERTY(QString diagnosticsText READ diagnosticsText NOTIFY graphRevisionChanged)
     Q_PROPERTY(QAbstractItemModel* endpoints READ endpoints CONSTANT)
+    Q_PROPERTY(QObject* router READ router CONSTANT)
 
 public:
     explicit PipeWireManager(QObject* parent = nullptr);
@@ -59,6 +61,8 @@ public:
     int graphRevision() const noexcept;
     QString diagnosticsText() const;
     QAbstractItemModel* endpoints() const;
+    QObject* router() const;
+    AudioRouter* audioRouter() const noexcept;
     AudioEndpointRegistry* endpointRegistry() const noexcept;
     const PipeWireObjectStore* objectStore() const noexcept;
 
@@ -88,6 +92,7 @@ private:
     std::unique_ptr<EndpointResolver> resolver_;
     std::unique_ptr<PipeWireConnection> connection_;
     AudioEndpointListModel* model_ = nullptr;
+    AudioRouter* router_ = nullptr;
     std::shared_ptr<Guard> guard_;
     PipeWireConnectionState connectionState_ = PipeWireConnectionState::Stopped;
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;

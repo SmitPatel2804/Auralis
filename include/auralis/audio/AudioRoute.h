@@ -1,0 +1,87 @@
+#pragma once
+
+#include <QDateTime>
+#include <QString>
+#include <QStringList>
+#include <QVector>
+
+#include <cstdint>
+#include <optional>
+
+namespace auralis::audio {
+
+enum class RouteState {
+    Inactive,
+    Planning,
+    Ready,
+    Activating,
+    Active,
+    Degraded,
+    Deactivating,
+    Failed
+};
+
+enum class RouteError {
+    None,
+    SourceNotFound,
+    SourceNotRoutable,
+    DestinationNotFound,
+    DestinationUnavailable,
+    NoCompatiblePorts,
+    UnsupportedDirection,
+    FormatNegotiationFailed,
+    LinkCreationFailed,
+    LinkEnteredErrorState,
+    PipeWireDisconnected,
+    PermissionDenied,
+    DestinationSuspended,
+    SourceRemoved,
+    DestinationRemoved,
+    PartialActivationFailed,
+    VolumeControlUnsupported,
+    VolumeControlFailed,
+    InternalError
+};
+
+enum class RouteRecoveryPolicy {
+    NoAutomaticRecovery,
+    RebindOnGraphReplacement
+};
+
+struct RouteErrorInfo {
+    RouteError category = RouteError::None;
+    QString detail;
+
+    bool hasError() const noexcept { return category != RouteError::None; }
+};
+
+struct OwnedLink {
+    QString routeId;
+    QString destinationId;
+    quint32 outputNodeId = 0;
+    quint32 outputPortId = 0;
+    quint32 inputNodeId = 0;
+    quint32 inputPortId = 0;
+    quint32 globalId = 0;
+    QString channel;
+};
+
+struct AudioRoute {
+    QString id;
+    QString sourceId;
+    QStringList destinationIds;
+    bool enabled = false;
+    RouteState state = RouteState::Inactive;
+    RouteErrorInfo error;
+    QDateTime createdAt;
+    QDateTime activatedAt;
+    QVector<OwnedLink> ownedLinks;
+    double volume = 1.0;
+    bool muted = false;
+    RouteRecoveryPolicy recoveryPolicy = RouteRecoveryPolicy::RebindOnGraphReplacement;
+};
+
+QString toString(RouteState state);
+QString toString(RouteError error);
+
+} // namespace auralis::audio

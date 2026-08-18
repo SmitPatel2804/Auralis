@@ -15,8 +15,13 @@ public:
 
     const PipeWireDeviceInfo* device(quint32 globalId) const;
     const PipeWireNodeInfo* node(quint32 globalId) const;
+    const PipeWirePortInfo* port(quint32 globalId) const;
+    const PipeWireLinkInfo* link(quint32 globalId) const;
     QVector<PipeWireDeviceInfo> devices() const;
     QVector<PipeWireNodeInfo> nodes() const;
+    QVector<PipeWirePortInfo> ports() const;
+    QVector<PipeWireLinkInfo> links() const;
+    QVector<PipeWirePortInfo> portsForNode(quint32 nodeId) const;
 
     int deviceCount() const noexcept;
     int nodeCount() const noexcept;
@@ -30,9 +35,9 @@ private:
 
     QHash<quint32, PipeWireDeviceInfo> devices_;
     QHash<quint32, PipeWireNodeInfo> nodes_;
+    QHash<quint32, PipeWirePortInfo> ports_;
+    QHash<quint32, PipeWireLinkInfo> links_;
     QHash<quint32, PipeWireObjectKind> extras_;
-    int portCount_ = 0;
-    int linkCount_ = 0;
     int metadataCount_ = 0;
     int otherCount_ = 0;
 };

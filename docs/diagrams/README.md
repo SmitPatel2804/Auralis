@@ -1,6 +1,6 @@
 # Diagrams
 
-PlantUML sources and rendered SVGs for the **product-intent** architecture. They show capture, routing, and multi-device sessions that are not implemented yet. For the as-built Phase 4 design, see [../architecture.md](../architecture.md).
+PlantUML sources and rendered SVGs for the **product-intent** architecture. They still include capture and multi-device sessions that are not implemented yet. For the as-built Phase 5 design, see [../architecture.md](../architecture.md).
 
 | Source | Rendered | Subject |
 |---|---|---|

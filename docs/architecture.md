@@ -1,6 +1,6 @@
-# Auralis Architecture — Phase 4
+# Auralis Architecture — Phase 5
 
-This is the **as-built** design of the current tree. Product-intent architecture, including unimplemented routing and sessions, lives in [specification/](specification/README.md). Phase exit gates are in [validation/](validation/README.md).
+This is the **as-built** design of the current tree. Product-intent architecture, including unimplemented multi-device sessions, lives in [specification/](specification/README.md). Phase exit gates are in [validation/](validation/README.md). Phase 5 routing checks are in [phase-5-validation.md](phase-5-validation.md).
 
 ## Target architecture
 
@@ -22,7 +22,7 @@ This is the **as-built** design of the current tree. Product-intent architecture
           v                          v
 +-------------------+      +-----------------------+
 | BluetoothManager  |      | PipeWireManager       |
-| BlueZ / D-Bus     |      | Graph observation     |
+| BlueZ / D-Bus     |      | Graph + AudioRouter   |
 +---------+---------+      +-----------+-----------+
           |                            |
           v                            v
@@ -31,7 +31,7 @@ This is the **as-built** design of the current tree. Product-intent architecture
 +---------+---------+      +-----------+-----------+
 ```
 
-Phase 4 observes the PipeWire graph, classifies playback/capture endpoints, and correlates Bluetooth audio nodes with the Phase 3 `DeviceRegistry`. Routing, link creation, DeviceManager, and sessions remain unimplemented.
+Phase 4 observes the PipeWire graph, classifies playback/capture endpoints, and correlates Bluetooth audio nodes with the Phase 3 `DeviceRegistry`. Phase 5 adds `AudioRouter` under `PipeWireManager` with **AdditiveRouting** (create Auralis-owned links only; never destroy WirePlumber/other links) and **RebindOnGraphReplacement** while a route stays logically enabled. DeviceManager and sessions remain unimplemented.
 
 ## Bluetooth stack
 
@@ -59,11 +59,21 @@ QML
   -> AppCore.audio (PipeWireManager)
        -> AudioEndpointListModel
        -> AudioEndpointRegistry
+       -> AudioRouter
+            -> RoutePlanner (pure)
+            -> LinkManager -> IPipeWireLinkBackend
+            -> VolumeController
+            -> AudioSourceListModel
        -> EndpointResolver  --non-owning--> DeviceRegistry
-       -> PipeWireObjectStore
+       -> PipeWireObjectStore (devices, nodes, ports, links)
        -> PipeWireConnection (pw_thread_loop)
             -> pw_context / pw_core / pw_registry
+            -> link-factory create / owned-link destroy / SPA_PROP volume
 ```
+
+**AdditiveRouting:** `createLink` tags `application.name=Auralis` and `auralis.route.id`. Legal ownership is the in-process owned-link list. `destroyOwnedLink` refuses ids that Auralis did not create.
+
+AudioRouter does not query BlueZ or pair/connect devices. Bluetooth destinations are Phase 4 `AudioEndpoint` objects.
 
 ### Threading
 
@@ -98,10 +108,10 @@ BlueZ `Connected=true` does not fabricate endpoint availability. The endpoint ap
 |---|---|
 | `auralis-core` | `ServiceStatus`, `Logger`, `ConfigurationManager`, `ApplicationCore` |
 | `auralis-bluetooth` | BlueZ discovery + lifecycle: client, registry, model, agent, reconnect |
-| `auralis-audio` | Native PipeWire observation, endpoint registry, Bluetooth correlation |
+| `auralis-audio` | Native PipeWire observation, endpoint registry, Bluetooth correlation, additive routing |
 | `auralis-devices` | Future high-level device state. Not equal to a BlueZ Device1 object. |
 | `auralis-session` | Future multi-device session orchestration. |
-| `auralis-ui` | QML module (`Auralis.Ui`) with status, devices, pairing, audio endpoints. |
+| `auralis-ui` | QML module (`Auralis.Ui`) with status, devices, pairing, audio endpoints, routing. |
 | `auralis-desktop` | Process bootstrap. |
 
 `auralis-bluetooth` is the only target that links `Qt6::DBus`. `auralis-audio` links `libpipewire-0.3` and may observe `DeviceRegistry` (Bluetooth does not depend on audio).
@@ -133,7 +143,7 @@ PipeWire initialize failure is non-fatal: ApplicationCore can still be Ready whi
 qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 ```
 
-QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connection state and the endpoint list. Device id for Bluetooth invokables is the model `objectPath` role. QML never talks D-Bus or native PipeWire.
+QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connection state, the endpoint list, and `audio.router` for source selection / activate / volume. Device id for Bluetooth invokables is the model `objectPath` role. QML never talks D-Bus or native PipeWire.
 
 ## Phase 3 operations
 
@@ -147,4 +157,4 @@ QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connecti
 
 Auto-reconnect is bounded via `ReconnectPolicy` and suppressed after explicit disconnect/forget.
 
-See [Phase 3 validation](validation/phase-3.md) and [Phase 4 validation](validation/phase-4.md).
+See [Phase 3 validation](validation/phase-3.md), [Phase 4 validation](validation/phase-4.md), and [Phase 5 validation](phase-5-validation.md).

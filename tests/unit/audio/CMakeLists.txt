@@ -11,3 +11,22 @@ target_include_directories(tst_AudioEndpoints PRIVATE "${CMAKE_CURRENT_SOURCE_DI
 auralis_add_test(tst_EndpointResolver tst_EndpointResolver.cpp)
 target_link_libraries(tst_EndpointResolver PRIVATE auralis-audio)
 target_include_directories(tst_EndpointResolver PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_AudioRoute tst_AudioRoute.cpp)
+target_link_libraries(tst_AudioRoute PRIVATE auralis-audio)
+
+auralis_add_test(tst_AudioSources tst_AudioSources.cpp)
+target_link_libraries(tst_AudioSources PRIVATE auralis-audio)
+target_include_directories(tst_AudioSources PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_RoutePlanner tst_RoutePlanner.cpp)
+target_link_libraries(tst_RoutePlanner PRIVATE auralis-audio)
+target_include_directories(tst_RoutePlanner PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_AudioRouter tst_AudioRouter.cpp)
+target_link_libraries(tst_AudioRouter PRIVATE auralis-audio)
+target_include_directories(tst_AudioRouter PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_VolumeController tst_VolumeController.cpp)
+target_link_libraries(tst_VolumeController PRIVATE auralis-audio)
+target_include_directories(tst_VolumeController PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
