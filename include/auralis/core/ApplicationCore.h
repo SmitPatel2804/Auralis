@@ -26,6 +26,7 @@ class ApplicationCore final : public QObject {
     Q_OBJECT
 
     Q_PROPERTY(QString bluetoothStatus READ bluetoothStatus NOTIFY statusChanged)
+    Q_PROPERTY(QObject* bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY statusChanged)
     Q_PROPERTY(QString pipeWireStatus READ pipeWireStatus NOTIFY statusChanged)
     Q_PROPERTY(QString coreStatus READ coreStatus NOTIFY statusChanged)
@@ -46,6 +47,7 @@ public:
     bool showDeveloperStatus() const;
 
     QString bluetoothStatus() const;
+    QObject* bluetooth() const;
     QString audioStatus() const;
     QString pipeWireStatus() const;
     QString coreStatus() const;

@@ -12,9 +12,14 @@ target_link_libraries(tst_DesktopBackendSmoke
         Qt6::Qml
         Qt6::Quick
 )
+target_include_directories(tst_DesktopBackendSmoke PRIVATE "${CMAKE_SOURCE_DIR}/tests/unit/bluetooth")
 
 qt_import_qml_plugins(tst_DesktopBackendSmoke)
 
 set_tests_properties(tst_DesktopBackendSmoke PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+auralis_add_test(tst_BlueZLiveIntegration tst_BlueZLiveIntegration.cpp)
+target_link_libraries(tst_BlueZLiveIntegration PRIVATE auralis-bluetooth Qt6::DBus)
+

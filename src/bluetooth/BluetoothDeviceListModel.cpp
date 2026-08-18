@@ -1,0 +1,157 @@
+#include <auralis/bluetooth/BluetoothDeviceListModel.h>
+
+#include <auralis/bluetooth/BlueZTypes.h>
+
+namespace auralis::bluetooth {
+
+BluetoothDeviceListModel::BluetoothDeviceListModel(DeviceRegistry* registry, QObject* parent)
+    : QAbstractListModel(parent)
+    , registry_(registry)
+{
+    if (registry_ == nullptr) {
+        return;
+    }
+
+    connect(registry_, &DeviceRegistry::deviceAboutToBeAdded, this, &BluetoothDeviceListModel::onDeviceAboutToBeAdded);
+    connect(registry_, &DeviceRegistry::deviceAdded, this, &BluetoothDeviceListModel::onDeviceAdded);
+    connect(
+        registry_,
+        &DeviceRegistry::deviceUpdated,
+        this,
+        &BluetoothDeviceListModel::onDeviceUpdated,
+        Qt::QueuedConnection);
+    connect(
+        registry_,
+        &DeviceRegistry::deviceAboutToBeRemoved,
+        this,
+        &BluetoothDeviceListModel::onDeviceAboutToBeRemoved);
+    connect(registry_, &DeviceRegistry::deviceRemoved, this, &BluetoothDeviceListModel::onDeviceRemoved);
+}
+
+int BluetoothDeviceListModel::rowCount(const QModelIndex& parent) const
+{
+    if (parent.isValid() || registry_ == nullptr) {
+        return 0;
+    }
+    return registry_->count();
+}
+
+QVariant BluetoothDeviceListModel::data(const QModelIndex& index, int role) const
+{
+    if (registry_ == nullptr || !index.isValid() || index.row() < 0 || index.row() >= registry_->count()) {
+        return {};
+    }
+
+    const BluetoothDeviceData device = registry_->at(index.row());
+    switch (role) {
+    case InternalIdRole:
+    case ObjectPathRole:
+        return device.objectPath;
+    case AddressRole:
+        return device.address;
+    case AddressTypeRole:
+        return device.addressType;
+    case DisplayNameRole:
+    case Qt::DisplayRole:
+        return device.displayName();
+    case NameRole:
+        return device.name;
+    case AliasRole:
+        return device.alias;
+    case RssiRole:
+        return static_cast<int>(device.rssi);
+    case HasRssiRole:
+        return device.hasRssi;
+    case PairedRole:
+        return device.paired;
+    case ConnectedRole:
+        return device.connected;
+    case TrustedRole:
+        return device.trusted;
+    case BlockedRole:
+        return device.blocked;
+    case ServicesResolvedRole:
+        return device.servicesResolved;
+    case IconRole:
+        return device.icon;
+    case ClassRole:
+        return device.hasClassOfDevice ? QVariant(device.classOfDevice) : QVariant();
+    case HasClassRole:
+        return device.hasClassOfDevice;
+    case AppearanceRole:
+        return device.hasAppearance ? QVariant(device.appearance) : QVariant();
+    case HasAppearanceRole:
+        return device.hasAppearance;
+    case UuidsRole:
+        return device.uuids;
+    case LastSeenRole:
+        return device.lastSeen;
+    case TransportHintRole:
+        return device.transportHint();
+    default:
+        return {};
+    }
+}
+
+QHash<int, QByteArray> BluetoothDeviceListModel::roleNames() const
+{
+    return {
+        {InternalIdRole, "internalId"},
+        {ObjectPathRole, "objectPath"},
+        {AddressRole, "address"},
+        {AddressTypeRole, "addressType"},
+        {DisplayNameRole, "displayName"},
+        {NameRole, "name"},
+        {AliasRole, "alias"},
+        {RssiRole, "rssi"},
+        {HasRssiRole, "hasRssi"},
+        {PairedRole, "paired"},
+        {ConnectedRole, "connected"},
+        {TrustedRole, "trusted"},
+        {BlockedRole, "blocked"},
+        {ServicesResolvedRole, "servicesResolved"},
+        {IconRole, "icon"},
+        {ClassRole, "classOfDevice"},
+        {HasClassRole, "hasClass"},
+        {AppearanceRole, "appearance"},
+        {HasAppearanceRole, "hasAppearance"},
+        {UuidsRole, "uuids"},
+        {LastSeenRole, "lastSeen"},
+        {TransportHintRole, "transportHint"},
+    };
+}
+
+void BluetoothDeviceListModel::onDeviceAboutToBeAdded(int index)
+{
+    beginInsertRows(QModelIndex(), index, index);
+}
+
+void BluetoothDeviceListModel::onDeviceAdded(int)
+{
+    endInsertRows();
+}
+
+void BluetoothDeviceListModel::onDeviceUpdated(int index, const QList<int>& roles)
+{
+    if (index < 0 || registry_ == nullptr || index >= registry_->count()) {
+        return;
+    }
+    const QModelIndex modelIndex = this->index(index);
+    if (roles.isEmpty()) {
+        emit dataChanged(modelIndex, modelIndex);
+        return;
+    }
+    emit dataChanged(modelIndex, modelIndex, roles);
+}
+
+void BluetoothDeviceListModel::onDeviceAboutToBeRemoved(int index, const QString&)
+{
+    beginRemoveRows(QModelIndex(), index, index);
+}
+
+void BluetoothDeviceListModel::onDeviceRemoved(int, const QString&)
+{
+    endRemoveRows();
+}
+
+} // namespace auralis::bluetooth

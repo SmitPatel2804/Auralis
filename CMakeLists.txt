@@ -15,7 +15,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(AuralisOptions)
 include(AuralisCompilerWarnings)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus Test)
 
 qt_standard_project_setup(REQUIRES 6.8)
 

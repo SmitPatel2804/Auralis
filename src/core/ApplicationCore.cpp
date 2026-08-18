@@ -128,6 +128,11 @@ QString ApplicationCore::bluetoothStatus() const
     return serviceStatusString(services_.bluetooth.get());
 }
 
+QObject* ApplicationCore::bluetooth() const
+{
+    return services_.bluetooth ? services_.bluetooth->uiObject() : nullptr;
+}
+
 QString ApplicationCore::audioStatus() const
 {
     // Phase 1: audio service readiness is derived from the PipeWire skeleton.

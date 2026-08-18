@@ -1,18 +1,19 @@
 # Auralis
 
-Auralis is a Linux desktop foundation for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
+Auralis is a Linux desktop application for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
 
-This repository currently contains the **Phase 1 project foundation**: a layered C++20 / Qt 6 application shell with logging, configuration, service skeletons, a minimal QML status UI, and hardware-independent tests. It does not yet talk to Bluetooth hardware or the PipeWire graph.
+This repository currently contains **Phase 2**: the Phase 1 application foundation plus live Bluetooth Classic/BLE **device discovery** through BlueZ on the system D-Bus.
 
 ## Current status
 
 ```text
 Phase 0: Complete
 Phase 1: Implemented
-Phase 2+: Not implemented
+Phase 2: Implemented
+Phase 3+: Not implemented
 ```
 
-`Ready` on the Phase 1 status screen means a **service skeleton object initialized successfully**. It does **not** mean a Bluetooth adapter was found, BlueZ was queried, or a live PipeWire graph was inspected.
+`Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
 
 ## Requirements
 
@@ -26,11 +27,11 @@ Validated development baseline:
 | GCC / G++ | 15.2.0 |
 | CMake | 4.2.3 |
 | Ninja | 1.13.2 |
-| Qt | 6.10.2 |
+| Qt | 6.10.2 (including QtDBus) |
 | BlueZ | 5.85 |
 | PipeWire | 1.6.2 |
 
-Phase 1 itself only requires a C++20 toolchain, CMake, Ninja, and Qt 6 (Core, Gui, Qml, Quick, Test). It does not require Bluetooth hardware.
+Hardware-independent tests do not require a Bluetooth adapter. The desktop scan UI does.
 
 ## Build
 
@@ -38,6 +39,8 @@ Phase 1 itself only requires a C++20 toolchain, CMake, Ninja, and Qt 6 (Core, Gu
 cmake -S . -B build -G Ninja
 cmake --build build
 ```
+
+Configure fails if Qt 6 DBus is missing.
 
 ## Run
 
@@ -51,38 +54,45 @@ If no display server is available:
 QT_QPA_PLATFORM=offscreen ./build/apps/desktop/auralis-desktop
 ```
 
+In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**. Pairing and connect are not implemented.
+
 ## Test
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-The QML/backend smoke test uses `QT_QPA_PLATFORM=offscreen` so it can run without a window server.
+Live BlueZ tests are skipped unless explicitly enabled:
+
+```bash
+AURALIS_RUN_BLUETOOTH_INTEGRATION=1 ctest --test-dir build -R tst_BlueZLiveIntegration --output-on-failure
+```
+
+If that env var is set and BlueZ/system bus is missing, the live test fails with a clear message.
 
 ## Architecture summary
 
-| Module | Target | Phase 1 role |
+| Module | Target | Current role |
 |---|---|---|
 | `auralis-core` | Lifecycle, logging, configuration, `ApplicationCore` | Implemented |
-| `auralis-bluetooth` | Future BlueZ D-Bus manager | Lifecycle stub |
+| `auralis-bluetooth` | BlueZ D-Bus discovery (QtDBus / system bus) | Phase 2 discovery |
 | `auralis-audio` | Future PipeWire manager | Lifecycle stub |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
 | `auralis-session` | Future multi-device sessions | Lifecycle stub |
-| `auralis-ui` | QML resources | Minimal status shell |
+| `auralis-ui` | QML resources | Status + discovery UI |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 
-QML never owns service lifetimes. `ApplicationCore` is exposed to QML as the `AppCore` singleton (`qmlRegisterSingletonInstance`). Service implementations are injected so tests can substitute fakes.
+QML uses `AppCore.bluetooth` for scan controls and the device list. QML never talks D-Bus.
 
-See [docs/architecture.md](docs/architecture.md) for dependency direction and lifecycle ownership.
+See [docs/architecture.md](docs/architecture.md).
 
 ## Documentation
 
-All project documentation is under [docs/](docs/README.md):
-
 | Location | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Phase 1 modules, lifecycle, QML exposure |
-| [docs/phase-1-validation.md](docs/phase-1-validation.md) | Phase 1 clean-room validation checklist |
+| [docs/architecture.md](docs/architecture.md) | Modules, BlueZ discovery, QML exposure |
+| [docs/phase-1-validation.md](docs/phase-1-validation.md) | Phase 1 clean-room checklist |
+| [docs/phase-2-validation.md](docs/phase-2-validation.md) | Phase 2 discovery validation |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/) | Detailed phased development plan |
 | [docs/diagrams/](docs/diagrams/) | Architecture diagrams |
@@ -90,9 +100,9 @@ All project documentation is under [docs/](docs/README.md):
 
 ## Explicit non-features
 
-The current foundation does **not**:
+The current application does **not**:
 
-- scan, pair, connect, or disconnect Bluetooth devices;
+- pair, trust, connect, disconnect, or forget devices;
 - enumerate PipeWire nodes, ports, or links;
 - route or duplicate audio;
 - create multi-device sessions;

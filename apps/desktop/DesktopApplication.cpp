@@ -11,6 +11,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlExtensionPlugin>
+#include <QTimer>
 #include <QtQml>
 
 #include <memory>
@@ -70,6 +71,14 @@ int DesktopApplication::run(int argc, char* argv[])
     }
 
     qCInfo(auralisUi) << "QML root loaded";
+
+    if (qEnvironmentVariableIntValue("AURALIS_AUTO_SCAN") == 1) {
+        if (auto* bluetooth = qobject_cast<auralis::bluetooth::BluetoothManager*>(core.bluetooth())) {
+            QTimer::singleShot(800, bluetooth, &auralis::bluetooth::BluetoothManager::startScan);
+            QTimer::singleShot(4000, bluetooth, &auralis::bluetooth::BluetoothManager::stopScan);
+            QTimer::singleShot(4500, &app, &QCoreApplication::quit);
+        }
+    }
 
     const int exitCode = app.exec();
 

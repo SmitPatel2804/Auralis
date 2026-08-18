@@ -1,7 +1,13 @@
 # Build trees
 /build/
 /build-*/
+/cmake-build-*/
 /out/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
 
 # In-source CMake / Ninja leftovers
 CMakeCache.txt
@@ -32,6 +38,9 @@ ui_*.h
 *.a
 *.so
 *.so.*
+*.dll
+*.dylib
+*.exe
 
 # Coverage
 *.gcda
@@ -47,3 +56,5 @@ ui_*.h
 .DS_Store
 .idea/
 .cache/
+.clangd/
+.vscode/
