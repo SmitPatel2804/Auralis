@@ -48,6 +48,21 @@ uint32_t cappedVersion(uint32_t advertised, uint32_t supported)
     return std::min(advertised, supported);
 }
 
+bool isLostPipeWireConnection(int res)
+{
+    switch (res < 0 ? -res : res) {
+    case EPIPE:
+    case ECONNRESET:
+    case ECONNABORTED:
+    case ENOTCONN:
+    case ESHUTDOWN:
+    case EIO:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 struct PipeWireConnection::Impl {
@@ -111,13 +126,15 @@ struct PipeWireConnection::Impl {
         if (bound == nullptr) {
             return;
         }
-        if (bound->proxy != nullptr) {
-            spa_hook_remove(&bound->objectListener);
-            spa_hook_remove(&bound->proxyListener);
-            pw_proxy_destroy(bound->proxy);
-            bound->proxy = nullptr;
+        spa_hook_remove(&bound->objectListener);
+        spa_hook_remove(&bound->proxyListener);
+        pw_proxy* proxy = bound->proxy;
+        bound->proxy = nullptr;
+        bound->impl = nullptr;
+        if (proxy != nullptr) {
+            // BoundProxy lives in pw_proxy user_data; destroying the proxy frees it.
+            pw_proxy_destroy(proxy);
         }
-        delete bound;
     }
 
     void destroyAllProxies()
@@ -138,18 +155,18 @@ struct PipeWireConnection::Impl {
         }
 
         const uint32_t supported = kind == PipeWireObjectKind::Device ? PW_VERSION_DEVICE : PW_VERSION_NODE;
-        auto* bound = new BoundProxy;
-        bound->impl = this;
-        bound->globalId = id;
-        bound->kind = kind;
-        bound->proxy = static_cast<pw_proxy*>(
-            pw_registry_bind(registry, id, type, cappedVersion(version, supported), 0));
-        if (bound->proxy == nullptr) {
-            delete bound;
+        pw_proxy* proxy = static_cast<pw_proxy*>(pw_registry_bind(
+            registry, id, type, cappedVersion(version, supported), sizeof(BoundProxy)));
+        if (proxy == nullptr) {
             qCWarning(auralisAudio) << "PipeWire BindingFailed id=" << id << "type=" << type;
             return;
         }
 
+        auto* bound = static_cast<BoundProxy*>(pw_proxy_get_user_data(proxy));
+        bound->impl = this;
+        bound->globalId = id;
+        bound->kind = kind;
+        bound->proxy = proxy;
         pw_proxy_add_listener(bound->proxy, &bound->proxyListener, &kProxyEvents, bound);
         if (kind == PipeWireObjectKind::Node) {
             pw_proxy_add_object_listener(bound->proxy, &bound->objectListener, &kNodeEvents, bound);
@@ -177,14 +194,24 @@ const pw_core_events PipeWireConnection::Impl::kCoreEvents = {
         },
     .ping = nullptr,
     .error =
-        [](void* data, uint32_t, int, int res, const char* message) {
+        [](void* data, uint32_t id, int, int res, const char* message) {
             auto* impl = static_cast<Impl*>(data);
             if (impl == nullptr || impl->stopping) {
                 return;
             }
-            const QString text = QStringLiteral("PipeWire core error %1: %2")
+            const QString text = QStringLiteral("id=%1 res=%2 %3")
+                                     .arg(id)
                                      .arg(res)
                                      .arg(QString::fromUtf8(message != nullptr ? message : strerror(res)));
+            if (id != PW_ID_CORE) {
+                impl->destroyProxy(id);
+            }
+            // Bluetooth profile switches reuse globals within milliseconds.
+            // ESTALE/ENOENT/EFAULT here are object-lifetime races, not a dead session.
+            if (!isLostPipeWireConnection(res)) {
+                qCDebug(auralisAudio) << "PipeWire object error" << text;
+                return;
+            }
             qCCritical(auralisAudio) << "PipeWire ConnectionFailed" << text;
             impl->emitState(PipeWireConnectionState::Error, text);
         },
@@ -228,14 +255,22 @@ const pw_proxy_events PipeWireConnection::Impl::kProxyEvents = {
     .removed =
         [](void* data) {
             auto* bound = static_cast<Impl::BoundProxy*>(data);
-            if (bound == nullptr || bound->proxy == nullptr) {
+            if (bound == nullptr || bound->impl == nullptr) {
                 return;
             }
-            pw_proxy_destroy(bound->proxy);
-            bound->proxy = nullptr;
+            bound->impl->destroyProxy(bound->globalId);
         },
     .done = nullptr,
-    .error = nullptr,
+    .error =
+        [](void* data, int, int res, const char* message) {
+            auto* bound = static_cast<Impl::BoundProxy*>(data);
+            if (bound == nullptr || bound->impl == nullptr) {
+                return;
+            }
+            qCDebug(auralisAudio) << "PipeWire proxy error id=" << bound->globalId << "res=" << res
+                                 << QString::fromUtf8(message != nullptr ? message : "");
+            bound->impl->destroyProxy(bound->globalId);
+        },
     .bound_props = nullptr,
 };
 

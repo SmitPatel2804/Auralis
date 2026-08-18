@@ -188,6 +188,25 @@ private slots:
         QVERIFY(registry.at(0).bluetoothDeviceId.isEmpty());
     }
 
+    void reusedGlobalIdEvictsPreviousKindAndEndpoint()
+    {
+        PipeWireObjectStore store;
+        AudioEndpointRegistry registry;
+        auralis::audio::EndpointResolver resolver;
+        store.upsert(makeNode(70, {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+                                   {QStringLiteral("node.name"), QStringLiteral("bluez_output.88:08:94:9D:B4:22")}}));
+        refreshEndpointsFromStore(store, registry, resolver);
+        QCOMPARE(store.nodeCount(), 1);
+        QCOMPARE(registry.count(), 1);
+
+        store.upsert(makeSnapshot(70, PipeWireObjectKind::Port, {}));
+        refreshEndpointsFromStore(store, registry, resolver);
+        QCOMPARE(store.nodeCount(), 0);
+        QCOMPARE(store.portCount(), 1);
+        QVERIFY(store.node(70) == nullptr);
+        QCOMPARE(registry.count(), 0);
+    }
+
     void monitorAndPortAreNotEndpoints()
     {
         PipeWireObjectStore store;

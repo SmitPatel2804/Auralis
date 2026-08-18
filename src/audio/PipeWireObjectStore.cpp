@@ -2,8 +2,24 @@
 
 namespace auralis::audio {
 
+bool PipeWireObjectStore::occupiedByOtherKind(quint32 globalId, PipeWireObjectKind kind) const
+{
+    if (devices_.contains(globalId) && kind != PipeWireObjectKind::Device) {
+        return true;
+    }
+    if (nodes_.contains(globalId) && kind != PipeWireObjectKind::Node) {
+        return true;
+    }
+    const auto extra = extras_.constFind(globalId);
+    return extra != extras_.cend() && extra.value() != kind;
+}
+
 bool PipeWireObjectStore::upsert(const PipeWireObjectSnapshot& snapshot)
 {
+    if (occupiedByOtherKind(snapshot.globalId, snapshot.kind)) {
+        remove(snapshot.globalId);
+    }
+
     switch (snapshot.kind) {
     case PipeWireObjectKind::Device: {
         PipeWireDeviceInfo current = devices_.value(snapshot.globalId);

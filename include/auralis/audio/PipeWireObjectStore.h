@@ -26,6 +26,8 @@ public:
     int otherCount() const noexcept;
 
 private:
+    bool occupiedByOtherKind(quint32 globalId, PipeWireObjectKind kind) const;
+
     QHash<quint32, PipeWireDeviceInfo> devices_;
     QHash<quint32, PipeWireNodeInfo> nodes_;
     QHash<quint32, PipeWireObjectKind> extras_;
