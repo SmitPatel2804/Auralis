@@ -59,3 +59,6 @@ ui_*.h
 .cache/
 .clangd/
 .vscode/
+
+# Temporary audit evidence dumps (host-specific logs; the Markdown audit is the deliverable)
+/audit-phase*/
