@@ -100,21 +100,19 @@ Add `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"` to also require a mapped
 
 QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` for PipeWire status and endpoints. QML never talks D-Bus or native PipeWire.
 
-See [docs/architecture.md](docs/architecture.md).
+See [docs/architecture.md](docs/architecture.md). The full documentation map is in [docs/README.md](docs/README.md).
 
 ## Documentation
 
 | Location | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Modules, BlueZ, PipeWire observation, QML exposure |
-| [docs/phase-1-validation.md](docs/phase-1-validation.md) | Phase 1 clean-room checklist |
-| [docs/phase-2-validation.md](docs/phase-2-validation.md) | Phase 2 discovery validation |
-| [docs/phase-3-validation.md](docs/phase-3-validation.md) | Phase 3 device management validation |
-| [docs/phase-4-validation.md](docs/phase-4-validation.md) | Phase 4 PipeWire endpoint validation |
+| [docs/README.md](docs/README.md) | Documentation hub |
+| [docs/architecture.md](docs/architecture.md) | As-built modules, BlueZ, PipeWire observation, QML exposure |
+| [docs/validation/](docs/validation/README.md) | Phase exit gates and the Phase 4 audit |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
-| [docs/roadmap/](docs/roadmap/) | Detailed phased development plan |
-| [docs/diagrams/](docs/diagrams/) | Architecture diagrams |
-| [docs/prompts/](docs/prompts/) | Historical AI-IDE implementation prompts |
+| [docs/roadmap/](docs/roadmap/README.md) | Detailed phased development plan |
+| [docs/diagrams/](docs/diagrams/README.md) | Architecture diagrams |
+| [docs/prompts/](docs/prompts/README.md) | Historical AI-IDE implementation prompts |
 
 ## Explicit non-features
 

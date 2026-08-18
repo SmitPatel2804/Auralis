@@ -1,0 +1,37 @@
+# Historical implementation prompts
+
+These files are the AI-IDE prompts used to implement each phase. They are an **archive**, not current runbooks.
+
+Do not treat path names, file layouts, or “create this file at repo root” instructions inside them as the present documentation map. For current docs, start at [../README.md](../README.md). Original prompt filenames are kept so the archive stays identifiable.
+
+## Phase 1 — Foundation
+
+| Document | Role |
+|---|---|
+| [phase-1/Auralis_Phase_1_AI_IDE_Master_Prompt.md](phase-1/Auralis_Phase_1_AI_IDE_Master_Prompt.md) | Master implementation prompt |
+
+## Phase 2 — Bluetooth discovery
+
+| Document | Role |
+|---|---|
+| [phase-2/Auralis_PHASE_2_Bluetooth_Device_Discovery_AI_IDE_Prompt.md](phase-2/Auralis_PHASE_2_Bluetooth_Device_Discovery_AI_IDE_Prompt.md) | Implementation |
+| [phase-2/Auralis_PHASE_2_Remediation_and_Exit_Gate_Correction_Prompt.md](phase-2/Auralis_PHASE_2_Remediation_and_Exit_Gate_Correction_Prompt.md) | Remediation |
+| [phase-2/Auralis_PHASE_2_Final_Snapshot_Reconciliation_Fix_Prompt.md](phase-2/Auralis_PHASE_2_Final_Snapshot_Reconciliation_Fix_Prompt.md) | Final snapshot-reconciliation fix |
+
+## Phase 3 — Bluetooth device management
+
+| Document | Role |
+|---|---|
+| [phase-3/Auralis_PHASE_3_Bluetooth_Device_Management_AI_IDE_Implementation_Prompt.md](phase-3/Auralis_PHASE_3_Bluetooth_Device_Management_AI_IDE_Implementation_Prompt.md) | Implementation |
+| [phase-3/Auralis_PHASE_3_Remediation_and_Completion_Prompt.md](phase-3/Auralis_PHASE_3_Remediation_and_Completion_Prompt.md) | Remediation |
+| [phase-3/Auralis_PHASE_3_Final_Closure_Prompt.md](phase-3/Auralis_PHASE_3_Final_Closure_Prompt.md) | Final closure |
+
+## Phase 4 — PipeWire endpoints
+
+| Document | Role |
+|---|---|
+| [phase-4/Auralis_PHASE_4_Deep_Implementation_Prompt.md](phase-4/Auralis_PHASE_4_Deep_Implementation_Prompt.md) | Implementation |
+| [phase-4/Auralis_PHASE_4_Final_Corrections_Prompt.md](phase-4/Auralis_PHASE_4_Final_Corrections_Prompt.md) | Final corrections |
+| [phase-4/Auralis_PHASE_4_Cursor_Rigorous_Verification_Audit_Prompt.md](phase-4/Auralis_PHASE_4_Cursor_Rigorous_Verification_Audit_Prompt.md) | Independent audit prompt |
+
+The Phase 4 audit **result** is [../validation/phase-4-audit.md](../validation/phase-4-audit.md).

@@ -52,7 +52,7 @@ The laptop application should ultimately:
 | Synchronization | Custom C++ synchronization engine |
 | Testing support | C++ tests + Python analysis scripts |
 
-This pack is part of the repository documentation tree. The full map is in [../README.md](../README.md).
+This pack is part of the repository documentation tree. It describes **product intent**, including routing and multi-device sessions that are not implemented yet. The as-built Phase 4 design is in [../architecture.md](../architecture.md). The full map is in [../README.md](../README.md).
 
 ## Documentation map
 
@@ -70,7 +70,7 @@ This pack is part of the repository documentation tree. The full map is in [../R
 - [11_risk_register.md](11_risk_register.md) — major risks and mitigations.
 - [12_acceptance_criteria.md](12_acceptance_criteria.md) — proposed measurable success criteria framework.
 - [13_decisions_open_questions.md](13_decisions_open_questions.md) — architecture decisions and unresolved items.
-- [../diagrams/](../diagrams/) — PlantUML sources and rendered SVGs.
+- [../diagrams/](../diagrams/README.md) — PlantUML sources and rendered SVGs.
 
 ## Engineering principle
 

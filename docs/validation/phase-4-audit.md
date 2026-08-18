@@ -1,5 +1,8 @@
 # Auralis Phase 4 Implementation Audit
 
+Location: `docs/validation/phase-4-audit.md` (moved from the repository root
+during documentation reorganization).
+
 Independent verification of the repository as received at
 `abf8f195526c51a09f1cf5076b27e439a441020c` on Ubuntu 26.04 LTS.
 

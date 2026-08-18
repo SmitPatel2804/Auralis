@@ -1,5 +1,7 @@
 # Auralis Architecture — Phase 4
 
+This is the **as-built** design of the current tree. Product-intent architecture, including unimplemented routing and sessions, lives in [specification/](specification/README.md). Phase exit gates are in [validation/](validation/README.md).
+
 ## Target architecture
 
 ```text
@@ -145,4 +147,4 @@ QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connecti
 
 Auto-reconnect is bounded via `ReconnectPolicy` and suppressed after explicit disconnect/forget.
 
-See [docs/phase-3-validation.md](phase-3-validation.md) and [docs/phase-4-validation.md](phase-4-validation.md).
+See [Phase 3 validation](validation/phase-3.md) and [Phase 4 validation](validation/phase-4.md).
