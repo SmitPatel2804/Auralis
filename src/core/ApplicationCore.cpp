@@ -155,6 +155,11 @@ QString ApplicationCore::coreStatus() const
     return toString(status_);
 }
 
+QObject* ApplicationCore::sessions() const
+{
+    return services_.sessions ? services_.sessions->uiObject() : nullptr;
+}
+
 void ApplicationCore::setStatus(ServiceStatus status)
 {
     if (status_ == status) {

@@ -1,2 +1,14 @@
 auralis_add_test(tst_SessionManager tst_SessionManager.cpp)
-target_link_libraries(tst_SessionManager PRIVATE auralis-session)
+target_link_libraries(tst_SessionManager PRIVATE auralis-session auralis-audio auralis-bluetooth)
+
+auralis_add_test(tst_SessionStateMachine tst_SessionStateMachine.cpp)
+target_link_libraries(tst_SessionStateMachine PRIVATE auralis-session)
+
+auralis_add_test(tst_SessionPersistence tst_SessionPersistence.cpp)
+target_link_libraries(tst_SessionPersistence PRIVATE auralis-session)
+
+auralis_add_test(tst_RoutingCoordinator tst_RoutingCoordinator.cpp)
+target_link_libraries(tst_RoutingCoordinator PRIVATE auralis-session auralis-audio auralis-bluetooth)
+
+auralis_add_test(tst_VolumeCoordinator tst_VolumeCoordinator.cpp)
+target_link_libraries(tst_VolumeCoordinator PRIVATE auralis-session auralis-audio)

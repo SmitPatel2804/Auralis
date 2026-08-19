@@ -28,10 +28,14 @@ auralis::core::ApplicationServices makeProductionServices()
     services.configuration = std::make_unique<auralis::core::ConfigurationManager>();
     auto bluetooth = std::make_unique<auralis::bluetooth::BluetoothManager>();
     auralis::bluetooth::DeviceRegistry* registry = bluetooth->deviceRegistry();
+    auto pipeWire = std::make_unique<auralis::audio::PipeWireManager>(registry);
     services.bluetooth = std::move(bluetooth);
-    services.pipeWire = std::make_unique<auralis::audio::PipeWireManager>(registry);
+    services.pipeWire = std::move(pipeWire);
     services.devices = std::make_unique<auralis::devices::DeviceManager>();
-    services.sessions = std::make_unique<auralis::session::SessionManager>();
+    services.sessions = std::make_unique<auralis::session::SessionManager>(
+        static_cast<auralis::bluetooth::BluetoothManager*>(services.bluetooth.get()),
+        static_cast<auralis::audio::PipeWireManager*>(services.pipeWire.get()),
+        QString());
     return services;
 }
 

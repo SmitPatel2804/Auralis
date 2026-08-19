@@ -105,7 +105,7 @@ Quote `AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:9D:B4:22"` to prefer that mapped 
 | `auralis-bluetooth` | BlueZ D-Bus discovery + device lifecycle (QtDBus / system bus) | Phase 3 |
 | `auralis-audio` | Native PipeWire graph + additive routing (`AudioRouter`) | Phase 5 |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
-| `auralis-session` | Future multi-device sessions | Lifecycle stub |
+| `auralis-session` | Multi-device session engine (`SessionManager`) | Phase 6 |
 | `auralis-ui` | QML resources | Status + discovery + device actions + endpoints + routing |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 
@@ -118,7 +118,7 @@ See [docs/architecture.md](docs/architecture.md). The full documentation map is 
 | Location | Contents |
 |---|---|
 | [docs/README.md](docs/README.md) | Documentation hub |
-| [docs/architecture.md](docs/architecture.md) | As-built modules, BlueZ, PipeWire observation, AudioRouter, QML exposure |
+| [docs/phase-6-session-engine.md](docs/phase-6-session-engine.md) | Session engine architecture, persistence, recovery, tests |
 | [docs/validation/](docs/validation/README.md) | Phase exit gates and independent audits |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/README.md) | Detailed phased development plan |
@@ -131,7 +131,6 @@ The current application does **not**:
 
 - destroy WirePlumber or other clients' PipeWire links (AdditiveRouting);
 - hijack or replace WirePlumber session policy;
-- create multi-device sessions;
 - put `pw_stream` in the production application (test binary only);
 - call `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, `pw-cli`, or `pw-link`.
 

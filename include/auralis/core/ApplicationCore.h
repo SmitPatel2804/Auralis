@@ -33,6 +33,7 @@ class ApplicationCore final : public QObject {
     Q_PROPERTY(QString coreStatus READ coreStatus NOTIFY statusChanged)
     Q_PROPERTY(bool ready READ isReady NOTIFY statusChanged)
     Q_PROPERTY(bool showDeveloperStatus READ showDeveloperStatus NOTIFY statusChanged)
+    Q_PROPERTY(QObject* sessions READ sessions CONSTANT)
 
 public:
     explicit ApplicationCore(ApplicationServices services, QObject* parent = nullptr);
@@ -53,6 +54,7 @@ public:
     QObject* audio() const;
     QString pipeWireStatus() const;
     QString coreStatus() const;
+    QObject* sessions() const;
 
 signals:
     void statusChanged();

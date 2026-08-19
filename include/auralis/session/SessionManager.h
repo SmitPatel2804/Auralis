@@ -1,18 +1,146 @@
 #pragma once
 
+#include <auralis/session/AuralisSession.h>
 #include <auralis/session/ISessionManager.h>
+#include <auralis/session/RoutingCoordinator.h>
+#include <auralis/session/SessionPersistence.h>
+#include <auralis/session/SessionTypes.h>
+#include <auralis/session/VolumeCoordinator.h>
+#include <auralis/audio/AudioRoute.h>
+
+#include <QHash>
+#include <QObject>
+#include <QString>
+#include <QTimer>
+#include <QVector>
+
+#include <memory>
+#include <optional>
+
+namespace auralis::audio {
+class AudioRouter;
+class PipeWireManager;
+}
+
+namespace auralis::bluetooth {
+class BluetoothManager;
+class DeviceRegistry;
+}
 
 namespace auralis::session {
 
-// Phase 1 foundation stub. Multi-device session behavior begins in Phase 6.
-class SessionManager final : public ISessionManager {
+class SessionManager final : public QObject, public ISessionManager {
+    Q_OBJECT
+    Q_PROPERTY(int sessionCount READ sessionCount NOTIFY sessionsChanged)
+    Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY currentSessionIdChanged)
+    Q_PROPERTY(QString sessionStateText READ sessionStateText NOTIFY sessionStateTextChanged)
+    Q_PROPERTY(double groupVolume READ groupVolume NOTIFY groupVolumeChanged)
+
 public:
+    SessionManager(QObject* parent = nullptr);
+    SessionManager(
+        auralis::bluetooth::BluetoothManager* bluetooth,
+        auralis::audio::PipeWireManager* pipeWire,
+        const QString& persistencePath,
+        QObject* parent = nullptr);
+    SessionManager(
+        auralis::audio::AudioRouter* router,
+        auralis::audio::AudioEndpointRegistry* endpoints,
+        auralis::bluetooth::DeviceRegistry* devices,
+        auralis::bluetooth::BluetoothManager* bluetooth,
+        const QString& persistencePath,
+        QObject* parent = nullptr);
+    ~SessionManager() override;
+
     bool initialize() override;
     void shutdown() override;
     auralis::core::ServiceStatus status() const noexcept override;
+    QObject* uiObject() override;
+
+    int sessionCount() const;
+    QString currentSessionId() const;
+    QString sessionStateText() const;
+    double groupVolume() const;
+
+    QVector<AuralisSession> sessions() const;
+    std::optional<AuralisSession> sessionById(const QString& id) const;
+
+    Q_INVOKABLE QString createSession(const QString& name);
+    Q_INVOKABLE SessionCommandResult deleteSession(const QString& sessionId);
+    Q_INVOKABLE SessionCommandResult renameSession(const QString& sessionId, const QString& name);
+    Q_INVOKABLE SessionCommandResult addDevice(
+        const QString& sessionId,
+        const QString& deviceId,
+        const QString& role = QString());
+    Q_INVOKABLE SessionCommandResult removeDevice(const QString& sessionId, const QString& deviceId);
+    Q_INVOKABLE SessionCommandResult setDeviceEnabled(const QString& sessionId, const QString& deviceId, bool enabled);
+    Q_INVOKABLE SessionCommandResult setDeviceRole(const QString& sessionId, const QString& deviceId, const QString& role);
+    Q_INVOKABLE SessionCommandResult setSource(const QString& sessionId, const QString& sourceId);
+    Q_INVOKABLE SessionCommandResult activateSession(const QString& sessionId);
+    Q_INVOKABLE SessionCommandResult deactivateSession(const QString& sessionId);
+    Q_INVOKABLE SessionCommandResult retrySession(const QString& sessionId);
+    Q_INVOKABLE SessionCommandResult setGroupVolume(const QString& sessionId, double value);
+    Q_INVOKABLE SessionCommandResult setSessionMuted(const QString& sessionId, bool muted);
+    Q_INVOKABLE SessionCommandResult setDeviceVolume(const QString& sessionId, const QString& deviceId, double value);
+    Q_INVOKABLE SessionCommandResult setDeviceMuted(const QString& sessionId, const QString& deviceId, bool muted);
+    Q_INVOKABLE SessionCommandResult setAutoReconnect(const QString& sessionId, bool enabled);
+    Q_INVOKABLE SessionCommandResult setRecoveryPolicy(const QString& sessionId, const QString& policy);
+    Q_INVOKABLE SessionCommandResult restoreLastSession();
+
+    void refreshActiveSession();
+
+signals:
+    void sessionsChanged();
+    void sessionAdded(const QString& sessionId);
+    void sessionRemoved(const QString& sessionId);
+    void sessionUpdated(const QString& sessionId);
+    void sessionStateChanged(const QString& sessionId, auralis::session::SessionState oldState, auralis::session::SessionState newState);
+    void sessionError(const QString& sessionId, auralis::session::SessionError error, const QString& detail);
+    void currentSessionIdChanged();
+    void sessionStateTextChanged();
+    void groupVolumeChanged();
+
+private slots:
+    void handleExternalGraphChanged();
+    void handleRouteStateChanged(const QString& routeId, auralis::audio::RouteState state);
+    void handleRouteRemoved(const QString& routeId);
+    void handleDeviceRegistryChanged();
+    void handleRecoveryTick();
 
 private:
+    AuralisSession* mutableSession(const QString& id);
+    void emitSessionUiSignals();
+    void touchUpdated(AuralisSession& session);
+    bool persistAll();
+    void loadSessions();
+    SessionIntent currentIntent(const AuralisSession& session) const;
+    void recomputeSession(AuralisSession& session);
+    void reconcileActiveSession(AuralisSession& session);
+    void stopSession(AuralisSession& session, bool persist);
+    QString findActiveSessionId() const;
+    bool isActiveLifecycleState(SessionState state) const;
+    void scheduleRecovery(AuralisSession& session, SessionDevice& device);
+    void cancelRecovery(const QString& sessionId, const QString& deviceId);
+    QString devicePathForAddress(const QString& address) const;
+    SessionCommandResult validateCrudSession(const QString& sessionId, AuralisSession** out = nullptr);
+
+    auralis::bluetooth::BluetoothManager* bluetooth_ = nullptr;
+    auralis::audio::PipeWireManager* pipeWire_ = nullptr;
+    auralis::audio::AudioRouter* router_ = nullptr;
+    auralis::audio::AudioEndpointRegistry* endpoints_ = nullptr;
+    auralis::bluetooth::DeviceRegistry* deviceRegistry_ = nullptr;
+    std::unique_ptr<SessionPersistence> persistence_;
+    std::unique_ptr<RoutingCoordinator> routing_;
+    std::unique_ptr<VolumeCoordinator> volume_;
+    QVector<AuralisSession> sessions_;
+    QString activeSessionId_;
+    QHash<QString, quint64> generations_;
+    QHash<QString, QTimer*> recoveryTimers_;
+    QTimer recoverySweep_;
+    quint64 nextGeneration_ = 1;
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;
+    bool reconciling_ = false;
+    bool reconcilePending_ = false;
 };
 
 } // namespace auralis::session
