@@ -3,6 +3,7 @@
 #include "../unit/bluetooth/FakeBlueZClient.h"
 
 #include <auralis/audio/AudioEndpointRegistry.h>
+#include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/bluetooth/BluetoothManager.h>
 #include <auralis/bluetooth/BlueZConstants.h>
@@ -292,6 +293,126 @@ private slots:
         QVERIFY(sawExhausted);
         QVERIFY(!stack.sessions.sessionById(id)->devices.at(1).runtime.recovering);
         QVERIFY(stack.sessions.sessionById(id)->devices.front().runtime.routeActive);
+    }
+    void devicePreferenceBlocksReconnect()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+
+        // Ensure policy allows reconnect
+        stack.sessions.setAutoReconnect(id, true);
+        stack.sessions.setRecoveryPolicy(id, QStringLiteral("ReconnectAndRestore"));
+
+        // Set device B's autoReconnectEnabled=false
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+        stack.bluetooth.deviceRegistry()->setAutoReconnectEnabled(pathB, false);
+
+        // Disconnect member B
+        stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+
+        QTest::qWait(100);
+        // Reconnect should NOT be scheduled for B (device preference blocks it)
+        QVERIFY(!stack.bluetooth.reconnectPolicy()->isScheduled(pathB));
+    }
+
+    void devicePreferenceAllowsReconnect()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+
+        stack.sessions.setAutoReconnect(id, true);
+        stack.sessions.setRecoveryPolicy(id, QStringLiteral("ReconnectAndRestore"));
+
+        // Device B has autoReconnectEnabled=true (default)
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+
+        stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+
+        // Reconnect SHOULD be scheduled for B
+        QVERIFY(stack.bluetooth.reconnectPolicy()->isScheduled(pathB));
+    }
+
+    void sessionPolicyNoneBlocksReconnect()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+
+        stack.sessions.setAutoReconnect(id, true);
+        stack.sessions.setRecoveryPolicy(id, QStringLiteral("None"));
+
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+        stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+
+        QTest::qWait(100);
+        QVERIFY(!stack.bluetooth.reconnectPolicy()->isScheduled(pathB));
+    }
+
+    void devicePreferenceSurvivesSessionLifecycle()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+        stack.bluetooth.deviceRegistry()->setAutoReconnectEnabled(pathB, false);
+
+        stack.sessions.deactivateSession(id);
+
+        // Device preference must be preserved
+        const auto* dev = stack.bluetooth.deviceRegistry()->findByObjectPath(pathB);
+        QVERIFY(dev != nullptr);
+        QVERIFY(!dev->autoReconnectEnabled);
+    }
+
+    void disableRemovesSuppression()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+
+        // Member B should be suppressed in an active session
+        QVERIFY(stack.bluetooth.isAutoReconnectSuppressed(pathB));
+
+        // Disable member B
+        stack.sessions.setDeviceEnabled(id, QStringLiteral("AA:BB:CC:DD:EE:02"), false);
+
+        // Suppression removed for disabled member
+        QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathB));
+    }
+
+    void enableReappliesSuppression()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+
+        stack.sessions.setDeviceEnabled(id, QStringLiteral("AA:BB:CC:DD:EE:02"), false);
+        QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathB));
+
+        // Re-enable member B
+        stack.sessions.setDeviceEnabled(id, QStringLiteral("AA:BB:CC:DD:EE:02"), true);
+        QVERIFY(stack.bluetooth.isAutoReconnectSuppressed(pathB));
+    }
+
+    void stopRestoresDeviceBehavior()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+        const QString pathA = devicePath(QStringLiteral("AA:BB:CC:DD:EE:01"));
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+
+        QVERIFY(stack.bluetooth.isAutoReconnectSuppressed(pathA));
+        QVERIFY(stack.bluetooth.isAutoReconnectSuppressed(pathB));
+
+        stack.sessions.deactivateSession(id);
+        QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathA));
+        QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathB));
     }
 };
 

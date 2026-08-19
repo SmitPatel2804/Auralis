@@ -587,6 +587,14 @@ void BluetoothManager::unsuppressAutoReconnect(const QString& deviceId)
     }
 }
 
+bool BluetoothManager::isAutoReconnectSuppressed(const QString& objectPath) const
+{
+    if (lifecycle_ == nullptr) {
+        return false;
+    }
+    return lifecycle_->isAutoReconnectSuppressed(objectPath);
+}
+
 void BluetoothManager::cancelDeviceOperation(const QString& deviceId)
 {
     if (lifecycle_ != nullptr) {

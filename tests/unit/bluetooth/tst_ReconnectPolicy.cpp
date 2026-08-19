@@ -189,6 +189,61 @@ private slots:
         QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 0);
     }
 
+    void cancelDestroysRetryTimer()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 5;
+        config.initialDelayMs = 5000;
+        config.maxDelayMs = 5000;
+        policy.setConfig(config);
+
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QCOMPARE(policy.liveRetryTimerCountForTesting(), 1);
+
+        policy.cancelReconnect(QStringLiteral("/dev/1"));
+        QTRY_COMPARE_WITH_TIMEOUT(policy.liveRetryTimerCountForTesting(), 0, 500);
+    }
+
+    void repeatedScheduleCancelDoesNotAccumulateTimers()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 1000;
+        config.initialDelayMs = 60000;
+        config.maxDelayMs = 60000;
+        policy.setConfig(config);
+
+        for (int i = 0; i < 1000; ++i) {
+            policy.scheduleReconnect(QStringLiteral("/dev/1"));
+            policy.cancelReconnect(QStringLiteral("/dev/1"));
+            if (i % 100 == 0) {
+                QCoreApplication::processEvents();
+            }
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(policy.liveRetryTimerCountForTesting(), 0, 2000);
+    }
+
+    void cancelAllDestroysTimers()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 5;
+        config.initialDelayMs = 5000;
+        config.maxDelayMs = 5000;
+        policy.setConfig(config);
+
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        policy.scheduleReconnect(QStringLiteral("/dev/2"));
+        QCOMPARE(policy.liveRetryTimerCountForTesting(), 2);
+
+        policy.cancelAll();
+        QTRY_COMPARE_WITH_TIMEOUT(policy.liveRetryTimerCountForTesting(), 0, 500);
+    }
+
     void exhaustionCleansUpEntry()
     {
         ReconnectPolicy policy;

@@ -39,10 +39,7 @@ void ReconnectPolicy::scheduleReconnect(const QString& devicePath)
     if (entry.attempt >= config_.maxAttempts) {
         const bool alreadyEmitted = entry.exhaustedEmitted;
         const int attempts = entry.attempt;
-        if (entry.timer != nullptr) {
-            entry.timer->stop();
-            entry.timer->deleteLater();
-        }
+        destroyEntryTimer(entry);
         entries_.remove(devicePath);
         if (!alreadyEmitted) {
             qCInfo(auralisBluetooth) << "ManagedReconnectExhausted" << devicePath
@@ -73,18 +70,14 @@ void ReconnectPolicy::cancelReconnect(const QString& devicePath)
     if (it == entries_.end()) {
         return;
     }
-    if (it->timer != nullptr) {
-        it->timer->stop();
-    }
+    destroyEntryTimer(*it);
     entries_.erase(it);
 }
 
 void ReconnectPolicy::cancelAll()
 {
     for (auto it = entries_.begin(); it != entries_.end(); ++it) {
-        if (it->timer != nullptr) {
-            it->timer->stop();
-        }
+        destroyEntryTimer(it.value());
     }
     entries_.clear();
 }
@@ -151,10 +144,7 @@ void ReconnectPolicy::reportTerminalFailure(const QString& devicePath, const QSt
     auto it = entries_.find(devicePath);
     const int attempts = (it != entries_.end()) ? it->attempt : 0;
     if (it != entries_.end()) {
-        if (it->timer != nullptr) {
-            it->timer->stop();
-            it->timer->deleteLater();
-        }
+        destroyEntryTimer(*it);
         entries_.erase(it);
     }
     qCInfo(auralisBluetooth) << "ManagedReconnectTerminalFailure" << devicePath << "attempts=" << attempts << reason;
@@ -169,6 +159,21 @@ void ReconnectPolicy::fire(const QString& devicePath)
     }
     it->inFlight = true;
     emit reconnectDue(devicePath, it->attempt, config_.maxAttempts);
+}
+
+void ReconnectPolicy::destroyEntryTimer(Entry& entry)
+{
+    if (entry.timer == nullptr) {
+        return;
+    }
+    entry.timer->stop();
+    entry.timer->deleteLater();
+    entry.timer = nullptr;
+}
+
+int ReconnectPolicy::liveRetryTimerCountForTesting() const
+{
+    return findChildren<QTimer*>().count();
 }
 
 } // namespace auralis::bluetooth

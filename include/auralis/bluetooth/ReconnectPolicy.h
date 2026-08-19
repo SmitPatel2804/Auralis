@@ -39,6 +39,9 @@ public:
     void reportTerminalFailure(const QString& devicePath, const QString& reason);
     void retryAfterContention(const QString& devicePath);
 
+    /// Test-only: count live QTimer children (for leak detection).
+    int liveRetryTimerCountForTesting() const;
+
 signals:
     void reconnectDue(const QString& devicePath, int attempt, int maxAttempts);
     void reconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
@@ -54,6 +57,7 @@ private:
     };
 
     void fire(const QString& devicePath);
+    void destroyEntryTimer(Entry& entry);
 
     ReconnectPolicyConfig config_;
     QHash<QString, Entry> entries_;

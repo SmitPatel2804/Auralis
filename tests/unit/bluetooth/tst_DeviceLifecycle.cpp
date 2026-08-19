@@ -526,6 +526,109 @@ private slots:
         QVERIFY(!h.reconnect.isScheduled(path));
         QCOMPARE(h.reconnect.attempt(path), 0);
     }
+    void busyOperationDefersReconnect()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig(200, 5, 200);
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        // Unexpected disconnect while Idle triggers reconnect schedule (200ms timer)
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(h.reconnect.isScheduled(path));
+
+        // Before the timer fires, start a user-initiated connect (occupies pending slot)
+        h.lifecycle.connectDevice(path);
+        QCOMPARE(h.client.connectRequests(), 1); // user-initiated connect
+
+        // Now wait for the reconnect timer to fire — it should hit contention
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        // No additional connect call (contention deferred it)
+        QCOMPARE(h.client.connectRequests(), 1);
+
+        // Complete the user-initiated connect successfully — onConnected cancels reconnect
+        emit h.client.connectDeviceFinished(path, true, {}, {});
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), true}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), true}}, {});
+
+        QTest::qWait(100);
+        // Reconnect was cancelled by onConnected, no additional connect calls
+        QCOMPARE(h.client.connectRequests(), 1);
+        QVERIFY(!h.reconnect.isScheduled(path));
+    }
+
+    void deferredReconnectCancelled()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig(200, 5, 200);
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        // Unexpected disconnect triggers reconnect schedule
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+
+        // Put device into busy state (user-initiated connect) before timer fires
+        h.lifecycle.connectDevice(path);
+
+        // Wait for timer to fire (hits contention)
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        // Cancel reconnect while device is busy (session stop scenario)
+        h.reconnect.cancelReconnect(path);
+
+        // Complete the user-initiated connect with failure (so onConnected doesn't cancel)
+        emit h.client.connectDeviceFinished(
+            path, false, QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("failed"));
+
+        QTest::qWait(100);
+        // Only the user-initiated connect was called, no reconnect connect
+        QCOMPARE(h.client.connectRequests(), 1);
+        QVERIFY(!h.reconnect.isScheduled(path));
+    }
+
+    void deferredReconnectPolicyChangeToNone()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig(200, 5, 200);
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        // Unexpected disconnect triggers reconnect schedule
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+
+        // Put device into busy state (user-initiated connect) before timer fires
+        h.lifecycle.connectDevice(path);
+
+        // Wait for timer to fire (hits contention)
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        // Disable reconnect policy while deferred
+        ReconnectPolicyConfig disabledConfig;
+        disabledConfig.enabled = false;
+        h.reconnect.setConfig(disabledConfig);
+        h.reconnect.cancelAll();
+
+        // Complete the user-initiated connect with failure
+        emit h.client.connectDeviceFinished(
+            path, false, QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("failed"));
+
+        QTest::qWait(100);
+        // Only the user-initiated connect call
+        QCOMPARE(h.client.connectRequests(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDeviceLifecycle)

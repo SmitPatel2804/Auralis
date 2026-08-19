@@ -403,9 +403,21 @@ SessionCommandResult SessionManager::setDeviceEnabled(const QString& sessionId, 
                 device.runtime.routeActive = false;
                 device.runtime.routeRequested = false;
             }
+            if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+                const QString path = devicePathForAddress(device.deviceId);
+                if (!path.isEmpty()) {
+                    bluetooth_->unsuppressAutoReconnect(path);
+                }
+            }
         } else {
             device.runtime.autoRestoreAllowed = policyAllowsAutoRouteRestore(*session)
                 || session->state == SessionState::Starting;
+            if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+                const QString path = devicePathForAddress(device.deviceId);
+                if (!path.isEmpty()) {
+                    bluetooth_->suppressAutoReconnect(path);
+                }
+            }
         }
         touchUpdated(*session);
         const SessionCommandResult persistResult = persistAll(sessionId);
@@ -1253,12 +1265,21 @@ void SessionManager::requestManagedReconnect(AuralisSession& session, SessionDev
     if (!policyAllowsBluetoothReconnect(session)) {
         return;
     }
+    if (!device.enabled) {
+        return;
+    }
     if (device.runtime.managedReconnectRequested) {
         return;
     }
     const QString path = devicePathForAddress(device.deviceId);
     if (path.isEmpty()) {
         return;
+    }
+    if (deviceRegistry_ != nullptr) {
+        const auto* devData = deviceRegistry_->findByObjectPath(path);
+        if (devData != nullptr && !devData->autoReconnectEnabled) {
+            return;
+        }
     }
     device.runtime.managedReconnectRequested = true;
     managedReconnectRequestsForTest_.push_back(path);
@@ -1306,6 +1327,9 @@ void SessionManager::installReconnectSuppressions(const AuralisSession& session)
         return;
     }
     for (const SessionDevice& device : session.devices) {
+        if (!device.enabled) {
+            continue;
+        }
         const QString path = devicePathForAddress(device.deviceId);
         if (!path.isEmpty()) {
             bluetooth_->suppressAutoReconnect(path);

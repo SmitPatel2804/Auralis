@@ -79,6 +79,7 @@ public:
     void cancelManagedReconnect(const QString& deviceId);
     void suppressAutoReconnect(const QString& deviceId);
     void unsuppressAutoReconnect(const QString& deviceId);
+    bool isAutoReconnectSuppressed(const QString& objectPath) const;
     Q_INVOKABLE void cancelDeviceOperation(const QString& deviceId);
     Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
     Q_INVOKABLE void rejectPairingRequest(const QString& requestId);
