@@ -36,6 +36,15 @@ Do not treat path names, file layouts, or “create this file at repo root” in
 
 The Phase 4 audit **result** is [../validation/phase-4-audit.md](../validation/phase-4-audit.md).
 
+## Phase 6 — Multi-device session engine
+
+| Document | Role |
+|---|---|
+| [phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md](phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md) | Implementation (archive) |
+| [phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md](phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md) | **Live machine validation** — run on the actual Linux dev box with Cursor |
+
+Validation **results** belong in [../validation/phase-6.md](../validation/phase-6.md) and [../validation/phase-6-audit.md](../validation/phase-6-audit.md) after running the live machine prompt.
+
 ## Phase 5 — Audio routing
 
 | Document | Role |
