@@ -104,6 +104,21 @@ private slots:
         QCOMPARE(managerA.applicationName(), QStringLiteral("Alpha"));
         QCOMPARE(managerB.applicationName(), QStringLiteral("Beta"));
     }
+
+    void settersPersist()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        QVERIFY(manager.setShowDeveloperStatus(false));
+        QCOMPARE(manager.showDeveloperStatus(), false);
+        QVERIFY(manager.setRestoreLastSession(true));
+        QCOMPARE(manager.restoreLastSession(), true);
+        QVERIFY(manager.resetToDefaults());
+        QCOMPARE(manager.restoreLastSession(), false);
+        QCOMPARE(manager.showDeveloperStatus(), true);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstConfigurationManager)

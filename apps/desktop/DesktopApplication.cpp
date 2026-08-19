@@ -1,13 +1,16 @@
 #include "DesktopApplication.h"
 
+#include <auralis/audio/AudioRouter.h>
 #include <auralis/audio/PipeWireManager.h>
 #include <auralis/bluetooth/BluetoothManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/core/ApplicationCore.h>
+#include <auralis/core/QmlTypeRegistration.h>
 #include <auralis/core/Logger.h>
 #include <auralis/core/LoggingCategories.h>
 #include <auralis/devices/DeviceManager.h>
 #include <auralis/session/SessionManager.h>
+#include <auralis/ui/NotificationController.h>
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -52,10 +55,52 @@ int DesktopApplication::run(int argc, char* argv[])
     qCInfo(auralisCore) << "Auralis starting";
 
     auralis::core::ApplicationCore core(makeProductionServices());
+    auralis::core::registerAuralisQmlTypes();
     qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 
     if (!core.initialize()) {
         qCCritical(auralisCore) << "Application core initialization failed";
+    }
+
+    if (auto* bluetooth = qobject_cast<auralis::bluetooth::BluetoothManager*>(core.bluetooth())) {
+        QObject::connect(bluetooth, &auralis::bluetooth::BluetoothManager::errorTextChanged, &core, [&core, bluetooth]() {
+            const QString text = bluetooth->errorText();
+            if (text.isEmpty()) {
+                return;
+            }
+            if (auto* notes = qobject_cast<auralis::ui::NotificationController*>(core.notifications())) {
+                notes->postError(QStringLiteral("Bluetooth"), text);
+            }
+        });
+    }
+    if (auto* sessions = qobject_cast<auralis::session::SessionManager*>(core.sessions())) {
+        QObject::connect(
+            sessions,
+            &auralis::session::SessionManager::sessionError,
+            &core,
+            [&core](const QString& sessionId, auralis::session::SessionError, const QString& detail) {
+                if (auto* notes = qobject_cast<auralis::ui::NotificationController*>(core.notifications())) {
+                    notes->postError(QStringLiteral("Session"), detail.isEmpty() ? sessionId : detail);
+                }
+            });
+        if (auto* configuration = qobject_cast<auralis::core::ConfigurationManager*>(core.configuration())) {
+            if (configuration->restoreLastSession()) {
+                sessions->restoreLastSession();
+            }
+        }
+    }
+    if (auto* audio = qobject_cast<auralis::audio::PipeWireManager*>(core.audio())) {
+        if (auto* router = audio->audioRouter()) {
+            QObject::connect(
+                router,
+                &auralis::audio::AudioRouter::routeError,
+                &core,
+                [&core](const QString& routeId, auralis::audio::RouteError, const QString& detail) {
+                    if (auto* notes = qobject_cast<auralis::ui::NotificationController*>(core.notifications())) {
+                        notes->postError(QStringLiteral("Routing"), detail.isEmpty() ? routeId : detail);
+                    }
+                });
+        }
     }
 
     QQmlApplicationEngine engine;

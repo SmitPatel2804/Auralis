@@ -106,6 +106,32 @@ DeviceRegistry* BluetoothManager::deviceRegistry() const noexcept
     return registry_;
 }
 
+QString BluetoothManager::deviceDisplayName(const QString& deviceId) const
+{
+    if (registry_ == nullptr) {
+        return deviceId;
+    }
+    const BluetoothDeviceData* device = registry_->findByObjectPath(deviceId);
+    if (device == nullptr) {
+        return deviceId;
+    }
+    return device->displayName();
+}
+
+int BluetoothManager::connectedDeviceCount() const
+{
+    if (registry_ == nullptr) {
+        return 0;
+    }
+    int count = 0;
+    for (const BluetoothDeviceData& device : registry_->devices()) {
+        if (device.connected) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 ReconnectPolicy* BluetoothManager::reconnectPolicy() const noexcept
 {
     return reconnect_;

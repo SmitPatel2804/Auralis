@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QString>
+#include <QtGlobal>
+
+#include <functional>
 
 namespace auralis::core {
 
@@ -21,6 +24,9 @@ public:
     // Optional file sink. Failure is non-fatal: console logging continues.
     static bool enableFileLogging(const QString& filePath);
     static void disableFileLogging();
+
+    using Observer = std::function<void(QtMsgType type, const QString& category, const QString& message)>;
+    static void setObserver(Observer observer);
 
 private:
     Logger() = delete;

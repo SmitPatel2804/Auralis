@@ -12,3 +12,6 @@ target_link_libraries(tst_RoutingCoordinator PRIVATE auralis-session auralis-aud
 
 auralis_add_test(tst_VolumeCoordinator tst_VolumeCoordinator.cpp)
 target_link_libraries(tst_VolumeCoordinator PRIVATE auralis-session auralis-audio)
+
+auralis_add_test(tst_SessionListModel tst_SessionListModel.cpp)
+target_link_libraries(tst_SessionListModel PRIVATE auralis-session auralis-audio auralis-bluetooth)

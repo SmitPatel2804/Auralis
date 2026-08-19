@@ -3,6 +3,8 @@
 #include <auralis/core/Logger.h>
 #include <auralis/core/LoggingCategories.h>
 
+#include <QAbstractItemModel>
+
 namespace auralis::core {
 namespace {
 
@@ -19,6 +21,8 @@ QString serviceStatusString(const auto* service)
 ApplicationCore::ApplicationCore(ApplicationServices services, QObject* parent)
     : QObject(parent)
     , services_(std::move(services))
+    , notifications_(this)
+    , diagnostics_(this)
 {
 }
 
@@ -50,6 +54,15 @@ bool ApplicationCore::initialize()
     }
 
     showDeveloperStatus_ = services_.configuration->showDeveloperStatus();
+    currentPage_ = services_.configuration->lastNavPage();
+    connect(
+        services_.configuration.get(),
+        &ConfigurationManager::showDeveloperStatusChanged,
+        this,
+        [this]() {
+            showDeveloperStatus_ = services_.configuration->showDeveloperStatus();
+            emit showDeveloperStatusChanged();
+        });
 
     if (services_.configuration->fileLoggingEnabled()) {
         if (!Logger::enableFileLogging(services_.configuration->logFilePath())) {
@@ -98,6 +111,26 @@ bool ApplicationCore::initialize()
         return false;
     }
     qCInfo(auralisCore) << "Session service skeleton initialized";
+
+    if (QObject* sessionUi = services_.sessions->uiObject()) {
+        QObject::connect(
+            sessionUi,
+            SIGNAL(currentSessionIdChanged()),
+            this,
+            SLOT(refreshActiveSessionCache()));
+        QObject::connect(
+            sessionUi,
+            SIGNAL(sessionUpdated(QString)),
+            this,
+            SLOT(refreshActiveSessionCache()));
+        QObject::connect(sessionUi, SIGNAL(sessionsChanged()), this, SLOT(refreshActiveSessionCache()));
+    }
+
+    refreshActiveSessionCache();
+    connect(&notifications_, &ui::NotificationController::countChanged, this, [this]() {
+        emit warningCountChanged();
+        emit lastErrorTextChanged();
+    });
 
     setStatus(ServiceStatus::Ready);
     qCInfo(auralisCore) << "Application core ready";
@@ -158,6 +191,99 @@ QString ApplicationCore::coreStatus() const
 QObject* ApplicationCore::sessions() const
 {
     return services_.sessions ? services_.sessions->uiObject() : nullptr;
+}
+
+QObject* ApplicationCore::configuration() const
+{
+    return services_.configuration.get();
+}
+
+QObject* ApplicationCore::notifications() const
+{
+    return const_cast<ui::NotificationController*>(&notifications_);
+}
+
+QObject* ApplicationCore::diagnostics() const
+{
+    return const_cast<ui::DiagnosticsLogModel*>(&diagnostics_);
+}
+
+int ApplicationCore::currentPage() const
+{
+    return currentPage_;
+}
+
+void ApplicationCore::setCurrentPage(int page)
+{
+    navigateTo(page);
+}
+
+void ApplicationCore::navigateTo(int page)
+{
+    if (page < 0) {
+        page = 0;
+    }
+    if (page > 5) {
+        page = 5;
+    }
+    if (currentPage_ == page) {
+        return;
+    }
+    currentPage_ = page;
+    qCInfo(auralisUi) << "Gui.NavigationChanged page=" << page;
+    if (services_.configuration) {
+        services_.configuration->setLastNavPage(page);
+    }
+    emit currentPageChanged();
+}
+
+int ApplicationCore::warningCount() const
+{
+    return notifications_.warningCount();
+}
+
+QString ApplicationCore::lastErrorText() const
+{
+    return notifications_.latestErrorText();
+}
+
+QString ApplicationCore::activeSessionName() const
+{
+    return activeSessionName_;
+}
+
+QString ApplicationCore::activeSessionId() const
+{
+    return activeSessionId_;
+}
+
+void ApplicationCore::refreshActiveSessionCache()
+{
+    QString id;
+    QString name;
+    if (QObject* sessionUi = sessions()) {
+        id = sessionUi->property("currentSessionId").toString();
+        const int count = sessionUi->property("sessionCount").toInt();
+        if (!id.isEmpty()) {
+            name = id;
+        }
+        Q_UNUSED(count)
+        if (QAbstractItemModel* list = qvariant_cast<QAbstractItemModel*>(sessionUi->property("sessionList"))) {
+            for (int row = 0; row < list->rowCount(); ++row) {
+                const QModelIndex idx = list->index(row, 0);
+                if (list->data(idx, Qt::UserRole + 1).toString() == id) {
+                    name = list->data(idx, Qt::DisplayRole).toString();
+                    break;
+                }
+            }
+        }
+    }
+    if (activeSessionId_ == id && activeSessionName_ == name) {
+        return;
+    }
+    activeSessionId_ = id;
+    activeSessionName_ = name;
+    emit activeSessionChanged();
 }
 
 void ApplicationCore::setStatus(ServiceStatus status)

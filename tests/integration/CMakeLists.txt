@@ -1,4 +1,4 @@
-auralis_add_test(tst_DesktopBackendSmoke tst_DesktopBackendSmoke.cpp)
+auralis_add_test(tst_DesktopBackendSmoke tst_DesktopBackendSmoke.cpp "${CMAKE_SOURCE_DIR}/src/core/QmlTypeRegistration.cpp")
 target_link_libraries(tst_DesktopBackendSmoke
     PRIVATE
         auralis-core
@@ -17,6 +17,25 @@ target_include_directories(tst_DesktopBackendSmoke PRIVATE "${CMAKE_SOURCE_DIR}/
 qt_import_qml_plugins(tst_DesktopBackendSmoke)
 
 set_tests_properties(tst_DesktopBackendSmoke PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+auralis_add_test(tst_QmlComponents tst_QmlComponents.cpp "${CMAKE_SOURCE_DIR}/src/core/QmlTypeRegistration.cpp")
+target_link_libraries(tst_QmlComponents
+    PRIVATE
+        auralis-core
+        auralis-bluetooth
+        auralis-audio
+        auralis-devices
+        auralis-session
+        auralis-ui
+        auralis-uiplugin
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
+)
+qt_import_qml_plugins(tst_QmlComponents)
+set_tests_properties(tst_QmlComponents PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 

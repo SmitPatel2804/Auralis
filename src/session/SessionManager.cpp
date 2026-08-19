@@ -1,3 +1,4 @@
+#include <auralis/session/SessionListModel.h>
 #include <auralis/session/SessionManager.h>
 
 #include <auralis/audio/AudioEndpointRegistry.h>
@@ -35,6 +36,7 @@ SessionManager::SessionManager(QObject* parent)
     : QObject(parent)
     , persistence_(std::make_unique<SessionPersistence>(defaultPersistencePath()))
 {
+    setupUiModels();
 }
 
 SessionManager::SessionManager(
@@ -55,6 +57,7 @@ SessionManager::SessionManager(
     if (bluetooth_ != nullptr) {
         deviceRegistry_ = bluetooth_->deviceRegistry();
     }
+    setupUiModels();
 }
 
 SessionManager::SessionManager(
@@ -72,6 +75,7 @@ SessionManager::SessionManager(
     , persistence_(std::make_unique<SessionPersistence>(
           persistencePath.isEmpty() ? defaultPersistencePath() : persistencePath))
 {
+    setupUiModels();
 }
 
 SessionManager::~SessionManager()
@@ -139,6 +143,9 @@ bool SessionManager::initialize()
     connect(&recoverySweep_, &QTimer::timeout, this, &SessionManager::handleRecoveryTick);
 
     loadSessions();
+    if (sessionList_ != nullptr) {
+        sessionList_->reload();
+    }
     status_ = auralis::core::ServiceStatus::Ready;
     qCInfo(auralisSession) << "Session manager initialized sessions=" << sessions_.size();
     emitSessionUiSignals();
@@ -207,6 +214,84 @@ double SessionManager::groupVolume() const
         }
     }
     return 1.0;
+}
+
+QString SessionManager::currentSourceId() const
+{
+    for (const AuralisSession& session : sessions_) {
+        if (session.id == activeSessionId_) {
+            return session.sourceId;
+        }
+    }
+    return {};
+}
+
+bool SessionManager::currentMuted() const
+{
+    for (const AuralisSession& session : sessions_) {
+        if (session.id == activeSessionId_) {
+            return session.muted;
+        }
+    }
+    return false;
+}
+
+QAbstractItemModel* SessionManager::sessionList() const
+{
+    return sessionList_;
+}
+
+QAbstractItemModel* SessionManager::sessionMembers() const
+{
+    return sessionMembers_;
+}
+
+QAbstractItemModel* SessionManager::currentMembers() const
+{
+    return currentMembers_;
+}
+
+auralis::bluetooth::DeviceRegistry* SessionManager::deviceRegistry() const noexcept
+{
+    return deviceRegistry_;
+}
+
+void SessionManager::setupUiModels()
+{
+    if (sessionList_ == nullptr) {
+        sessionList_ = new SessionListModel(this, this);
+    }
+    if (sessionMembers_ == nullptr) {
+        sessionMembers_ = new SessionMemberListModel(this, this);
+    }
+    if (currentMembers_ == nullptr) {
+        currentMembers_ = new SessionMemberListModel(this, this);
+        connect(this, &SessionManager::currentSessionIdChanged, this, [this]() {
+            currentMembers_->setSessionId(activeSessionId_);
+        });
+    }
+}
+
+QString SessionManager::commandResultText(int result) const
+{
+    return toString(static_cast<SessionCommandResult>(result));
+}
+
+QString SessionManager::sourceDisplayName(const QString& sourceId) const
+{
+    if (router_ == nullptr) {
+        return sourceId;
+    }
+    return router_->sourceDisplayName(sourceId);
+}
+
+QString SessionManager::sessionStateLabel(const QString& sessionId) const
+{
+    const std::optional<AuralisSession> session = sessionById(sessionId);
+    if (!session.has_value()) {
+        return userFacingSessionState(SessionState::Idle);
+    }
+    return userFacingSessionState(session->state);
 }
 
 QVector<AuralisSession> SessionManager::sessions() const

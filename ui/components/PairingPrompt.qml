@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Auralis 1.0
 
 Dialog {
     id: root
@@ -20,9 +21,9 @@ Dialog {
     readonly property bool needsConfirmation: request && request.needsConfirmation
     readonly property string trimmedPin: pinField.text.trim()
     readonly property string trimmedPasskey: passkeyField.text.trim()
-    readonly property bool pinValid: !needsInput || !request || request.requestType !== 1
+    readonly property bool pinValid: !needsInput || !request || request.requestType !== Pairing.EnterPin
         || (trimmedPin.length > 0 && trimmedPin.length <= 16)
-    readonly property bool passkeyValid: !needsInput || !request || request.requestType !== 3
+    readonly property bool passkeyValid: !needsInput || !request || request.requestType !== Pairing.EnterPasskey
         || (/^\d{1,6}$/.test(trimmedPasskey))
 
     onRequestChanged: {
@@ -72,7 +73,7 @@ Dialog {
         TextField {
             id: pinField
             Layout.fillWidth: true
-            visible: needsInput && request && request.requestType === 1
+            visible: needsInput && request && request.requestType === Pairing.EnterPin
             placeholderText: "Enter PIN"
             echoMode: TextInput.Password
         }
@@ -80,7 +81,7 @@ Dialog {
         TextField {
             id: passkeyField
             Layout.fillWidth: true
-            visible: needsInput && request && request.requestType === 3
+            visible: needsInput && request && request.requestType === Pairing.EnterPasskey
             placeholderText: "Enter passkey"
             inputMethodHints: Qt.ImhDigitsOnly
         }
@@ -96,9 +97,9 @@ Dialog {
                     if (!request || !bluetooth) {
                         return
                     }
-                    if (needsInput && request.requestType === 1) {
+                    if (needsInput && request.requestType === Pairing.EnterPin) {
                         bluetooth.submitPinCode(request.requestId, trimmedPin)
-                    } else if (needsInput && request.requestType === 3) {
+                    } else if (needsInput && request.requestType === Pairing.EnterPasskey) {
                         bluetooth.submitPasskey(request.requestId, Number(trimmedPasskey))
                     } else {
                         bluetooth.acceptPairingRequest(request.requestId)

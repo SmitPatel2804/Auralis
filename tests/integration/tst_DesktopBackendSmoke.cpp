@@ -2,6 +2,7 @@
 #include <auralis/bluetooth/BluetoothManager.h>
 #include <auralis/core/ApplicationCore.h>
 #include <auralis/core/Logger.h>
+#include <auralis/core/QmlTypeRegistration.h>
 #include <auralis/devices/DeviceManager.h>
 #include <auralis/session/SessionManager.h>
 
@@ -49,6 +50,7 @@ private slots:
         QVERIFY(core.pipeWireStatus() != QStringLiteral("Uninitialized"));
         QVERIFY(core.isReady());
 
+        auralis::core::registerAuralisQmlTypes();
         qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 
         QQmlApplicationEngine engine;
@@ -58,6 +60,8 @@ private slots:
         auto* window = engine.rootObjects().constFirst();
         QVERIFY(window != nullptr);
         QCOMPARE(window->property("title").toString(), QStringLiteral("Auralis"));
+        core.navigateTo(3);
+        QCOMPARE(core.currentPage(), 3);
 
         core.shutdown();
         auralis::core::Logger::shutdown();
@@ -77,6 +81,7 @@ private slots:
         auralis::core::ApplicationCore core(makeServices(client));
         QVERIFY(core.initialize());
 
+        auralis::core::registerAuralisQmlTypes();
         qmlRegisterSingletonInstance("Auralis", 1, 0, "AppCore", &core);
 
         QQmlApplicationEngine engine;

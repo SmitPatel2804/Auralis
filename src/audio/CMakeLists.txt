@@ -18,6 +18,7 @@ add_library(auralis-audio
     PipeWireProperties.cpp
     PipeWireTypes.cpp
     RoutePlanner.cpp
+    RouteListModel.cpp
     VolumeController.cpp
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioEndpoint.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioEndpointClassifier.h"
@@ -37,6 +38,7 @@ add_library(auralis-audio
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireProperties.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireTypes.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RoutePlanner.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/audio/RouteListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/VolumeController.h"
 )
 

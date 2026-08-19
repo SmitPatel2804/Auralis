@@ -6,6 +6,8 @@
 #include <auralis/core/ServiceStatus.h>
 #include <auralis/devices/IDeviceManager.h>
 #include <auralis/session/ISessionManager.h>
+#include <auralis/ui/DiagnosticsLogModel.h>
+#include <auralis/ui/NotificationController.h>
 
 #include <QObject>
 #include <QString>
@@ -32,8 +34,16 @@ class ApplicationCore final : public QObject {
     Q_PROPERTY(QString pipeWireStatus READ pipeWireStatus NOTIFY statusChanged)
     Q_PROPERTY(QString coreStatus READ coreStatus NOTIFY statusChanged)
     Q_PROPERTY(bool ready READ isReady NOTIFY statusChanged)
-    Q_PROPERTY(bool showDeveloperStatus READ showDeveloperStatus NOTIFY statusChanged)
+    Q_PROPERTY(bool showDeveloperStatus READ showDeveloperStatus NOTIFY showDeveloperStatusChanged)
     Q_PROPERTY(QObject* sessions READ sessions CONSTANT)
+    Q_PROPERTY(QObject* configuration READ configuration CONSTANT)
+    Q_PROPERTY(QObject* notifications READ notifications CONSTANT)
+    Q_PROPERTY(QObject* diagnostics READ diagnostics CONSTANT)
+    Q_PROPERTY(int currentPage READ currentPage WRITE setCurrentPage NOTIFY currentPageChanged)
+    Q_PROPERTY(int warningCount READ warningCount NOTIFY warningCountChanged)
+    Q_PROPERTY(QString lastErrorText READ lastErrorText NOTIFY lastErrorTextChanged)
+    Q_PROPERTY(QString activeSessionName READ activeSessionName NOTIFY activeSessionChanged)
+    Q_PROPERTY(QString activeSessionId READ activeSessionId NOTIFY activeSessionChanged)
 
 public:
     explicit ApplicationCore(ApplicationServices services, QObject* parent = nullptr);
@@ -55,9 +65,28 @@ public:
     QString pipeWireStatus() const;
     QString coreStatus() const;
     QObject* sessions() const;
+    QObject* configuration() const;
+    QObject* notifications() const;
+    QObject* diagnostics() const;
+    int currentPage() const;
+    void setCurrentPage(int page);
+    int warningCount() const;
+    QString lastErrorText() const;
+    QString activeSessionName() const;
+    QString activeSessionId() const;
+
+    Q_INVOKABLE void navigateTo(int page);
 
 signals:
     void statusChanged();
+    void showDeveloperStatusChanged();
+    void currentPageChanged();
+    void warningCountChanged();
+    void lastErrorTextChanged();
+    void activeSessionChanged();
+
+private slots:
+    void refreshActiveSessionCache();
 
 private:
     void setStatus(ServiceStatus status);
@@ -66,6 +95,11 @@ private:
     ApplicationServices services_;
     ServiceStatus status_ = ServiceStatus::Uninitialized;
     bool showDeveloperStatus_ = true;
+    int currentPage_ = 0;
+    QString activeSessionName_;
+    QString activeSessionId_;
+    ui::NotificationController notifications_;
+    ui::DiagnosticsLogModel diagnostics_;
 };
 
 } // namespace auralis::core

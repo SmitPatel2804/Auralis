@@ -87,6 +87,8 @@ public:
     Q_INVOKABLE void submitPasskey(const QString& requestId, uint passkey);
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
+    Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
+    Q_INVOKABLE int connectedDeviceCount() const;
 
     DeviceRegistry* deviceRegistry() const noexcept;
     ReconnectPolicy* reconnectPolicy() const noexcept;

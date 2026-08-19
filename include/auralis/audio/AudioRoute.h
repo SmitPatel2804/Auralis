@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -9,6 +10,8 @@
 #include <optional>
 
 namespace auralis::audio {
+
+Q_NAMESPACE
 
 enum class RouteState {
     Inactive,
@@ -20,6 +23,7 @@ enum class RouteState {
     Deactivating,
     Failed
 };
+Q_ENUM_NS(RouteState)
 
 enum class RouteError {
     None,

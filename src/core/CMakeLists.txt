@@ -4,7 +4,12 @@ add_library(auralis-core
     Logger.cpp
     LoggingCategories.cpp
     ServiceStatus.cpp
+    "${CMAKE_SOURCE_DIR}/src/ui/NotificationController.cpp"
+    "${CMAKE_SOURCE_DIR}/src/ui/DiagnosticsLogModel.cpp"
     "${CMAKE_SOURCE_DIR}/include/auralis/core/ApplicationCore.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/core/ConfigurationManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/ui/NotificationController.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/ui/DiagnosticsLogModel.h"
 )
 
 add_library(Auralis::Core ALIAS auralis-core)

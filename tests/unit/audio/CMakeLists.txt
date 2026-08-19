@@ -30,3 +30,7 @@ target_include_directories(tst_AudioRouter PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 auralis_add_test(tst_VolumeController tst_VolumeController.cpp)
 target_link_libraries(tst_VolumeController PRIVATE auralis-audio)
 target_include_directories(tst_VolumeController PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+auralis_add_test(tst_RouteListModel tst_RouteListModel.cpp)
+target_link_libraries(tst_RouteListModel PRIVATE auralis-audio auralis-bluetooth)
+target_include_directories(tst_RouteListModel PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

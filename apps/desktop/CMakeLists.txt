@@ -2,6 +2,7 @@ qt_add_executable(auralis-desktop
     main.cpp
     DesktopApplication.cpp
     DesktopApplication.h
+    "${CMAKE_SOURCE_DIR}/src/core/QmlTypeRegistration.cpp"
 )
 
 target_link_libraries(auralis-desktop

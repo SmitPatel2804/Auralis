@@ -1,6 +1,7 @@
 #include <auralis/audio/AudioRouter.h>
 
 #include <auralis/audio/AudioSourceListModel.h>
+#include <auralis/audio/RouteListModel.h>
 #include <auralis/core/LoggingCategories.h>
 
 #include <QUuid>
@@ -47,6 +48,7 @@ AudioRouter::AudioRouter(
     , sourceModel_(new AudioSourceListModel(this))
     , qmlRouteStateText_(toString(RouteState::Inactive))
 {
+    routeModel_ = new RouteListModel(this, this);
 }
 
 AudioRouter::~AudioRouter()
@@ -59,9 +61,33 @@ QAbstractItemModel* AudioRouter::sources() const
     return sourceModel_;
 }
 
+QAbstractItemModel* AudioRouter::routeModel() const
+{
+    return routeModel_;
+}
+
 int AudioRouter::sourceCount() const
 {
     return static_cast<int>(sources_.size());
+}
+
+QString AudioRouter::sourceDisplayName(const QString& sourceId) const
+{
+    for (const AudioSource& source : sources_) {
+        if (source.id == sourceId) {
+            if (!source.applicationName.isEmpty()) {
+                return source.applicationName;
+            }
+            if (!source.description.isEmpty()) {
+                return source.description;
+            }
+            if (!source.nodeName.isEmpty()) {
+                return source.nodeName;
+            }
+            return source.id;
+        }
+    }
+    return sourceId;
 }
 
 QString AudioRouter::currentRouteId() const

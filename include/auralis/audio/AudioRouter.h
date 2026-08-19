@@ -24,10 +24,12 @@
 namespace auralis::audio {
 
 class AudioSourceListModel;
+class RouteListModel;
 
 class AudioRouter final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QAbstractItemModel* sources READ sources CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* routes READ routeModel CONSTANT)
     Q_PROPERTY(int sourceCount READ sourceCount NOTIFY sourcesChanged)
     Q_PROPERTY(QString currentRouteId READ currentRouteId NOTIFY currentRouteIdChanged)
     Q_PROPERTY(QString routeStateText READ routeStateText NOTIFY routeStateTextChanged)
@@ -47,6 +49,7 @@ public:
     ~AudioRouter() override;
 
     QAbstractItemModel* sources() const;
+    QAbstractItemModel* routeModel() const;
     int sourceCount() const;
     QString currentRouteId() const;
     QString routeStateText() const;
@@ -75,6 +78,7 @@ public:
     Q_INVOKABLE void setDestinationMuted(const QString& endpointId, bool muted);
     Q_INVOKABLE void setRouteVolume(const QString& routeId, double value);
     Q_INVOKABLE void setRouteMuted(const QString& routeId, bool muted);
+    Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
 
     void refreshSources();
     void handleGraphChanged();
@@ -123,6 +127,7 @@ private:
     LinkManager links_;
     VolumeController volume_;
     AudioSourceListModel* sourceModel_ = nullptr;
+    RouteListModel* routeModel_ = nullptr;
     QVector<AudioSource> sources_;
     QVector<AudioRoute> routes_;
     QHash<QString, quint64> generations_;

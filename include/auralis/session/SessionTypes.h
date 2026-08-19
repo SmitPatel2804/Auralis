@@ -2,7 +2,11 @@
 
 #include <QString>
 
+#include <QObject>
+
 namespace auralis::session {
+
+Q_NAMESPACE
 
 enum class SessionState {
     Idle,
@@ -13,6 +17,7 @@ enum class SessionState {
     Stopping,
     Failed
 };
+Q_ENUM_NS(SessionState)
 
 enum class SessionDeviceRole {
     Unspecified,
@@ -63,6 +68,7 @@ enum class SessionCommandResult {
     PersistenceFailure,
     InternalError
 };
+Q_ENUM_NS(SessionCommandResult)
 
 struct SessionErrorInfo {
     SessionError category = SessionError::None;

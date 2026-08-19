@@ -5,6 +5,8 @@
 
 namespace auralis::bluetooth {
 
+Q_NAMESPACE
+
 enum class PairingRequestType {
     DisplayPin,
     EnterPin,
@@ -14,6 +16,7 @@ enum class PairingRequestType {
     AuthorizePairing,
     AuthorizeService
 };
+Q_ENUM_NS(PairingRequestType)
 
 QString toString(PairingRequestType type);
 

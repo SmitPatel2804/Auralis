@@ -21,6 +21,7 @@ struct LoggerState {
     bool fileEnabled = false;
     std::unique_ptr<QFile> file;
     QtMessageHandler previousHandler = nullptr;
+    Logger::Observer observer;
 };
 
 LoggerState& loggerState()
@@ -84,8 +85,18 @@ void writeLine(const QString& line)
 void messageHandler(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
     LoggerState& state = loggerState();
-    QMutexLocker locker(&state.mutex);
-    writeLine(formatLine(type, context, message));
+    Logger::Observer observer;
+    QString category;
+    {
+        QMutexLocker locker(&state.mutex);
+        writeLine(formatLine(type, context, message));
+        observer = state.observer;
+        category = categoryLabel(context);
+    }
+
+    if (observer) {
+        observer(type, category, message);
+    }
 
     if (type == QtFatalMsg) {
         std::abort();
@@ -169,6 +180,7 @@ void Logger::shutdown()
 
     state.fileEnabled = false;
     state.initialized = false;
+    state.observer = {};
     qInstallMessageHandler(state.previousHandler);
     state.previousHandler = nullptr;
 }
@@ -208,6 +220,13 @@ bool Logger::enableFileLogging(const QString& filePath)
 
     return true;
 #endif
+}
+
+void Logger::setObserver(Observer observer)
+{
+    LoggerState& state = loggerState();
+    QMutexLocker locker(&state.mutex);
+    state.observer = std::move(observer);
 }
 
 void Logger::disableFileLogging()

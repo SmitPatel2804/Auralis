@@ -8,6 +8,7 @@
 #include <auralis/session/VolumeCoordinator.h>
 #include <auralis/audio/AudioRoute.h>
 
+#include <QAbstractItemModel>
 #include <QHash>
 #include <QObject>
 #include <QSet>
@@ -31,12 +32,20 @@ class DeviceRegistry;
 
 namespace auralis::session {
 
+class SessionListModel;
+class SessionMemberListModel;
+
 class SessionManager final : public QObject, public ISessionManager {
     Q_OBJECT
     Q_PROPERTY(int sessionCount READ sessionCount NOTIFY sessionsChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY currentSessionIdChanged)
     Q_PROPERTY(QString sessionStateText READ sessionStateText NOTIFY sessionStateTextChanged)
     Q_PROPERTY(double groupVolume READ groupVolume NOTIFY groupVolumeChanged)
+    Q_PROPERTY(QString currentSourceId READ currentSourceId NOTIFY currentSessionIdChanged)
+    Q_PROPERTY(bool currentMuted READ currentMuted NOTIFY groupVolumeChanged)
+    Q_PROPERTY(QAbstractItemModel* sessionList READ sessionList CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* sessionMembers READ sessionMembers CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* currentMembers READ currentMembers CONSTANT)
 
 public:
     SessionManager(QObject* parent = nullptr);
@@ -63,6 +72,12 @@ public:
     QString currentSessionId() const;
     QString sessionStateText() const;
     double groupVolume() const;
+    QString currentSourceId() const;
+    bool currentMuted() const;
+    QAbstractItemModel* sessionList() const;
+    QAbstractItemModel* sessionMembers() const;
+    QAbstractItemModel* currentMembers() const;
+    auralis::bluetooth::DeviceRegistry* deviceRegistry() const noexcept;
 
     QVector<AuralisSession> sessions() const;
     std::optional<AuralisSession> sessionById(const QString& id) const;
@@ -88,6 +103,9 @@ public:
     Q_INVOKABLE SessionCommandResult setAutoReconnect(const QString& sessionId, bool enabled);
     Q_INVOKABLE SessionCommandResult setRecoveryPolicy(const QString& sessionId, const QString& policy);
     Q_INVOKABLE SessionCommandResult restoreLastSession();
+    Q_INVOKABLE QString commandResultText(int result) const;
+    Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
+    Q_INVOKABLE QString sessionStateLabel(const QString& sessionId) const;
 
     void refreshActiveSession();
 
@@ -140,6 +158,7 @@ private:
     void clearStaleMemberErrors(AuralisSession& session);
     QString devicePathForAddress(const QString& address) const;
     SessionCommandResult validateVolume(double value) const;
+    void setupUiModels();
 
     auralis::bluetooth::BluetoothManager* bluetooth_ = nullptr;
     auralis::audio::PipeWireManager* pipeWire_ = nullptr;
@@ -160,6 +179,9 @@ private:
     bool persistenceDirty_ = false;
     std::function<void(const QString&)> managedReconnectHook_;
     QVector<QString> managedReconnectRequestsForTest_;
+    SessionListModel* sessionList_ = nullptr;
+    SessionMemberListModel* sessionMembers_ = nullptr;
+    SessionMemberListModel* currentMembers_ = nullptr;
 };
 
 } // namespace auralis::session
