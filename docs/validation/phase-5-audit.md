@@ -1,5 +1,8 @@
 # Auralis Phase 5 Final Closure Audit
 
+Location: `docs/validation/phase-5-audit.md` (moved from
+`docs/PHASE_5_FINAL_CLOSURE_AUDIT.md` during documentation reorganization).
+
 ## 1. Executive Verdict
 
 PHASE 5: COMPLETE

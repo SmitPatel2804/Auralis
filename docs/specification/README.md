@@ -52,7 +52,7 @@ The laptop application should ultimately:
 | Synchronization | Custom C++ synchronization engine |
 | Testing support | C++ tests + Python analysis scripts |
 
-This pack is part of the repository documentation tree. It describes **product intent**, including routing and multi-device sessions that are not implemented yet. The as-built Phase 4 design is in [../architecture.md](../architecture.md). The full map is in [../README.md](../README.md).
+This pack is part of the repository documentation tree. It describes **product intent**, including routing and multi-device sessions that are not implemented yet. The as-built Phase 5 design is in [../architecture.md](../architecture.md). The full map is in [../README.md](../README.md).
 
 ## Documentation map
 

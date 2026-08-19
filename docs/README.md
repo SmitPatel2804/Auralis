@@ -2,6 +2,17 @@
 
 All project documentation lives here. Directory READMEs under `config/` and `tools/` stay with those folders.
 
+```text
+docs/
+  README.md                 this hub
+  architecture.md           as-built design of the current tree
+  diagrams/                 PlantUML sources and rendered SVGs
+  prompts/phase-N/          historical AI-IDE implementation prompts
+  roadmap/                  long-form phased development plan
+  specification/            product-intent engineering pack
+  validation/               phase exit gates and independent audits
+```
+
 ## How to read this tree
 
 | If you want | Start here |
@@ -27,8 +38,8 @@ All project documentation lives here. Directory READMEs under `config/` and `too
 | [validation/phase-3.md](validation/phase-3.md) | Phase 3 device management validation |
 | [validation/phase-4.md](validation/phase-4.md) | Phase 4 PipeWire endpoint validation |
 | [validation/phase-4-audit.md](validation/phase-4-audit.md) | Independent Phase 4 verification record |
-| [phase-5-validation.md](phase-5-validation.md) | Phase 5 routing validation |
-| [PHASE_5_FINAL_CLOSURE_AUDIT.md](PHASE_5_FINAL_CLOSURE_AUDIT.md) | Independent Phase 5 closure audit |
+| [validation/phase-5.md](validation/phase-5.md) | Phase 5 routing validation |
+| [validation/phase-5-audit.md](validation/phase-5-audit.md) | Independent Phase 5 closure audit |
 
 ## Product specification
 

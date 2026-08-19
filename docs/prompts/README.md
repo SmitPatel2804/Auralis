@@ -45,4 +45,4 @@ The Phase 4 audit **result** is [../validation/phase-4-audit.md](../validation/p
 | [phase-5/Auralis_PHASE_5_Correction_Hardening_and_Final_Closure_Prompt.md](phase-5/Auralis_PHASE_5_Correction_Hardening_and_Final_Closure_Prompt.md) | Hardening |
 | [phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md](phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md) | Final closure pass |
 
-The Phase 5 audit **result** is [../PHASE_5_FINAL_CLOSURE_AUDIT.md](../PHASE_5_FINAL_CLOSURE_AUDIT.md).
+The Phase 5 validation and audit **results** are [../validation/phase-5.md](../validation/phase-5.md) and [../validation/phase-5-audit.md](../validation/phase-5-audit.md). Paths named inside the Phase 5 prompt files (`docs/phase-5-validation.md`, `docs/PHASE_5_FINAL_CLOSURE_AUDIT.md`) are historical.

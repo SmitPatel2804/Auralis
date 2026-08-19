@@ -119,9 +119,7 @@ See [docs/architecture.md](docs/architecture.md). The full documentation map is 
 |---|---|
 | [docs/README.md](docs/README.md) | Documentation hub |
 | [docs/architecture.md](docs/architecture.md) | As-built modules, BlueZ, PipeWire observation, AudioRouter, QML exposure |
-| [docs/validation/](docs/validation/README.md) | Phase exit gates and the Phase 4 audit |
-| [docs/phase-5-validation.md](docs/phase-5-validation.md) | Phase 5 routing validation |
-| [docs/PHASE_5_FINAL_CLOSURE_AUDIT.md](docs/PHASE_5_FINAL_CLOSURE_AUDIT.md) | Phase 5 closure audit |
+| [docs/validation/](docs/validation/README.md) | Phase exit gates and independent audits |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/README.md) | Detailed phased development plan |
 | [docs/diagrams/](docs/diagrams/README.md) | Architecture diagrams |

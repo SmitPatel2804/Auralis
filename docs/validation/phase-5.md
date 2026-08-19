@@ -1,6 +1,9 @@
 # Phase 5 Validation — Audio Routing Engine
 
-Validated: **2026-08-19**. Closure evidence: [PHASE_5_FINAL_CLOSURE_AUDIT.md](PHASE_5_FINAL_CLOSURE_AUDIT.md).
+Location: `docs/validation/phase-5.md` (moved from `docs/phase-5-validation.md`
+during documentation reorganization).
+
+Validated: **2026-08-19**. Closure evidence: [phase-5-audit.md](phase-5-audit.md).
 
 Phase 5 adds an **additive** native PipeWire routing engine on top of Phase 4 graph observation. Auralis creates and destroys only links it owns. It does not hijack WirePlumber, does not delete other clients' links, and does not grow `SessionManager`.
 
