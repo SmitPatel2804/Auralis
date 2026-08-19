@@ -117,7 +117,7 @@ Register in [`tests/unit/audio/CMakeLists.txt`](../../../tests/unit/audio/CMakeL
 
 ## Docs
 
-Update [`README.md`](../../../README.md), [`docs/architecture.md`](../../architecture.md) (AudioRouter under PipeWireManager; AdditiveRouting), new [`docs/phase-5-validation.md`](../../phase-5-validation.md): source types, volume limits, live commands, known fan-out/WirePlumber limits. Mark complete only after tests pass.
+Update [`README.md`](../../../README.md), [`docs/architecture/overview.md`](../../architecture/overview.md) (AudioRouter under PipeWireManager; AdditiveRouting), new [`docs/validation/phase-5.md`](../../validation/phase-5.md): source types, volume limits, live commands, known fan-out/WirePlumber limits. Mark complete only after tests pass.
 
 ## Verify
 

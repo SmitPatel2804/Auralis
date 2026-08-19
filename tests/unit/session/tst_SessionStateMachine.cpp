@@ -83,6 +83,17 @@ private slots:
             == SessionState::Idle);
     }
 
+    void failedStaysFailedWithoutStartingIntent()
+    {
+        SessionHealthSnapshot health;
+        health.sourceAvailable = true;
+        health.enabledCount = 1;
+        health.routeActiveCount = 0;
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Failed, SessionIntent::None, health)
+            == SessionState::Failed);
+    }
+
     void failedCanRestart()
     {
         SessionHealthSnapshot health;

@@ -36,15 +36,6 @@ Do not treat path names, file layouts, or “create this file at repo root” in
 
 The Phase 4 audit **result** is [../validation/phase-4-audit.md](../validation/phase-4-audit.md).
 
-## Phase 6 — Multi-device session engine
-
-| Document | Role |
-|---|---|
-| [phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md](phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md) | Implementation (archive) |
-| [phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md](phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md) | **Live machine validation** — run on the actual Linux dev box with Cursor |
-
-Validation **results** belong in [../validation/phase-6.md](../validation/phase-6.md) and [../validation/phase-6-audit.md](../validation/phase-6-audit.md) after running the live machine prompt.
-
 ## Phase 5 — Audio routing
 
 | Document | Role |
@@ -55,3 +46,13 @@ Validation **results** belong in [../validation/phase-6.md](../validation/phase-
 | [phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md](phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md) | Final closure pass |
 
 The Phase 5 validation and audit **results** are [../validation/phase-5.md](../validation/phase-5.md) and [../validation/phase-5-audit.md](../validation/phase-5-audit.md). Paths named inside the Phase 5 prompt files (`docs/phase-5-validation.md`, `docs/PHASE_5_FINAL_CLOSURE_AUDIT.md`) are historical.
+
+## Phase 6 — Multi-device session engine
+
+| Document | Role |
+|---|---|
+| [phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md](phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md) | Implementation (archive) |
+| [phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md](phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md) | Live machine validation |
+| [phase-6/Auralis_PHASE_6_Correction_Hardening_and_Final_Closure_Prompt.md](phase-6/Auralis_PHASE_6_Correction_Hardening_and_Final_Closure_Prompt.md) | Correction / hardening / final closure |
+
+Validation **results**: [../validation/phase-6.md](../validation/phase-6.md), [../validation/phase-6-audit.md](../validation/phase-6-audit.md), [../validation/phase-6-final-closure.md](../validation/phase-6-final-closure.md).

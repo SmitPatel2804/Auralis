@@ -1,6 +1,6 @@
-# Auralis Architecture — Phase 5
+# Auralis Architecture — Phase 6
 
-This is the **as-built** design of the current tree. Product-intent architecture, including unimplemented multi-device sessions, lives in [specification/](specification/README.md). Phase exit gates are in [validation/](validation/README.md).
+This is the **as-built** design of the current tree. Product-intent architecture lives in [../specification/](../specification/README.md). Phase exit gates are in [../validation/](../validation/README.md). Session details: [session-engine.md](session-engine.md).
 
 ## Target architecture
 
@@ -31,7 +31,7 @@ This is the **as-built** design of the current tree. Product-intent architecture
 +---------+---------+      +-----------+-----------+
 ```
 
-Phase 4 observes the PipeWire graph, classifies playback/capture endpoints, and correlates Bluetooth audio nodes with the Phase 3 `DeviceRegistry`. Phase 5 adds `AudioRouter` under `PipeWireManager` with **AdditiveRouting** (create Auralis-owned links only; never destroy WirePlumber/other links) and **RebindOnGraphReplacement** while a route stays logically enabled. DeviceManager and sessions remain unimplemented.
+Phase 4 observes the PipeWire graph. Phase 5 adds `AudioRouter` (**AdditiveRouting**, **RebindOnGraphReplacement**). Phase 6 adds `SessionManager` with one Phase 5 route per Bluetooth member, authoritative recovery policies, and JSON persistence. DeviceManager remains a stub.
 
 ## Bluetooth stack
 
@@ -110,7 +110,7 @@ BlueZ `Connected=true` does not fabricate endpoint availability. The endpoint ap
 | `auralis-bluetooth` | BlueZ discovery + lifecycle: client, registry, model, agent, reconnect |
 | `auralis-audio` | Native PipeWire observation, endpoint registry, Bluetooth correlation, additive routing |
 | `auralis-devices` | Future high-level device state. Not equal to a BlueZ Device1 object. |
-| `auralis-session` | Future multi-device session orchestration. |
+| `auralis-session` | Multi-device session engine (`SessionManager`). |
 | `auralis-ui` | QML module (`Auralis.Ui`) with status, devices, pairing, audio endpoints, routing. |
 | `auralis-desktop` | Process bootstrap. |
 
@@ -128,7 +128,7 @@ Desktop App / Presentation Bridge
 ApplicationCore
   |
   +--> DeviceManager (stub)
-  +--> SessionManager (stub)
+  +--> SessionManager (Phase 6)
   +--> BluetoothManager (IBluetoothManager + QObject uiObject)
   +--> PipeWireManager (IPipeWireManager + QObject uiObject)
   +--> ConfigurationManager
@@ -157,4 +157,4 @@ QML uses `AppCore.bluetooth` for scan/lifecycle and `AppCore.audio` for connecti
 
 Auto-reconnect is bounded via `ReconnectPolicy` and suppressed after explicit disconnect/forget.
 
-See [Phase 3 validation](validation/phase-3.md), [Phase 4 validation](validation/phase-4.md), and [Phase 5 validation](validation/phase-5.md).
+See [Phase 3 validation](../validation/phase-3.md), [Phase 4 validation](../validation/phase-4.md), [Phase 5 validation](../validation/phase-5.md), and [Phase 6 validation](../validation/phase-6.md).

@@ -15,7 +15,7 @@ docs/prompts/phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_
 
 Your job is to inspect, build, test, exercise on real hardware where available, and document what the implementation **actually** does.
 
-Reference architecture doc: [docs/phase-6-session-engine.md](../../phase-6-session-engine.md).
+Reference architecture doc: [docs/architecture/session-engine.md](../../architecture/session-engine.md).
 
 ---
 

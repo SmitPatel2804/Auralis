@@ -47,12 +47,20 @@ QVector<MemberRouteDesired> RoutingCoordinator::desiredRoutes(const AuralisSessi
     return desired;
 }
 
-void RoutingCoordinator::reconcile(AuralisSession& session, quint64 generation, const QHash<QString, quint64>& generations)
+void RoutingCoordinator::reconcile(
+    AuralisSession& session,
+    quint64 generation,
+    const QHash<QString, quint64>& generations,
+    ReconcileMode mode)
 {
     if (router_ == nullptr || session.sourceId.isEmpty()) {
         return;
     }
     if (generations.value(session.id) != generation) {
+        return;
+    }
+    if (mode == ReconcileMode::SuppressCreate) {
+        refreshRuntime(session);
         return;
     }
 
@@ -102,6 +110,15 @@ void RoutingCoordinator::reconcile(AuralisSession& session, quint64 generation, 
         }
 
         if (!routeMatches) {
+            if (!device.runtime.autoRestoreAllowed && session.state != SessionState::Starting) {
+                if (!device.runtime.routeId.isEmpty()) {
+                    router_->deactivateRoute(device.runtime.routeId);
+                    router_->removeRoute(device.runtime.routeId);
+                    sessionRouteOwners_.remove(device.runtime.routeId);
+                    device.runtime.routeId.clear();
+                }
+                continue;
+            }
             if (!device.runtime.routeId.isEmpty()) {
                 router_->deactivateRoute(device.runtime.routeId);
                 router_->removeRoute(device.runtime.routeId);
@@ -118,6 +135,7 @@ void RoutingCoordinator::reconcile(AuralisSession& session, quint64 generation, 
             device.runtime.routeId = routeId;
             sessionRouteOwners_.insert(routeId, session.id);
             device.runtime.routeRequested = true;
+            device.runtime.lastError = {};
             router_->activateRoute(routeId);
         } else if (!device.runtime.routeActive) {
             if (const std::optional<auralis::audio::AudioRoute> route = router_->routeById(device.runtime.routeId)) {

@@ -14,6 +14,10 @@ struct SessionMemberRuntime {
     bool routeRequested = false;
     bool routeActive = false;
     bool recovering = false;
+    /// When false, RoutingCoordinator must not create a new route for this member
+    /// (RecoveryPolicy::None after loss, or disabled/removed recovery).
+    bool autoRestoreAllowed = true;
+    bool managedReconnectRequested = false;
     QString endpointId;
     QString routeId;
     SessionErrorInfo lastError;

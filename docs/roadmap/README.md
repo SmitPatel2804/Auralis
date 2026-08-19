@@ -6,4 +6,4 @@ Planned implementation sequence for the Auralis laptop prototype. This is the lo
 |---|---|
 | [phased-development.md](phased-development.md) | Phase gates, deliverables, hardware/software tracks |
 
-Current implemented boundary: Phase 5 (additive PipeWire routing). Multi-device sessions remain later phases. See [../architecture.md](../architecture.md) for what the code actually does today.
+Current implemented boundary: Phase 6 (multi-device session engine on top of Phase 5 additive routing). See [../architecture/](../architecture/README.md) for what the code actually does today.

@@ -1,5 +1,6 @@
 #include <auralis/session/SessionPersistence.h>
 
+#include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -79,6 +80,41 @@ private slots:
         const SessionPersistenceDocument loaded = persistence.load();
         QCOMPARE(loaded.sessions.size(), 1);
         QCOMPARE(loaded.sessions.front().devices.size(), 1);
+    }
+
+    void createsMissingParentDirectory()
+    {
+        QTemporaryDir dir;
+        SessionPersistence persistence(dir.filePath(QStringLiteral("does-not-exist/nested/sessions.json")));
+        SessionPersistenceDocument document;
+        AuralisSession session;
+        session.id = QStringLiteral("abc");
+        session.name = QStringLiteral("Nested");
+        document.sessions.push_back(session);
+        QString error;
+        QVERIFY(persistence.save(document, &error));
+        QVERIFY(error.isEmpty());
+        const SessionPersistenceDocument loaded = persistence.load();
+        QCOMPARE(loaded.sessions.size(), 1);
+        QCOMPARE(loaded.sessions.front().id, session.id);
+    }
+
+    void saveFailsWhenParentIsAFile()
+    {
+        QTemporaryDir dir;
+        const QString blocker = dir.filePath(QStringLiteral("blocker"));
+        QFile file(blocker);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        SessionPersistence persistence(blocker + QStringLiteral("/nested/sessions.json"));
+        SessionPersistenceDocument document;
+        AuralisSession session;
+        session.id = QStringLiteral("abc");
+        session.name = QStringLiteral("Fail");
+        document.sessions.push_back(session);
+        QString error;
+        QVERIFY(!persistence.save(document, &error));
+        QVERIFY(!error.isEmpty());
     }
 };
 

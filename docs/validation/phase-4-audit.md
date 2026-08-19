@@ -236,7 +236,7 @@ non-fatal (comment: Bluetooth profile-switch races).
 
 `ApplicationCore` treats PipeWire initialize failure as non-fatal (core can
 still be Ready). Covered by `tst_ApplicationCore::pipeWireFailureDoesNotAbortApplication`.
-This is an intentional contract, documented in `docs/architecture.md`.
+This is an intentional contract, documented in `docs/architecture/overview.md`.
 
 ### Inspected hazards
 
@@ -685,7 +685,7 @@ README / `docs/phase-4-validation.md` state routing is Phase 5+.
 |---|---|---|
 | `README.md` | Phase 4 = PipeWire observation; routing not implemented | Quoted `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"`; correct test names |
 | `docs/phase-4-validation.md` | Same; env table matches `tst_PipeWireLiveIntegration` | Quoted addresses |
-| `docs/architecture.md` | Threading, identity, mapping priority match the code | n/a |
+| `docs/architecture/overview.md` | Threading, identity, mapping priority match the code | n/a |
 | `docs/phase-3-validation.md` | BlueZ live env vars | Unquoted `AA:BB:…` example; still valid for that literal |
 | `docs/README.md` | Index | README row still says “Phase 1 status” (stale) |
 

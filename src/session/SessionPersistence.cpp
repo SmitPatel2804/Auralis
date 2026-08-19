@@ -1,7 +1,9 @@
 #include <auralis/session/SessionPersistence.h>
 
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -147,6 +149,15 @@ bool SessionPersistence::save(const SessionPersistenceDocument& document, QStrin
         sessions.append(sessionToJson(session));
     }
     root.insert(QStringLiteral("sessions"), sessions);
+
+    const QFileInfo info(filePath_);
+    QDir parentDir(info.absolutePath());
+    if (!parentDir.exists() && !parentDir.mkpath(QStringLiteral("."))) {
+        if (error != nullptr) {
+            *error = QStringLiteral("Failed to create persistence directory: %1").arg(info.absolutePath());
+        }
+        return false;
+    }
 
     QSaveFile file(filePath_);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

@@ -21,7 +21,7 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
     if (health.enabledCount == 0) {
         health.terminalFailure = true;
     } else if (!health.sourceAvailable) {
-        health.terminalFailure = health.routeActiveCount == 0;
+        health.terminalFailure = health.routeActiveCount == 0 && health.recoveringCount == 0;
     } else if (health.routeActiveCount == 0 && health.recoveringCount == 0) {
         health.terminalFailure = true;
     }

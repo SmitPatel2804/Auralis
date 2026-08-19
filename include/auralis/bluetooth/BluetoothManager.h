@@ -73,6 +73,10 @@ public:
     Q_INVOKABLE void disconnectDevice(const QString& deviceId);
     Q_INVOKABLE void forgetDevice(const QString& deviceId);
     Q_INVOKABLE void reconnectDevice(const QString& deviceId);
+    /// Schedule reconnect through ReconnectPolicy (backoff/attempts). Prefer this over
+    /// reconnectDevice() for session recovery intent so Phase 3 owns retry timing.
+    void requestManagedReconnect(const QString& deviceId);
+    void cancelManagedReconnect(const QString& deviceId);
     Q_INVOKABLE void cancelDeviceOperation(const QString& deviceId);
     Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
     Q_INVOKABLE void rejectPairingRequest(const QString& requestId);

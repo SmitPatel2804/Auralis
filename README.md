@@ -2,7 +2,7 @@
 
 Auralis is a Linux desktop application for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
 
-This repository currently contains **Phase 5**: Phase 1 foundation, Phase 2 BlueZ discovery, Phase 3 Bluetooth device management, Phase 4 PipeWire endpoint observation, and Phase 5 **additive native PipeWire routing**.
+This repository currently contains **Phase 6**: Phase 1 foundation through Phase 5 additive PipeWire routing, plus Phase 6 **multi-device session engine**.
 
 ## Current status
 
@@ -13,7 +13,8 @@ Phase 2: Implemented
 Phase 3: Implemented
 Phase 4: Implemented
 Phase 5: Implemented
-Phase 6+: Not implemented
+Phase 6: Software complete (live two-device hardware opt-in)
+Phase 7+: Not implemented
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
@@ -97,6 +98,20 @@ AURALIS_RUN_AUDIO_ROUTING_INTEGRATION=1 ctest --test-dir build -R tst_AudioRouti
 
 Quote `AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:9D:B4:22"` to prefer that mapped Bluetooth sink as the live destination.
 
+Live session tests are skipped unless explicitly enabled:
+
+```bash
+AURALIS_RUN_SESSION_INTEGRATION=1 ctest --test-dir build -R tst_SessionLiveIntegration --output-on-failure
+```
+
+Two-device membership smoke (addresses only; does not require both sinks to be playing):
+
+```bash
+AURALIS_RUN_SESSION_INTEGRATION=1 \
+AURALIS_EXPECT_DEVICE_ADDRESSES="AA:BB:CC:DD:EE:FF;11:22:33:44:55:66" \
+ctest --test-dir build -R tst_SessionLiveIntegration --output-on-failure
+```
+
 ## Architecture summary
 
 | Module | Target | Current role |
@@ -111,14 +126,14 @@ Quote `AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:9D:B4:22"` to prefer that mapped 
 
 QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` (including `AppCore.audio.router`) for PipeWire status, endpoints, and routing. QML never talks D-Bus or native PipeWire.
 
-See [docs/architecture.md](docs/architecture.md). The full documentation map is in [docs/README.md](docs/README.md).
+See [docs/architecture/overview.md](docs/architecture/overview.md). The full documentation map is in [docs/README.md](docs/README.md).
 
 ## Documentation
 
 | Location | Contents |
 |---|---|
 | [docs/README.md](docs/README.md) | Documentation hub |
-| [docs/phase-6-session-engine.md](docs/phase-6-session-engine.md) | Session engine architecture, persistence, recovery, tests |
+| [docs/architecture/](docs/architecture/README.md) | As-built architecture (overview + session engine) |
 | [docs/validation/](docs/validation/README.md) | Phase exit gates and independent audits |
 | [docs/specification/](docs/specification/README.md) | Product specification pack |
 | [docs/roadmap/](docs/roadmap/README.md) | Detailed phased development plan |

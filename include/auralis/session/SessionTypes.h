@@ -59,6 +59,8 @@ enum class SessionCommandResult {
     MemberNotFound,
     AlreadyActive,
     InvalidState,
+    InvalidArgument,
+    PersistenceFailure,
     InternalError
 };
 

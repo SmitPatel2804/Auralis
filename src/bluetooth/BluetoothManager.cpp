@@ -534,6 +534,22 @@ void BluetoothManager::reconnectDevice(const QString& deviceId)
     }
 }
 
+void BluetoothManager::requestManagedReconnect(const QString& deviceId)
+{
+    if (reconnect_ == nullptr || deviceId.trimmed().isEmpty()) {
+        return;
+    }
+    reconnect_->scheduleReconnect(deviceId);
+}
+
+void BluetoothManager::cancelManagedReconnect(const QString& deviceId)
+{
+    if (reconnect_ == nullptr || deviceId.trimmed().isEmpty()) {
+        return;
+    }
+    reconnect_->cancelReconnect(deviceId);
+}
+
 void BluetoothManager::cancelDeviceOperation(const QString& deviceId)
 {
     if (lifecycle_ != nullptr) {

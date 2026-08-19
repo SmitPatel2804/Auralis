@@ -117,6 +117,10 @@ QString toString(SessionCommandResult result)
         return QStringLiteral("AlreadyActive");
     case SessionCommandResult::InvalidState:
         return QStringLiteral("InvalidState");
+    case SessionCommandResult::InvalidArgument:
+        return QStringLiteral("InvalidArgument");
+    case SessionCommandResult::PersistenceFailure:
+        return QStringLiteral("PersistenceFailure");
     case SessionCommandResult::InternalError:
         return QStringLiteral("InternalError");
     }

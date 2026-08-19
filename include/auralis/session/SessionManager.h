@@ -10,10 +10,12 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 #include <QVector>
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -89,6 +91,10 @@ public:
 
     void refreshActiveSession();
 
+    /// Test hook: when set, used instead of BluetoothManager::requestManagedReconnect.
+    void setManagedReconnectHookForTest(std::function<void(const QString& devicePath)> hook);
+    QVector<QString> takeManagedReconnectRequestsForTest();
+
 signals:
     void sessionsChanged();
     void sessionAdded(const QString& sessionId);
@@ -111,18 +117,25 @@ private:
     AuralisSession* mutableSession(const QString& id);
     void emitSessionUiSignals();
     void touchUpdated(AuralisSession& session);
-    bool persistAll();
+    SessionCommandResult persistAll(const QString& sessionIdForError = QString());
     void loadSessions();
     SessionIntent currentIntent(const AuralisSession& session) const;
     void recomputeSession(AuralisSession& session);
     void reconcileActiveSession(AuralisSession& session);
     void stopSession(AuralisSession& session, bool persist);
+    void bumpGeneration(AuralisSession& session);
     QString findActiveSessionId() const;
     bool isActiveLifecycleState(SessionState state) const;
-    void scheduleRecovery(AuralisSession& session, SessionDevice& device);
+    bool allowsRouteCreation(SessionState state) const;
+    bool policyAllowsAutoRouteRestore(const AuralisSession& session) const;
+    bool policyAllowsBluetoothReconnect(const AuralisSession& session) const;
+    void applyAutoRestoreFlags(AuralisSession& session);
+    void requestManagedReconnect(AuralisSession& session, SessionDevice& device);
     void cancelRecovery(const QString& sessionId, const QString& deviceId);
+    void cancelAllRecovery(AuralisSession& session);
+    void clearStaleMemberErrors(AuralisSession& session);
     QString devicePathForAddress(const QString& address) const;
-    SessionCommandResult validateCrudSession(const QString& sessionId, AuralisSession** out = nullptr);
+    SessionCommandResult validateVolume(double value) const;
 
     auralis::bluetooth::BluetoothManager* bluetooth_ = nullptr;
     auralis::audio::PipeWireManager* pipeWire_ = nullptr;
@@ -135,12 +148,14 @@ private:
     QVector<AuralisSession> sessions_;
     QString activeSessionId_;
     QHash<QString, quint64> generations_;
-    QHash<QString, QTimer*> recoveryTimers_;
     QTimer recoverySweep_;
     quint64 nextGeneration_ = 1;
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;
     bool reconciling_ = false;
     bool reconcilePending_ = false;
+    bool persistenceDirty_ = false;
+    std::function<void(const QString&)> managedReconnectHook_;
+    QVector<QString> managedReconnectRequestsForTest_;
 };
 
 } // namespace auralis::session

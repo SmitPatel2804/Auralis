@@ -18,11 +18,8 @@
 namespace auralis::session {
 namespace {
 
-double clampVolume(double value)
+double clampFiniteVolume(double value)
 {
-    if (!std::isfinite(value)) {
-        return 0.0;
-    }
     return std::clamp(value, 0.0, 1.0);
 }
 
@@ -102,6 +99,20 @@ bool SessionManager::initialize()
         volume_ = std::make_unique<VolumeCoordinator>(router_);
         connect(router_, &auralis::audio::AudioRouter::routeStateChanged, this, &SessionManager::handleRouteStateChanged);
         connect(router_, &auralis::audio::AudioRouter::routeRemoved, this, &SessionManager::handleRouteRemoved);
+        connect(router_, &auralis::audio::AudioRouter::routeError, this, [this](const QString& routeId, auralis::audio::RouteError, const QString& detail) {
+            if (activeSessionId_.isEmpty()) {
+                return;
+            }
+            if (AuralisSession* session = mutableSession(activeSessionId_)) {
+                for (SessionDevice& device : session->devices) {
+                    if (device.runtime.routeId == routeId) {
+                        device.runtime.lastError = {SessionError::RouteActivationFailed, detail};
+                        emit sessionError(session->id, SessionError::RouteActivationFailed, detail);
+                        break;
+                    }
+                }
+            }
+        });
     }
     if (pipeWire_ != nullptr) {
         connect(pipeWire_, &auralis::audio::PipeWireManager::graphRevisionChanged, this, &SessionManager::handleExternalGraphChanged);
@@ -129,16 +140,10 @@ void SessionManager::shutdown()
     }
 
     recoverySweep_.stop();
-    const QList<QString> timerKeys = recoveryTimers_.keys();
-    for (const QString& key : timerKeys) {
-        if (QTimer* timer = recoveryTimers_.take(key)) {
-            timer->stop();
-            timer->deleteLater();
-        }
-    }
-
     for (AuralisSession& session : sessions_) {
-        if (isActiveLifecycleState(session.state)) {
+        if (isActiveLifecycleState(session.state) || session.state == SessionState::Failed) {
+            bumpGeneration(session);
+            cancelAllRecovery(session);
             stopSession(session, false);
         }
     }
@@ -207,6 +212,18 @@ std::optional<AuralisSession> SessionManager::sessionById(const QString& id) con
     return std::nullopt;
 }
 
+void SessionManager::setManagedReconnectHookForTest(std::function<void(const QString&)> hook)
+{
+    managedReconnectHook_ = std::move(hook);
+}
+
+QVector<QString> SessionManager::takeManagedReconnectRequestsForTest()
+{
+    QVector<QString> out = managedReconnectRequestsForTest_;
+    managedReconnectRequestsForTest_.clear();
+    return out;
+}
+
 QString SessionManager::createSession(const QString& name)
 {
     AuralisSession session;
@@ -220,11 +237,14 @@ QString SessionManager::createSession(const QString& name)
     session.updatedAt = now;
     session.state = SessionState::Idle;
     sessions_.push_back(session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(session.id);
     qCInfo(auralisSession) << "SessionCreated id=" << session.id << "name=" << session.name;
     emit sessionAdded(session.id);
     emit sessionsChanged();
     emitSessionUiSignals();
+    if (persistResult != SessionCommandResult::Accepted) {
+        emit sessionError(session.id, SessionError::PersistenceFailure, QStringLiteral("Failed to persist new session"));
+    }
     return session.id;
 }
 
@@ -234,7 +254,9 @@ SessionCommandResult SessionManager::deleteSession(const QString& sessionId)
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
     }
-    if (isActiveLifecycleState(session->state)) {
+    bumpGeneration(*session);
+    cancelAllRecovery(*session);
+    if (isActiveLifecycleState(session->state) || session->state == SessionState::Failed) {
         stopSession(*session, false);
     }
     if (activeSessionId_ == sessionId) {
@@ -247,11 +269,11 @@ SessionCommandResult SessionManager::deleteSession(const QString& sessionId)
             break;
         }
     }
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionRemoved(sessionId);
     emit sessionsChanged();
     emitSessionUiSignals();
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::renameSession(const QString& sessionId, const QString& name)
@@ -266,9 +288,9 @@ SessionCommandResult SessionManager::renameSession(const QString& sessionId, con
     }
     session->name = trimmed;
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::addDevice(const QString& sessionId, const QString& deviceId, const QString& role)
@@ -290,14 +312,16 @@ SessionCommandResult SessionManager::addDevice(const QString& sessionId, const Q
     device.deviceId = normalized;
     bool ok = false;
     device.role = sessionDeviceRoleFromString(role, &ok);
+    device.runtime.autoRestoreAllowed = session->state == SessionState::Starting
+        || policyAllowsAutoRouteRestore(*session);
     session->devices.push_back(device);
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
-    if (sessionId == activeSessionId_ && isActiveLifecycleState(session->state)) {
+    if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
         reconcileActiveSession(*session);
     }
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::removeDevice(const QString& sessionId, const QString& deviceId)
@@ -321,12 +345,12 @@ SessionCommandResult SessionManager::removeDevice(const QString& sessionId, cons
         }
         session->devices.removeAt(i);
         touchUpdated(*session);
-        persistAll();
+        const SessionCommandResult persistResult = persistAll(sessionId);
         emit sessionUpdated(sessionId);
-        if (sessionId == activeSessionId_) {
+        if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
             reconcileActiveSession(*session);
         }
-        return SessionCommandResult::Accepted;
+        return persistResult;
     }
     return SessionCommandResult::MemberNotFound;
 }
@@ -338,16 +362,32 @@ SessionCommandResult SessionManager::setDeviceEnabled(const QString& sessionId, 
         return SessionCommandResult::SessionNotFound;
     }
     for (SessionDevice& device : session->devices) {
-        if (device.deviceId == deviceId.trimmed().toUpper()) {
-            device.enabled = enabled;
-            touchUpdated(*session);
-            persistAll();
-            emit sessionUpdated(sessionId);
-            if (sessionId == activeSessionId_ && isActiveLifecycleState(session->state)) {
-                reconcileActiveSession(*session);
-            }
-            return SessionCommandResult::Accepted;
+        if (device.deviceId != deviceId.trimmed().toUpper()) {
+            continue;
         }
+        device.enabled = enabled;
+        if (!enabled) {
+            cancelRecovery(sessionId, device.deviceId);
+            device.runtime.autoRestoreAllowed = false;
+            device.runtime.recovering = false;
+            if (!device.runtime.routeId.isEmpty() && router_ != nullptr) {
+                router_->deactivateRoute(device.runtime.routeId);
+                router_->removeRoute(device.runtime.routeId);
+                device.runtime.routeId.clear();
+                device.runtime.routeActive = false;
+                device.runtime.routeRequested = false;
+            }
+        } else {
+            device.runtime.autoRestoreAllowed = policyAllowsAutoRouteRestore(*session)
+                || session->state == SessionState::Starting;
+        }
+        touchUpdated(*session);
+        const SessionCommandResult persistResult = persistAll(sessionId);
+        emit sessionUpdated(sessionId);
+        if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
+            reconcileActiveSession(*session);
+        }
+        return persistResult;
     }
     return SessionCommandResult::MemberNotFound;
 }
@@ -359,17 +399,18 @@ SessionCommandResult SessionManager::setDeviceRole(const QString& sessionId, con
         return SessionCommandResult::SessionNotFound;
     }
     for (SessionDevice& device : session->devices) {
-        if (device.deviceId == deviceId.trimmed().toUpper()) {
-            bool ok = false;
-            device.role = sessionDeviceRoleFromString(role, &ok);
-            if (!ok && !role.trimmed().isEmpty()) {
-                return SessionCommandResult::InternalError;
-            }
-            touchUpdated(*session);
-            persistAll();
-            emit sessionUpdated(sessionId);
-            return SessionCommandResult::Accepted;
+        if (device.deviceId != deviceId.trimmed().toUpper()) {
+            continue;
         }
+        bool ok = false;
+        device.role = sessionDeviceRoleFromString(role, &ok);
+        if (!ok && !role.trimmed().isEmpty()) {
+            return SessionCommandResult::InternalError;
+        }
+        touchUpdated(*session);
+        const SessionCommandResult persistResult = persistAll(sessionId);
+        emit sessionUpdated(sessionId);
+        return persistResult;
     }
     return SessionCommandResult::MemberNotFound;
 }
@@ -382,15 +423,18 @@ SessionCommandResult SessionManager::setSource(const QString& sessionId, const Q
     }
     session->sourceId = sourceId.trimmed();
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
-    if (sessionId == activeSessionId_ && isActiveLifecycleState(session->state)) {
+    if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
         if (routing_ != nullptr) {
             routing_->stopSessionRoutes(*session);
         }
+        for (SessionDevice& device : session->devices) {
+            device.runtime.autoRestoreAllowed = true;
+        }
         reconcileActiveSession(*session);
     }
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::activateSession(const QString& sessionId)
@@ -410,20 +454,30 @@ SessionCommandResult SessionManager::activateSession(const QString& sessionId)
     if (!otherActive.isEmpty() && otherActive != sessionId) {
         return SessionCommandResult::AlreadyActive;
     }
-    if (isActiveLifecycleState(session->state) && sessionId == activeSessionId_) {
+    if (allowsRouteCreation(session->state) && sessionId == activeSessionId_) {
         return SessionCommandResult::Accepted;
     }
 
-    const quint64 generation = ++nextGeneration_;
-    generations_[sessionId] = generation;
-    session->operationGeneration = generation;
+    // Switching away from Failed: bump and clear.
+    if (session->state == SessionState::Failed) {
+        cancelAllRecovery(*session);
+    }
+
+    bumpGeneration(*session);
     activeSessionId_ = sessionId;
+    const SessionState oldState = session->state;
     session->state = SessionState::Starting;
-    session->lastUsedAt = QDateTime::currentDateTimeUtc();
     session->restoreIntent = false;
+    session->error = {};
+    for (SessionDevice& device : session->devices) {
+        device.runtime.autoRestoreAllowed = true;
+        device.runtime.managedReconnectRequested = false;
+        device.runtime.recovering = false;
+        device.runtime.lastError = {};
+    }
     touchUpdated(*session);
-    persistAll();
-    emit sessionStateChanged(sessionId, SessionState::Idle, SessionState::Starting);
+    persistAll(sessionId);
+    emit sessionStateChanged(sessionId, oldState, SessionState::Starting);
     emit sessionUpdated(sessionId);
     emitSessionUiSignals();
 
@@ -443,8 +497,8 @@ SessionCommandResult SessionManager::deactivateSession(const QString& sessionId)
     if (!isActiveLifecycleState(session->state) && session->state != SessionState::Failed) {
         return SessionCommandResult::Accepted;
     }
-    ++nextGeneration_;
-    generations_[sessionId] = nextGeneration_;
+    bumpGeneration(*session);
+    cancelAllRecovery(*session);
     stopSession(*session, true);
     return SessionCommandResult::Accepted;
 }
@@ -458,6 +512,10 @@ SessionCommandResult SessionManager::retrySession(const QString& sessionId)
     if (session->state != SessionState::Failed && session->state != SessionState::Degraded) {
         return SessionCommandResult::InvalidState;
     }
+    for (SessionDevice& device : session->devices) {
+        device.runtime.autoRestoreAllowed = true;
+        device.runtime.managedReconnectRequested = false;
+    }
     return activateSession(sessionId);
 }
 
@@ -467,15 +525,19 @@ SessionCommandResult SessionManager::setGroupVolume(const QString& sessionId, do
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
     }
-    session->groupVolume = clampVolume(value);
+    const SessionCommandResult volumeResult = validateVolume(value);
+    if (volumeResult != SessionCommandResult::Accepted) {
+        return volumeResult;
+    }
+    session->groupVolume = clampFiniteVolume(value);
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     if (volume_ != nullptr) {
         volume_->applySessionVolumes(*session);
     }
     emit sessionUpdated(sessionId);
     emitSessionUiSignals();
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::setSessionMuted(const QString& sessionId, bool muted)
@@ -486,12 +548,12 @@ SessionCommandResult SessionManager::setSessionMuted(const QString& sessionId, b
     }
     session->muted = muted;
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     if (volume_ != nullptr) {
         volume_->applySessionVolumes(*session);
     }
     emit sessionUpdated(sessionId);
-    return SessionCommandResult::Accepted;
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::setDeviceVolume(const QString& sessionId, const QString& deviceId, double value)
@@ -500,17 +562,22 @@ SessionCommandResult SessionManager::setDeviceVolume(const QString& sessionId, c
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
     }
+    const SessionCommandResult volumeResult = validateVolume(value);
+    if (volumeResult != SessionCommandResult::Accepted) {
+        return volumeResult;
+    }
     for (SessionDevice& device : session->devices) {
-        if (device.deviceId == deviceId.trimmed().toUpper()) {
-            device.volumeTrim = clampVolume(value);
-            touchUpdated(*session);
-            persistAll();
-            if (volume_ != nullptr) {
-                volume_->applyMemberVolume(*session, device);
-            }
-            emit sessionUpdated(sessionId);
-            return SessionCommandResult::Accepted;
+        if (device.deviceId != deviceId.trimmed().toUpper()) {
+            continue;
         }
+        device.volumeTrim = clampFiniteVolume(value);
+        touchUpdated(*session);
+        const SessionCommandResult persistResult = persistAll(sessionId);
+        if (volume_ != nullptr) {
+            volume_->applyMemberVolume(*session, device);
+        }
+        emit sessionUpdated(sessionId);
+        return persistResult;
     }
     return SessionCommandResult::MemberNotFound;
 }
@@ -522,16 +589,17 @@ SessionCommandResult SessionManager::setDeviceMuted(const QString& sessionId, co
         return SessionCommandResult::SessionNotFound;
     }
     for (SessionDevice& device : session->devices) {
-        if (device.deviceId == deviceId.trimmed().toUpper()) {
-            device.muted = muted;
-            touchUpdated(*session);
-            persistAll();
-            if (volume_ != nullptr) {
-                volume_->applyMemberVolume(*session, device);
-            }
-            emit sessionUpdated(sessionId);
-            return SessionCommandResult::Accepted;
+        if (device.deviceId != deviceId.trimmed().toUpper()) {
+            continue;
         }
+        device.muted = muted;
+        touchUpdated(*session);
+        const SessionCommandResult persistResult = persistAll(sessionId);
+        if (volume_ != nullptr) {
+            volume_->applyMemberVolume(*session, device);
+        }
+        emit sessionUpdated(sessionId);
+        return persistResult;
     }
     return SessionCommandResult::MemberNotFound;
 }
@@ -543,10 +611,21 @@ SessionCommandResult SessionManager::setAutoReconnect(const QString& sessionId, 
         return SessionCommandResult::SessionNotFound;
     }
     session->autoReconnect = enabled;
+    if (!enabled) {
+        bumpGeneration(*session);
+        for (SessionDevice& device : session->devices) {
+            if (device.runtime.managedReconnectRequested) {
+                cancelRecovery(sessionId, device.deviceId);
+            }
+        }
+    }
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
-    return SessionCommandResult::Accepted;
+    if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
+        reconcileActiveSession(*session);
+    }
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::setRecoveryPolicy(const QString& sessionId, const QString& policy)
@@ -556,14 +635,47 @@ SessionCommandResult SessionManager::setRecoveryPolicy(const QString& sessionId,
         return SessionCommandResult::SessionNotFound;
     }
     bool ok = false;
-    session->recoveryPolicy = recoveryPolicyFromString(policy, &ok);
+    const RecoveryPolicy next = recoveryPolicyFromString(policy, &ok);
     if (!ok) {
         return SessionCommandResult::InternalError;
     }
+    session->recoveryPolicy = next;
+    bumpGeneration(*session);
+    if (next == RecoveryPolicy::None) {
+        cancelAllRecovery(*session);
+        for (SessionDevice& device : session->devices) {
+            if (!device.runtime.routeActive) {
+                device.runtime.autoRestoreAllowed = false;
+                device.runtime.recovering = false;
+            }
+        }
+    } else if (next == RecoveryPolicy::RestoreRoutesOnly) {
+        for (SessionDevice& device : session->devices) {
+            if (device.runtime.managedReconnectRequested) {
+                const QString path = devicePathForAddress(device.deviceId);
+                if (!path.isEmpty() && bluetooth_ != nullptr) {
+                    bluetooth_->cancelManagedReconnect(path);
+                }
+                device.runtime.managedReconnectRequested = false;
+            }
+            if (device.enabled) {
+                device.runtime.autoRestoreAllowed = true;
+            }
+        }
+    } else {
+        for (SessionDevice& device : session->devices) {
+            if (device.enabled) {
+                device.runtime.autoRestoreAllowed = true;
+            }
+        }
+    }
     touchUpdated(*session);
-    persistAll();
+    const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
-    return SessionCommandResult::Accepted;
+    if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
+        reconcileActiveSession(*session);
+    }
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::restoreLastSession()
@@ -609,6 +721,9 @@ void SessionManager::handleExternalGraphChanged()
         return;
     }
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
+        if (session->state == SessionState::Failed || session->state == SessionState::Idle) {
+            return;
+        }
         reconcileActiveSession(*session);
     }
 }
@@ -629,6 +744,9 @@ void SessionManager::handleRouteStateChanged(const QString& routeId, auralis::au
         break;
     }
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
+        if (!allowsRouteCreation(session->state) && session->state != SessionState::Stopping) {
+            return;
+        }
         reconcileActiveSession(*session);
     }
 }
@@ -645,6 +763,10 @@ void SessionManager::handleRouteRemoved(const QString& routeId)
                 device.runtime.routeActive = false;
             }
         }
+        if (session->state == SessionState::Stopping || session->state == SessionState::Idle
+            || session->state == SessionState::Failed) {
+            return;
+        }
         reconcileActiveSession(*session);
     }
 }
@@ -655,6 +777,9 @@ void SessionManager::handleDeviceRegistryChanged()
         return;
     }
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
+        if (session->state == SessionState::Failed || session->state == SessionState::Idle) {
+            return;
+        }
         reconcileActiveSession(*session);
     }
 }
@@ -666,6 +791,10 @@ void SessionManager::handleRecoveryTick()
         return;
     }
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
+        if (session->state == SessionState::Failed || session->state == SessionState::Idle
+            || session->state == SessionState::Stopping) {
+            return;
+        }
         reconcileActiveSession(*session);
     }
 }
@@ -692,19 +821,27 @@ void SessionManager::touchUpdated(AuralisSession& session)
     session.updatedAt = QDateTime::currentDateTimeUtc();
 }
 
-bool SessionManager::persistAll()
+SessionCommandResult SessionManager::persistAll(const QString& sessionIdForError)
 {
     if (persistence_ == nullptr) {
-        return false;
+        return SessionCommandResult::PersistenceFailure;
     }
     SessionPersistenceDocument document;
     document.sessions = sessions_;
     QString error;
     const bool ok = persistence_->save(document, &error);
     if (!ok) {
-        qCWarning(auralisSession) << "SessionPersistFailed" << error;
+        persistenceDirty_ = true;
+        qCWarning(auralisSession) << "SessionPersistenceFailed"
+                                  << "session=" << sessionIdForError << "path=" << persistence_->filePath()
+                                  << "reason=" << error;
+        if (!sessionIdForError.isEmpty()) {
+            emit sessionError(sessionIdForError, SessionError::PersistenceFailure, error);
+        }
+        return SessionCommandResult::PersistenceFailure;
     }
-    return ok;
+    persistenceDirty_ = false;
+    return SessionCommandResult::Accepted;
 }
 
 void SessionManager::loadSessions()
@@ -722,6 +859,7 @@ void SessionManager::loadSessions()
         session.state = SessionState::Idle;
         for (SessionDevice& device : session.devices) {
             device.runtime = {};
+            device.runtime.autoRestoreAllowed = true;
         }
     }
 }
@@ -735,14 +873,19 @@ SessionIntent SessionManager::currentIntent(const AuralisSession& session) const
         return SessionIntent::Stopping;
     case SessionState::Recovering:
         return SessionIntent::Recovering;
+    case SessionState::Failed:
+        return SessionIntent::None;
     default:
         break;
     }
-    if (session.id == activeSessionId_ && isActiveLifecycleState(session.state)) {
+    if (session.id == activeSessionId_ && allowsRouteCreation(session.state)) {
         for (const SessionDevice& device : session.devices) {
             if (device.enabled && device.runtime.recovering) {
                 return SessionIntent::Recovering;
             }
+        }
+        if (routing_ != nullptr && !routing_->sourceAvailable(session)) {
+            return SessionIntent::Recovering;
         }
     }
     return SessionIntent::None;
@@ -764,9 +907,14 @@ void SessionManager::recomputeSession(AuralisSession& session)
         if (newState == SessionState::Idle && activeSessionId_ == session.id) {
             activeSessionId_.clear();
         }
-        if (newState == SessionState::Active) {
+        if (newState == SessionState::Active
+            || (newState == SessionState::Degraded && oldState == SessionState::Starting)) {
             session.lastUsedAt = QDateTime::currentDateTimeUtc();
-            persistAll();
+            persistAll(session.id);
+        }
+        if (newState == SessionState::Failed) {
+            session.error = {SessionError::SourceUnavailable, QStringLiteral("Session failed")};
+            emit sessionError(session.id, session.error.category, session.error.detail);
         }
         emitSessionUiSignals();
     }
@@ -791,20 +939,42 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
         }
         recomputeSession(session);
         if (session.state == SessionState::Idle) {
-            persistAll();
+            persistAll(session.id);
             emit sessionUpdated(session.id);
         }
         reconciling_ = false;
-        if (reconcilePending_) {
+        if (reconcilePending_ && generations_.value(session.id) == session.operationGeneration) {
             reconcileActiveSession(session);
         }
         return;
     }
 
+    if (session.state == SessionState::Failed || session.state == SessionState::Idle) {
+        if (routing_ != nullptr) {
+            routing_->reconcile(session, session.operationGeneration, generations_, ReconcileMode::SuppressCreate);
+        }
+        reconciling_ = false;
+        return;
+    }
+
+    applyAutoRestoreFlags(session);
+
+    const bool sourceAvailableBefore = routing_ != nullptr && routing_->sourceAvailable(session);
+    const ReconcileMode mode = sourceAvailableBefore ? ReconcileMode::Full : ReconcileMode::SuppressCreate;
+
     if (routing_ != nullptr) {
-        routing_->reconcile(session, session.operationGeneration, generations_);
-        if (volume_ != nullptr) {
+        routing_->reconcile(session, session.operationGeneration, generations_, mode);
+        if (volume_ != nullptr && sourceAvailableBefore) {
             volume_->applySessionVolumes(session);
+        }
+    }
+
+    const bool sourceAvailable = routing_ != nullptr && routing_->sourceAvailable(session);
+    if (!sourceAvailable && session.state != SessionState::Starting) {
+        for (SessionDevice& device : session.devices) {
+            if (device.enabled) {
+                device.runtime.recovering = true;
+            }
         }
     }
 
@@ -813,28 +983,52 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
             device.runtime.recovering = false;
             continue;
         }
-        const bool needsRecovery = !device.runtime.routeActive
-            && (session.autoReconnect || session.recoveryPolicy != RecoveryPolicy::None);
-        const bool hadRoute = device.runtime.routeRequested;
-        if (needsRecovery && hadRoute && session.recoveryPolicy == RecoveryPolicy::ReconnectAndRestore && !device.runtime.connected) {
-            scheduleRecovery(session, device);
-        } else if (needsRecovery && hadRoute && device.runtime.connected && routing_ != nullptr && !routing_->memberEndpointAvailable(device.deviceId)) {
-            device.runtime.recovering = true;
-        } else if (device.runtime.routeActive) {
+
+        if (device.runtime.routeActive) {
             cancelRecovery(session.id, device.deviceId);
             device.runtime.recovering = false;
-        } else if (needsRecovery && hadRoute) {
-            device.runtime.recovering = session.recoveryPolicy != RecoveryPolicy::None;
-        } else {
+            device.runtime.lastError = {};
+            continue;
+        }
+
+        const bool hadRoute = device.runtime.routeRequested;
+        const bool missing = !device.runtime.routeActive;
+        if (!missing) {
+            continue;
+        }
+
+        if (session.state == SessionState::Starting) {
             device.runtime.recovering = false;
+            continue;
+        }
+
+        if (session.recoveryPolicy == RecoveryPolicy::None) {
+            if (hadRoute || session.state != SessionState::Starting) {
+                device.runtime.autoRestoreAllowed = false;
+            }
+            device.runtime.recovering = false;
+            continue;
+        }
+
+        if (!hadRoute && session.state != SessionState::Starting && !device.runtime.endpointAvailable) {
+            // Member never had a route and still unavailable — degraded, not recovering yet.
+            device.runtime.recovering = false;
+            continue;
+        }
+
+        device.runtime.recovering = true;
+        if (policyAllowsBluetoothReconnect(session) && !device.runtime.connected) {
+            requestManagedReconnect(session, device);
         }
     }
 
+    clearStaleMemberErrors(session);
     recomputeSession(session);
     emit sessionUpdated(session.id);
 
     reconciling_ = false;
-    if (reconcilePending_) {
+    if (reconcilePending_ && generations_.value(session.id) == session.operationGeneration
+        && session.state != SessionState::Failed && session.state != SessionState::Idle) {
         reconcileActiveSession(session);
     }
 }
@@ -843,9 +1037,10 @@ void SessionManager::stopSession(AuralisSession& session, bool persist)
 {
     const SessionState oldState = session.state;
     session.state = SessionState::Stopping;
+    cancelAllRecovery(session);
     for (SessionDevice& device : session.devices) {
-        cancelRecovery(session.id, device.deviceId);
         device.runtime.recovering = false;
+        device.runtime.managedReconnectRequested = false;
     }
     if (routing_ != nullptr) {
         routing_->stopSessionRoutes(session);
@@ -859,16 +1054,23 @@ void SessionManager::stopSession(AuralisSession& session, bool persist)
         emit sessionStateChanged(session.id, oldState, SessionState::Idle);
     }
     if (persist) {
-        persistAll();
+        persistAll(session.id);
     }
     emit sessionUpdated(session.id);
     emitSessionUiSignals();
 }
 
+void SessionManager::bumpGeneration(AuralisSession& session)
+{
+    const quint64 generation = ++nextGeneration_;
+    generations_[session.id] = generation;
+    session.operationGeneration = generation;
+}
+
 QString SessionManager::findActiveSessionId() const
 {
     for (const AuralisSession& session : sessions_) {
-        if (isActiveLifecycleState(session.state)) {
+        if (isActiveLifecycleState(session.state) || session.state == SessionState::Failed) {
             return session.id;
         }
     }
@@ -889,48 +1091,127 @@ bool SessionManager::isActiveLifecycleState(SessionState state) const
     }
 }
 
-void SessionManager::scheduleRecovery(AuralisSession& session, SessionDevice& device)
+bool SessionManager::allowsRouteCreation(SessionState state) const
+{
+    switch (state) {
+    case SessionState::Starting:
+    case SessionState::Active:
+    case SessionState::Degraded:
+    case SessionState::Recovering:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool SessionManager::policyAllowsAutoRouteRestore(const AuralisSession& session) const
+{
+    return session.recoveryPolicy == RecoveryPolicy::RestoreRoutesOnly
+        || session.recoveryPolicy == RecoveryPolicy::ReconnectAndRestore;
+}
+
+bool SessionManager::policyAllowsBluetoothReconnect(const AuralisSession& session) const
+{
+    return session.autoReconnect && session.recoveryPolicy == RecoveryPolicy::ReconnectAndRestore;
+}
+
+void SessionManager::applyAutoRestoreFlags(AuralisSession& session)
+{
+    if (session.state == SessionState::Starting) {
+        for (SessionDevice& device : session.devices) {
+            if (device.enabled) {
+                device.runtime.autoRestoreAllowed = true;
+            }
+        }
+        return;
+    }
+    const bool sourceAvailable = routing_ != nullptr && routing_->sourceAvailable(session);
+    if (session.recoveryPolicy == RecoveryPolicy::None) {
+        for (SessionDevice& device : session.devices) {
+            if (!device.enabled) {
+                device.runtime.autoRestoreAllowed = false;
+                continue;
+            }
+            if (!sourceAvailable) {
+                // Source-wide loss: restore members that already had a route when the source returns.
+                device.runtime.autoRestoreAllowed = device.runtime.routeRequested;
+                continue;
+            }
+            if (!device.runtime.routeActive) {
+                device.runtime.autoRestoreAllowed = false;
+            }
+        }
+        return;
+    }
+    for (SessionDevice& device : session.devices) {
+        if (device.enabled) {
+            device.runtime.autoRestoreAllowed = true;
+        }
+    }
+}
+
+void SessionManager::requestManagedReconnect(AuralisSession& session, SessionDevice& device)
 {
     device.runtime.recovering = true;
-    if (bluetooth_ == nullptr || !session.autoReconnect) {
+    if (!policyAllowsBluetoothReconnect(session)) {
+        return;
+    }
+    if (device.runtime.managedReconnectRequested) {
         return;
     }
     const QString path = devicePathForAddress(device.deviceId);
     if (path.isEmpty()) {
         return;
     }
-    const QString key = session.id + QLatin1Char(':') + device.deviceId;
-    if (!recoveryTimers_.contains(key)) {
-        auto* timer = new QTimer(this);
-        timer->setSingleShot(true);
-        connect(timer, &QTimer::timeout, this, [this, sessionId = session.id, deviceId = device.deviceId]() {
-            if (generations_.value(sessionId) == 0) {
-                return;
-            }
-            if (AuralisSession* active = mutableSession(sessionId)) {
-                if (active->state == SessionState::Stopping || active->state == SessionState::Idle) {
-                    return;
-                }
-                const QString devicePath = devicePathForAddress(deviceId);
-                if (!devicePath.isEmpty() && bluetooth_ != nullptr) {
-                    bluetooth_->reconnectDevice(devicePath);
-                }
-                reconcileActiveSession(*active);
-            }
-        });
-        recoveryTimers_.insert(key, timer);
+    device.runtime.managedReconnectRequested = true;
+    managedReconnectRequestsForTest_.push_back(path);
+    if (managedReconnectHook_) {
+        managedReconnectHook_(path);
+        return;
     }
-    if (QTimer* timer = recoveryTimers_.value(key)) {
-        timer->start(500);
+    if (bluetooth_ != nullptr) {
+        bluetooth_->requestManagedReconnect(path);
     }
 }
 
 void SessionManager::cancelRecovery(const QString& sessionId, const QString& deviceId)
 {
-    const QString key = sessionId + QLatin1Char(':') + deviceId;
-    if (QTimer* timer = recoveryTimers_.take(key)) {
-        timer->stop();
-        timer->deleteLater();
+    AuralisSession* session = mutableSession(sessionId);
+    if (session == nullptr) {
+        return;
+    }
+    for (SessionDevice& device : session->devices) {
+        if (device.deviceId != deviceId) {
+            continue;
+        }
+        if (device.runtime.managedReconnectRequested) {
+            const QString path = devicePathForAddress(device.deviceId);
+            if (!path.isEmpty() && bluetooth_ != nullptr) {
+                bluetooth_->cancelManagedReconnect(path);
+            }
+            device.runtime.managedReconnectRequested = false;
+        }
+        device.runtime.recovering = false;
+        return;
+    }
+}
+
+void SessionManager::cancelAllRecovery(AuralisSession& session)
+{
+    for (SessionDevice& device : session.devices) {
+        cancelRecovery(session.id, device.deviceId);
+    }
+}
+
+void SessionManager::clearStaleMemberErrors(AuralisSession& session)
+{
+    for (SessionDevice& device : session.devices) {
+        if (device.runtime.routeActive && device.runtime.lastError.hasError()) {
+            device.runtime.lastError = {};
+        }
+    }
+    if (session.state == SessionState::Active && session.error.hasError()) {
+        session.error = {};
     }
 }
 
@@ -948,14 +1229,10 @@ QString SessionManager::devicePathForAddress(const QString& address) const
     return {};
 }
 
-SessionCommandResult SessionManager::validateCrudSession(const QString& sessionId, AuralisSession** out)
+SessionCommandResult SessionManager::validateVolume(double value) const
 {
-    AuralisSession* session = mutableSession(sessionId);
-    if (session == nullptr) {
-        return SessionCommandResult::SessionNotFound;
-    }
-    if (out != nullptr) {
-        *out = session;
+    if (!std::isfinite(value)) {
+        return SessionCommandResult::InvalidArgument;
     }
     return SessionCommandResult::Accepted;
 }
