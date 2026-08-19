@@ -28,6 +28,7 @@ All project documentation lives here. Directory READMEs under `config/` and `too
 | [validation/phase-4.md](validation/phase-4.md) | Phase 4 PipeWire endpoint validation |
 | [validation/phase-4-audit.md](validation/phase-4-audit.md) | Independent Phase 4 verification record |
 | [phase-5-validation.md](phase-5-validation.md) | Phase 5 routing validation |
+| [PHASE_5_FINAL_CLOSURE_AUDIT.md](PHASE_5_FINAL_CLOSURE_AUDIT.md) | Independent Phase 5 closure audit |
 
 ## Product specification
 

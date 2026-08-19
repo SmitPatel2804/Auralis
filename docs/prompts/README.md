@@ -35,3 +35,14 @@ Do not treat path names, file layouts, or “create this file at repo root” in
 | [phase-4/Auralis_PHASE_4_Cursor_Rigorous_Verification_Audit_Prompt.md](phase-4/Auralis_PHASE_4_Cursor_Rigorous_Verification_Audit_Prompt.md) | Independent audit prompt |
 
 The Phase 4 audit **result** is [../validation/phase-4-audit.md](../validation/phase-4-audit.md).
+
+## Phase 5 — Audio routing
+
+| Document | Role |
+|---|---|
+| [phase-5/Auralis_PHASE_5_Audio_Routing_Engine_Implementation_Prompt.md](phase-5/Auralis_PHASE_5_Audio_Routing_Engine_Implementation_Prompt.md) | Implementation |
+| [phase-5/Auralis_PHASE_5_Cursor_Implementation_Plan.md](phase-5/Auralis_PHASE_5_Cursor_Implementation_Plan.md) | Cursor implementation plan |
+| [phase-5/Auralis_PHASE_5_Correction_Hardening_and_Final_Closure_Prompt.md](phase-5/Auralis_PHASE_5_Correction_Hardening_and_Final_Closure_Prompt.md) | Hardening |
+| [phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md](phase-5/Auralis_PHASE_5_Final_Closure_Pass_Prompt.md) | Final closure pass |
+
+The Phase 5 audit **result** is [../PHASE_5_FINAL_CLOSURE_AUDIT.md](../PHASE_5_FINAL_CLOSURE_AUDIT.md).

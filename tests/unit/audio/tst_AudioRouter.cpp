@@ -4,6 +4,7 @@
 #include <auralis/audio/AudioEndpointRegistry.h>
 #include <auralis/audio/AudioRouter.h>
 
+#include <QSignalSpy>
 #include <QtTest>
 
 using auralis::audio::AudioEndpointRegistry;
@@ -275,21 +276,138 @@ private slots:
         QVERIFY(h.router.routeById(idA)->state == RouteState::Activating);
         QVERIFY(h.router.routeById(idB)->state == RouteState::Activating);
 
-        h.router.deactivateRoute(idA);
-        QVERIFY(h.router.routeById(idA)->state == RouteState::Inactive);
+        const auto tokensA = h.router.routeById(idA)->ownedLinks;
+        QCOMPARE(tokensA.size(), 2);
+        h.backend.completeBind(tokensA.at(0).ownershipToken, 910);
+        h.backend.completeBind(tokensA.at(1).ownershipToken, 911);
+        h.router.handleGraphChanged();
+        QVERIFY(h.router.routeById(idA)->state == RouteState::Active);
         QVERIFY(h.router.routeById(idB)->state == RouteState::Activating);
 
         QTRY_VERIFY_WITH_TIMEOUT(h.router.routeById(idB)->state == RouteState::Failed, 1000);
-        QVERIFY(h.router.routeById(idA)->state == RouteState::Inactive);
-        QVERIFY(!h.router.routeById(idA)->enabled);
+        QVERIFY(h.router.routeById(idA)->state == RouteState::Active);
+        QVERIFY(h.router.routeById(idA)->enabled);
         QVERIFY(h.router.routeById(idB)->state == RouteState::Failed);
         QVERIFY(h.router.routeById(idB)->error.category == RouteError::LinkCreationFailed);
     }
 
-    void deactivateWinsOverInFlightActivation()
+    void ownedLinkErrorDegradesRoute()
     {
         Harness h;
-        h.backend.createdLinkState = QStringLiteral("init");
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Active);
+        QCOMPARE(route->ownedLinks.size(), 2);
+        const auto owned = route->ownedLinks.front();
+        QVERIFY(owned.ownershipToken != 0);
+        QVERIFY(owned.globalId != 0);
+
+        h.store.upsert(makeLink(
+            owned.globalId,
+            owned.outputNodeId,
+            owned.outputPortId,
+            owned.inputNodeId,
+            owned.inputPortId,
+            QStringLiteral("error")));
+        h.router.handleGraphChanged();
+        route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Degraded);
+        QVERIFY(route->enabled);
+        QVERIFY(route->error.category == RouteError::LinkEnteredErrorState);
+        QCOMPARE(route->ownedLinks.front().globalId, owned.globalId);
+        QCOMPARE(route->ownedLinks.front().ownershipToken, owned.ownershipToken);
+
+        h.store.upsert(makeLink(50, owned.outputNodeId, owned.outputPortId, owned.inputNodeId, owned.inputPortId));
+        h.router.handleGraphChanged();
+        route = h.router.routeById(id);
+        QVERIFY(route->state != RouteState::Active);
+        QVERIFY(route->state == RouteState::Degraded);
+        QCOMPARE(route->ownedLinks.front().globalId, owned.globalId);
+        QVERIFY(route->ownedLinks.front().globalId != static_cast<quint32>(50));
+    }
+
+    void removeRouteWhileActivatingCannotResurrect()
+    {
+        Harness h;
+        h.backend.delayBind = true;
+        h.router.setActivationTimeoutMs(80);
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Activating);
+        QCOMPARE(route->ownedLinks.size(), 2);
+        const quint64 token0 = route->ownedLinks.at(0).ownershipToken;
+        const quint64 token1 = route->ownedLinks.at(1).ownershipToken;
+        QVERIFY(token0 != 0);
+        QVERIFY(token1 != 0);
+
+        QSignalSpy addedSpy(&h.router, &AudioRouter::routeAdded);
+        QSignalSpy stateSpy(&h.router, &AudioRouter::routeStateChanged);
+        h.router.removeRoute(id);
+        QVERIFY(!h.router.routeById(id).has_value());
+        QVERIFY(h.backend.owned.isEmpty());
+        QVERIFY(h.backend.createdTokens.isEmpty());
+        QVERIFY(h.router.routes().isEmpty());
+
+        h.backend.completeBind(token0, 900);
+        h.backend.completeBind(token1, 901);
+        h.router.handleGraphChanged();
+        QTest::qWait(200);
+        QVERIFY(!h.router.routeById(id).has_value());
+        QVERIFY(h.router.routes().isEmpty());
+        QVERIFY(h.backend.owned.isEmpty());
+        for (int i = 0; i < stateSpy.size(); ++i) {
+            QVERIFY(stateSpy.at(i).at(1).toInt() != static_cast<int>(RouteState::Active));
+        }
+        QCOMPARE(addedSpy.count(), 0);
+    }
+
+    void deactivateWhileActivatingCannotResurrect()
+    {
+        Harness h;
+        h.backend.delayBind = true;
+        h.router.setActivationTimeoutMs(80);
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Activating);
+        const quint64 token0 = route->ownedLinks.at(0).ownershipToken;
+        const quint64 token1 = route->ownedLinks.at(1).ownershipToken;
+
+        h.router.deactivateRoute(id);
+        route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Inactive);
+        QVERIFY(!route->enabled);
+        QVERIFY(route->ownedLinks.isEmpty());
+        QVERIFY(h.backend.owned.isEmpty());
+
+        h.backend.completeBind(token0, 900);
+        h.backend.completeBind(token1, 901);
+        h.store.upsert(makeLink(900, 1, 11, 2, 21, QStringLiteral("active")));
+        h.store.upsert(makeLink(901, 1, 12, 2, 22, QStringLiteral("active")));
+        h.router.handleGraphChanged();
+        QTest::qWait(200);
+        route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Inactive);
+        QVERIFY(!route->enabled);
+        QVERIFY(route->ownedLinks.isEmpty());
+        QVERIFY(route->state != RouteState::Ready);
+        QVERIFY(route->state != RouteState::Activating);
+        QVERIFY(route->state != RouteState::Active);
+    }
+
+    void staleActivationTimeoutGenerationIsIgnored()
+    {
+        Harness h;
+        h.backend.delayBind = true;
+        h.router.setActivationTimeoutMs(80);
         h.addStereoStream(1, 11, 12);
         h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
         const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
@@ -298,13 +416,81 @@ private slots:
 
         h.router.deactivateRoute(id);
         QVERIFY(h.router.routeById(id)->state == RouteState::Inactive);
-        QVERIFY(h.router.routeById(id)->ownedLinks.isEmpty());
 
-        h.store.upsert(makeLink(900, 1, 11, 2, 21, QStringLiteral("active")));
-        h.store.upsert(makeLink(901, 1, 12, 2, 22, QStringLiteral("active")));
-        h.router.handleGraphChanged();
-        QVERIFY(h.router.routeById(id)->state == RouteState::Inactive);
-        QVERIFY(!h.router.routeById(id)->enabled);
+        h.backend.delayBind = false;
+        h.router.activateRoute(id);
+        QVERIFY(h.router.routeById(id)->state == RouteState::Active);
+        const quint64 token = h.router.routeById(id)->ownedLinks.front().ownershipToken;
+        QVERIFY(token != 0);
+
+        QTest::qWait(200);
+        const auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Active);
+        QVERIFY(route->enabled);
+        QVERIFY(route->error.category == RouteError::None);
+        QCOMPARE(route->ownedLinks.front().ownershipToken, token);
+    }
+
+    void shutdownInvalidatesAllActivationTimers()
+    {
+        Harness h;
+        h.backend.delayBind = true;
+        h.router.setActivationTimeoutMs(80);
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        const QString idA = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        const QString idB = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-b")});
+        h.router.activateRoute(idA);
+        h.router.activateRoute(idB);
+        QVERIFY(h.router.routeById(idA)->state == RouteState::Activating);
+        QVERIFY(h.router.routeById(idB)->state == RouteState::Activating);
+        QVERIFY(!h.backend.owned.isEmpty());
+
+        QSignalSpy errorSpy(&h.router, &AudioRouter::routeError);
+        h.router.shutdown();
+        QVERIFY(h.router.routes().isEmpty());
+        QVERIFY(h.backend.owned.isEmpty());
+        QCOMPARE(h.router.ownedLinkCount(), 0);
+        QTest::qWait(200);
+        QVERIFY(h.router.routeById(idA) == std::nullopt);
+        QVERIFY(h.router.routeById(idB) == std::nullopt);
+        QVERIFY(h.backend.owned.isEmpty());
+        QCOMPARE(errorSpy.count(), 0);
+    }
+
+    void qmlPropertyNotifyFiresOnActivate()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        QSignalSpy idSpy(&h.router, &AudioRouter::currentRouteIdChanged);
+        QSignalSpy stateSpy(&h.router, &AudioRouter::routeStateTextChanged);
+        QSignalSpy enabledSpy(&h.router, &AudioRouter::routeEnabledChanged);
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        QVERIFY(idSpy.count() >= 1);
+        h.router.activateRoute(id);
+        QVERIFY(stateSpy.count() >= 1);
+        QVERIFY(enabledSpy.count() >= 1);
+        QCOMPARE(h.router.routeStateText(), QStringLiteral("Active"));
+        QCOMPARE(h.router.currentRouteId(), id);
+    }
+
+    void volumeWriteFailureDoesNotTearDownRoute()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        QVERIFY(h.router.routeById(id)->state == RouteState::Active);
+        h.backend.failVolumeNodes.insert(2);
+        h.router.setRouteVolume(id, 0.2);
+        const auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Active);
+        QVERIFY(route->enabled);
+        QCOMPARE(route->volume, 0.2);
+        QVERIFY(!route->ownedLinks.isEmpty());
     }
 
     void activateWithoutConnectionFails()

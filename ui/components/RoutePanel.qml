@@ -119,7 +119,7 @@ ColumnLayout {
 
         Button {
             text: "Activate"
-            enabled: router && sourceCombo.currentValue
+            enabled: router && sourceCombo.currentValue !== undefined && sourceCombo.currentValue !== ""
             onClicked: root.activateClicked()
         }
 

@@ -1,6 +1,10 @@
 # Phase 5 Validation — Audio Routing Engine
 
+Validated: **2026-08-19**. Closure evidence: [PHASE_5_FINAL_CLOSURE_AUDIT.md](PHASE_5_FINAL_CLOSURE_AUDIT.md).
+
 Phase 5 adds an **additive** native PipeWire routing engine on top of Phase 4 graph observation. Auralis creates and destroys only links it owns. It does not hijack WirePlumber, does not delete other clients' links, and does not grow `SessionManager`.
+
+## Ownership token / global-ID invariant
 
 Ownership is an opaque `ownershipToken` issued at `pw_core_create_object` time, **before** a global id is assigned. `globalId == 0` means the proxy is pending bind, not that the link is unowned. Destroy, rollback, and shutdown always go by token, including pending proxies. A foreign WirePlumber link on the same port pair is never treated as owned and never makes a route operational.
 
@@ -15,12 +19,13 @@ Ownership is an opaque `ownershipToken` issued at `pw_core_create_object` time, 
 
 Capture streams (`Stream/Input/Audio`), control/MIDI ports, and ordinary sink input ports are not sources. Destination classification remains the Phase 4 sink-only `AudioEndpoint` path. Source ids are `src:{serial|nodeName}:{mediaClass}` (or `:SinkMonitor`). Port ids are never persisted as identity.
 
-## Disconnect and recovery
+## Disconnect, timers, and recovery
 
 - An enabled route whose PipeWire connection enters `Error` / `Stopping` / `Stopped` becomes **Degraded** with `PipeWireDisconnected`. Owned tokens are destroyed; the route does not stay `Active`.
 - Replan/activation runs only when the connection is `Connected` **and** initial registry sync has completed. `Connected` without sync must not resurrect links.
 - Fresh rebind after reconnect uses **new** tokens and global ids.
 - Source or destination disappearance: **Degraded**, structured `SourceRemoved` / `DestinationRemoved`, remaining owned links destroyed. Logical source/destination ids are kept for `RebindOnGraphReplacement`.
+- Each activate/replan attempt has its own `QTimer` and generation. Success or timeout on route A does not cancel route B. Stale generation callbacks are ignored. `removeRoute` and `shutdown` stop those timers.
 
 ## Volume limits
 
@@ -31,6 +36,16 @@ Capture streams (`Stream/Input/Audio`), control/MIDI ports, and ordinary sink in
 - Route volume fans out to every destination; a partial apply is reported if some destinations fail.
 - There is no loudness-normalization DSP.
 
+## Clean build and tests
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build --output-on-failure
+ctest --test-dir build -R "tst_AudioRoute|tst_AudioSources|tst_RoutePlanner|tst_AudioRouter|tst_VolumeController" --output-on-failure
+./build/tests/unit/audio/tst_AudioRouter -v2
+```
+
 ## Live commands
 
 Default `ctest` skips live routing. Enable explicitly:
@@ -39,7 +54,7 @@ Default `ctest` skips live routing. Enable explicitly:
 AURALIS_RUN_AUDIO_ROUTING_INTEGRATION=1 ctest --test-dir build -R tst_AudioRoutingLiveIntegration --output-on-failure
 ```
 
-Optional Bluetooth destination check (Smokin' Buds used in Phase 4 live mapping):
+Exact Bluetooth destination (Smokin' Buds):
 
 ```bash
 AURALIS_RUN_AUDIO_ROUTING_INTEGRATION=1 AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:9D:B4:22" ctest --test-dir build -R tst_AudioRoutingLiveIntegration --output-on-failure
@@ -47,7 +62,12 @@ AURALIS_RUN_AUDIO_ROUTING_INTEGRATION=1 AURALIS_EXPECT_DEVICE_ADDRESS="88:08:94:
 
 If `AURALIS_EXPECT_DEVICE_ADDRESS` is set and that Bluetooth endpoint is missing, the live test **fails** and dumps enumerated endpoints. It does not fall back to a built-in speaker or the first available sink.
 
-Workflow: PipeWire ready → pick a playback source (or the **test-only** low-volume `pw_stream` sine in the test binary) → playback endpoint → create/activate → observe Auralis-owned links → deactivate → owned bookkeeping empty **and** the object store has no remaining link with `auralis.route.id`.
+After deactivate the live test requires **both**:
+
+- `router->ownedLinkCount() == 0`
+- `PipeWireObjectStore` contains zero links with `auralis.route.id` equal to the deactivated route
+
+Workflow: PipeWire ready → pick a playback source (or the **test-only** low-volume `pw_stream` sine in the test binary) → playback endpoint → create/activate → observe Auralis-owned links → deactivate → owned bookkeeping empty **and** the object store has no remaining tagged link.
 
 `pw_stream` exists only in `tst_AudioRoutingLiveIntegration`. Production `include/`, `src/`, and `apps/` do not create streams or call `pw-link` / `wpctl`.
 
@@ -65,5 +85,5 @@ Workflow: PipeWire ready → pick a playback source (or the **test-only** low-vo
 | `tst_AudioRoute` | ids, states, duplicate dests, structured errors |
 | `tst_AudioSources` | stream / source / sink-not-source / monitor ports |
 | `tst_RoutePlanner` | mono, stereo, 1→2 dests (4 pairs), reversed registry, missing channels, control ports, dest gone |
-| `tst_AudioRouter` | state machine, pending-token rollback, dest/source loss destroys owned links, rebind, disconnect → Degraded, foreign same-port link ignored, independent per-route timeouts, activate/deactivate races |
+| `tst_AudioRouter` | state machine, pending-token rollback, dest/source loss, rebind, disconnect → Degraded, foreign same-port link ignored, owned-link Error, remove/deactivate while activating, stale timeout generation, shutdown timers, independent per-route timeouts, QML NOTIFY |
 | `tst_VolumeController` | clamp, mute, unsupported, partial route volume |
