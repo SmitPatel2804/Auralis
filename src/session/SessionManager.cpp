@@ -1,4 +1,5 @@
 #include <auralis/session/SessionListModel.h>
+#include <auralis/session/SelectedSessionViewModel.h>
 #include <auralis/session/SessionManager.h>
 
 #include <auralis/audio/AudioEndpointRegistry.h>
@@ -251,6 +252,11 @@ QAbstractItemModel* SessionManager::currentMembers() const
     return currentMembers_;
 }
 
+QObject* SessionManager::selectedSession() const
+{
+    return selectedSession_;
+}
+
 auralis::bluetooth::DeviceRegistry* SessionManager::deviceRegistry() const noexcept
 {
     return deviceRegistry_;
@@ -269,6 +275,9 @@ void SessionManager::setupUiModels()
         connect(this, &SessionManager::currentSessionIdChanged, this, [this]() {
             currentMembers_->setSessionId(activeSessionId_);
         });
+    }
+    if (selectedSession_ == nullptr) {
+        selectedSession_ = new SelectedSessionViewModel(this, this);
     }
 }
 
@@ -548,6 +557,7 @@ SessionCommandResult SessionManager::setSource(const QString& sessionId, const Q
     touchUpdated(*session);
     const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
+    emitSessionUiSignals();
     if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
         if (routing_ != nullptr) {
             routing_->stopSessionRoutes(*session);
@@ -681,6 +691,7 @@ SessionCommandResult SessionManager::setSessionMuted(const QString& sessionId, b
         volume_->applySessionVolumes(*session);
     }
     emit sessionUpdated(sessionId);
+    emitSessionUiSignals();
     return persistResult;
 }
 
@@ -836,6 +847,70 @@ SessionCommandResult SessionManager::restoreLastSession()
         return SessionCommandResult::SessionNotFound;
     }
     return activateSession(candidateId);
+}
+
+QString SessionManager::duplicateSession(const QString& sessionId)
+{
+    const AuralisSession* original = nullptr;
+    for (const AuralisSession& session : sessions_) {
+        if (session.id == sessionId) {
+            original = &session;
+            break;
+        }
+    }
+    if (original == nullptr) {
+        return {};
+    }
+
+    auto nameTaken = [this](const QString& name) {
+        for (const AuralisSession& session : sessions_) {
+            if (session.name == name) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    QString copyName = original->name + QStringLiteral(" Copy");
+    if (nameTaken(copyName)) {
+        int suffix = 2;
+        while (nameTaken(original->name + QStringLiteral(" Copy %1").arg(suffix))) {
+            ++suffix;
+        }
+        copyName = original->name + QStringLiteral(" Copy %1").arg(suffix);
+    }
+
+    AuralisSession session;
+    session.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    session.name = copyName;
+    session.sourceId = original->sourceId;
+    session.devices = original->devices;
+    for (SessionDevice& device : session.devices) {
+        device.runtime = {};
+    }
+    session.state = SessionState::Idle;
+    session.error = {};
+    session.groupVolume = original->groupVolume;
+    session.muted = original->muted;
+    session.autoReconnect = original->autoReconnect;
+    session.recoveryPolicy = original->recoveryPolicy;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    session.createdAt = now;
+    session.updatedAt = now;
+    session.lastUsedAt = {};
+    session.restoreIntent = false;
+    session.operationGeneration = 0;
+    sessions_.push_back(session);
+    const SessionCommandResult persistResult = persistAll(session.id);
+    if (persistResult != SessionCommandResult::Accepted) {
+        sessions_.pop_back();
+        return {};
+    }
+    qCInfo(auralisSession) << "SessionDuplicated id=" << session.id << "from=" << sessionId;
+    emit sessionAdded(session.id);
+    emit sessionsChanged();
+    emitSessionUiSignals();
+    return session.id;
 }
 
 void SessionManager::refreshActiveSession()
@@ -1020,9 +1095,34 @@ AuralisSession* SessionManager::mutableSession(const QString& id)
 
 void SessionManager::emitSessionUiSignals()
 {
-    emit currentSessionIdChanged();
-    emit sessionStateTextChanged();
-    emit groupVolumeChanged();
+    const QString id = currentSessionId();
+    const QString state = sessionStateText();
+    const double volume = groupVolume();
+    const QString source = currentSourceId();
+    const bool muted = currentMuted();
+    const bool primed = uiSignalsPrimed_;
+    uiSignalsPrimed_ = true;
+
+    if (!primed || lastEmittedSessionId_ != id) {
+        lastEmittedSessionId_ = id;
+        emit currentSessionIdChanged();
+    }
+    if (!primed || lastEmittedStateText_ != state) {
+        lastEmittedStateText_ = state;
+        emit sessionStateTextChanged();
+    }
+    if (!primed || lastEmittedGroupVolume_ != volume) {
+        lastEmittedGroupVolume_ = volume;
+        emit groupVolumeChanged();
+    }
+    if (!primed || lastEmittedSourceId_ != source) {
+        lastEmittedSourceId_ = source;
+        emit currentSourceIdChanged();
+    }
+    if (!primed || lastEmittedMuted_ != muted) {
+        lastEmittedMuted_ = muted;
+        emit currentMutedChanged();
+    }
 }
 
 void SessionManager::touchUpdated(AuralisSession& session)

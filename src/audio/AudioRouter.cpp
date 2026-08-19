@@ -90,54 +90,71 @@ QString AudioRouter::sourceDisplayName(const QString& sourceId) const
     return sourceId;
 }
 
+const AudioRoute* AudioRouter::plannerRoute() const
+{
+    for (const AudioRoute& route : routes_) {
+        if (route.ownerType == RouteOwnerType::Manual) {
+            return &route;
+        }
+    }
+    return nullptr;
+}
+
 QString AudioRouter::currentRouteId() const
 {
-    return routes_.isEmpty() ? QString() : routes_.front().id;
+    const AudioRoute* route = plannerRoute();
+    return route == nullptr ? QString() : route->id;
 }
 
 QString AudioRouter::routeStateText() const
 {
-    if (routes_.isEmpty()) {
+    const AudioRoute* route = plannerRoute();
+    if (route == nullptr) {
         return toString(RouteState::Inactive);
     }
-    return toString(routes_.front().state);
+    return toString(route->state);
 }
 
 QString AudioRouter::lastErrorText() const
 {
-    if (routes_.isEmpty() || !routes_.front().error.hasError()) {
+    const AudioRoute* route = plannerRoute();
+    if (route == nullptr || !route->error.hasError()) {
         return {};
     }
-    return QStringLiteral("%1: %2").arg(toString(routes_.front().error.category), routes_.front().error.detail);
+    return QStringLiteral("%1: %2").arg(toString(route->error.category), route->error.detail);
 }
 
 bool AudioRouter::routeEnabled() const
 {
-    return !routes_.isEmpty() && routes_.front().enabled;
+    const AudioRoute* route = plannerRoute();
+    return route != nullptr && route->enabled;
 }
 
 double AudioRouter::routeVolume() const
 {
-    return routes_.isEmpty() ? 1.0 : routes_.front().volume;
+    const AudioRoute* route = plannerRoute();
+    return route == nullptr ? 1.0 : route->volume;
 }
 
 bool AudioRouter::routeMuted() const
 {
-    return !routes_.isEmpty() && routes_.front().muted;
+    const AudioRoute* route = plannerRoute();
+    return route != nullptr && route->muted;
 }
 
 bool AudioRouter::volumeCapable() const
 {
-    if (routes_.isEmpty() || endpoints_ == nullptr) {
+    const AudioRoute* route = plannerRoute();
+    if (route == nullptr || endpoints_ == nullptr) {
         return false;
     }
-    for (const QString& destId : routes_.front().destinationIds) {
+    for (const QString& destId : route->destinationIds) {
         const AudioEndpoint* endpoint = endpoints_->findById(destId);
         if (endpoint == nullptr || !volume_.volumeSupported(endpoint->pipeWireObjectId)) {
             return false;
         }
     }
-    return !routes_.front().destinationIds.isEmpty();
+    return !route->destinationIds.isEmpty();
 }
 
 int AudioRouter::ownedLinkCount() const
@@ -191,6 +208,23 @@ AudioRoute* AudioRouter::mutableRoute(const QString& id)
 
 QString AudioRouter::createRoute(const QString& sourceId, const QStringList& destinationEndpointIds)
 {
+    return createRouteInternal(sourceId, destinationEndpointIds, RouteOwnerType::Manual, {});
+}
+
+QString AudioRouter::createSessionRoute(
+    const QString& sessionId,
+    const QString& sourceId,
+    const QStringList& destinationEndpointIds)
+{
+    return createRouteInternal(sourceId, destinationEndpointIds, RouteOwnerType::Session, sessionId);
+}
+
+QString AudioRouter::createRouteInternal(
+    const QString& sourceId,
+    const QStringList& destinationEndpointIds,
+    RouteOwnerType ownerType,
+    const QString& ownerId)
+{
     RouteErrorInfo error;
     const QStringList dests = uniqueIds(destinationEndpointIds);
     if (!validateSelection(sourceId, dests, &error)) {
@@ -205,12 +239,27 @@ QString AudioRouter::createRoute(const QString& sourceId, const QStringList& des
     route.destinationIds = dests;
     route.createdAt = QDateTime::currentDateTimeUtc();
     route.state = RouteState::Inactive;
+    route.ownerType = ownerType;
+    route.ownerId = ownerId;
     routes_.push_back(route);
     qCInfo(auralisAudio) << "AudioRouter RouteCreated id=" << route.id << "source=" << sourceId
-                         << "destinations=" << dests.size();
+                         << "destinations=" << dests.size() << "owner=" << toString(ownerType);
     emit routeAdded(route.id);
     emitRouteSignals(route);
     return route.id;
+}
+
+bool AudioRouter::rejectPlannerMutation(const AudioRoute& route)
+{
+    if (route.ownerType != RouteOwnerType::Session) {
+        return false;
+    }
+    emit routeError(
+        route.id,
+        RouteError::PermissionDenied,
+        QStringLiteral("Session-owned routes cannot be edited from the planner"));
+    emitQmlPropertyNotifications();
+    return true;
 }
 
 void AudioRouter::removeRoute(const QString& routeId)
@@ -280,6 +329,9 @@ void AudioRouter::setRouteSource(const QString& routeId, const QString& sourceId
     if (route == nullptr) {
         return;
     }
+    if (rejectPlannerMutation(*route)) {
+        return;
+    }
     RouteErrorInfo error;
     if (!validateSelection(sourceId, route->destinationIds, &error)) {
         setError(*route, error.category, error.detail);
@@ -296,6 +348,9 @@ void AudioRouter::setRouteDestinations(const QString& routeId, const QStringList
 {
     AudioRoute* route = mutableRoute(routeId);
     if (route == nullptr) {
+        return;
+    }
+    if (rejectPlannerMutation(*route)) {
         return;
     }
     const QStringList dests = uniqueIds(destinationEndpointIds);
@@ -353,6 +408,9 @@ void AudioRouter::setRouteVolume(const QString& routeId, double value)
     if (route == nullptr) {
         return;
     }
+    if (rejectPlannerMutation(*route)) {
+        return;
+    }
     route->volume = VolumeController::clamp(value);
     const VolumeApplyResult result = volume_.setRouteVolume(destinationNodes(*route), route->volume);
     emitRouteSignals(*route);
@@ -366,6 +424,9 @@ void AudioRouter::setRouteMuted(const QString& routeId, bool muted)
 {
     AudioRoute* route = mutableRoute(routeId);
     if (route == nullptr) {
+        return;
+    }
+    if (rejectPlannerMutation(*route)) {
         return;
     }
     route->muted = muted;

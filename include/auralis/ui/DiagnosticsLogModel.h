@@ -42,6 +42,7 @@ public:
     int visibleCount() const;
 
     Q_INVOKABLE QString visibleText() const;
+    Q_INVOKABLE bool copyVisibleToClipboard() const;
     Q_INVOKABLE void clear();
 
     void appendFromLogger(QtMsgType type, const QString& category, const QString& message);

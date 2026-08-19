@@ -10,6 +10,24 @@ Item {
     property string filter: "all"
     property string query: ""
     property string selectedPath: ""
+    readonly property bool selectedAvailable: bluetooth && selectedPath.length > 0 && bluetooth.hasDevice(selectedPath)
+    readonly property var details: {
+        if (!bluetooth || !selectedAvailable)
+            return ({})
+        bluetooth.deviceCount
+        return bluetooth.deviceDetails(selectedPath)
+    }
+
+    function clearStaleSelection() {
+        if (root.selectedPath.length > 0 && bluetooth && !bluetooth.hasDevice(root.selectedPath))
+            root.selectedPath = ""
+    }
+
+    Connections {
+        target: bluetooth && bluetooth.devices ? bluetooth.devices : null
+        function onRowsRemoved() { root.clearStaleSelection() }
+        function onModelReset() { root.clearStaleSelection() }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -203,18 +221,79 @@ Item {
                         Layout.fillWidth: true
                     }
                     Label {
-                        visible: root.selectedPath.length > 0
-                        text: root.selectedPath
-                        color: Theme.textMuted
-                        wrapMode: Text.WrapAnywhere
+                        visible: root.selectedPath.length > 0 && !root.selectedAvailable
+                        text: qsTr("Device no longer available")
+                        color: Theme.warning
+                        wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
-                    Label {
-                        visible: root.selectedPath.length > 0 && audio
-                        text: qsTr("Audio: %1").arg(audio.audioStatusForDevice(root.selectedPath))
-                        color: Theme.text
+                    ScrollView {
+                        visible: root.selectedAvailable
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        ColumnLayout {
+                            width: parent.width
+                            spacing: Metrics.sm
+                            KeyValueRow { label: qsTr("Name"); value: details.name || "" }
+                            KeyValueRow { label: qsTr("Alias"); value: details.alias || "" }
+                            KeyValueRow { label: qsTr("Address"); value: details.address || "" }
+                            KeyValueRow {
+                                label: qsTr("RSSI")
+                                value: details.hasRssi ? qsTr("%1 dBm").arg(details.rssi) : qsTr("Unknown")
+                            }
+                            KeyValueRow { label: qsTr("Paired"); value: details.paired ? qsTr("Yes") : qsTr("No") }
+                            KeyValueRow { label: qsTr("Trusted"); value: details.trusted ? qsTr("Yes") : qsTr("No") }
+                            KeyValueRow { label: qsTr("Connected"); value: details.connected ? qsTr("Yes") : qsTr("No") }
+                            KeyValueRow { label: qsTr("Blocked"); value: details.blocked ? qsTr("Yes") : qsTr("No") }
+                            KeyValueRow {
+                                label: qsTr("Services resolved")
+                                value: details.servicesResolved ? qsTr("Yes") : qsTr("No")
+                            }
+                            KeyValueRow {
+                                label: qsTr("Class")
+                                value: details.hasClass ? String(details.classOfDevice) : qsTr("Unknown")
+                            }
+                            KeyValueRow {
+                                label: qsTr("Appearance")
+                                value: details.hasAppearance ? String(details.appearance) : qsTr("Unknown")
+                            }
+                            KeyValueRow { label: qsTr("Last seen"); value: details.lastSeen || qsTr("Unknown") }
+                            KeyValueRow { label: qsTr("Transport"); value: details.transport || qsTr("Unknown") }
+                            KeyValueRow {
+                                visible: !!audio
+                                label: qsTr("Audio")
+                                value: audio ? audio.audioStatusForDevice(root.selectedPath) : ""
+                            }
+                            Label { text: qsTr("Services"); color: Theme.text; font.bold: true }
+                            Repeater {
+                                model: details.uuids || []
+                                delegate: Label {
+                                    required property string modelData
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WrapAnywhere
+                                    color: Theme.textMuted
+                                    text: bluetooth.serviceFriendlyName(modelData) + " · " + modelData
+                                }
+                            }
+                            Label {
+                                visible: !details.uuids || details.uuids.length === 0
+                                text: qsTr("No advertised UUIDs")
+                                color: Theme.textMuted
+                            }
+                            CheckBox {
+                                id: showPath
+                                text: qsTr("Technical path")
+                            }
+                            Label {
+                                visible: showPath.checked
+                                text: root.selectedPath
+                                color: Theme.textMuted
+                                wrapMode: Text.WrapAnywhere
+                                Layout.fillWidth: true
+                            }
+                        }
                     }
-                    Item { Layout.fillHeight: true }
                 }
             }
         }

@@ -17,6 +17,7 @@ RowLayout {
         text: root.name
         font.pixelSize: 14
         elide: Text.ElideRight
+        color: Theme.text
         Layout.fillWidth: true
     }
 
@@ -25,7 +26,7 @@ RowLayout {
               ? root.applicationName
               : (root.monitorSource ? "Monitor" : root.sourceType)
         font.pixelSize: 11
-        color: "#666666"
+        color: Theme.textMuted
         elide: Text.ElideRight
         Layout.preferredWidth: 140
     }

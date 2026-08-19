@@ -32,6 +32,7 @@ class DeviceRegistry;
 
 namespace auralis::session {
 
+class SelectedSessionViewModel;
 class SessionListModel;
 class SessionMemberListModel;
 
@@ -41,11 +42,12 @@ class SessionManager final : public QObject, public ISessionManager {
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY currentSessionIdChanged)
     Q_PROPERTY(QString sessionStateText READ sessionStateText NOTIFY sessionStateTextChanged)
     Q_PROPERTY(double groupVolume READ groupVolume NOTIFY groupVolumeChanged)
-    Q_PROPERTY(QString currentSourceId READ currentSourceId NOTIFY currentSessionIdChanged)
-    Q_PROPERTY(bool currentMuted READ currentMuted NOTIFY groupVolumeChanged)
+    Q_PROPERTY(QString currentSourceId READ currentSourceId NOTIFY currentSourceIdChanged)
+    Q_PROPERTY(bool currentMuted READ currentMuted NOTIFY currentMutedChanged)
     Q_PROPERTY(QAbstractItemModel* sessionList READ sessionList CONSTANT)
     Q_PROPERTY(QAbstractItemModel* sessionMembers READ sessionMembers CONSTANT)
     Q_PROPERTY(QAbstractItemModel* currentMembers READ currentMembers CONSTANT)
+    Q_PROPERTY(QObject* selectedSession READ selectedSession CONSTANT)
 
 public:
     SessionManager(QObject* parent = nullptr);
@@ -77,6 +79,7 @@ public:
     QAbstractItemModel* sessionList() const;
     QAbstractItemModel* sessionMembers() const;
     QAbstractItemModel* currentMembers() const;
+    QObject* selectedSession() const;
     auralis::bluetooth::DeviceRegistry* deviceRegistry() const noexcept;
 
     QVector<AuralisSession> sessions() const;
@@ -103,6 +106,7 @@ public:
     Q_INVOKABLE SessionCommandResult setAutoReconnect(const QString& sessionId, bool enabled);
     Q_INVOKABLE SessionCommandResult setRecoveryPolicy(const QString& sessionId, const QString& policy);
     Q_INVOKABLE SessionCommandResult restoreLastSession();
+    Q_INVOKABLE QString duplicateSession(const QString& sessionId);
     Q_INVOKABLE QString commandResultText(int result) const;
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
     Q_INVOKABLE QString sessionStateLabel(const QString& sessionId) const;
@@ -123,6 +127,8 @@ signals:
     void currentSessionIdChanged();
     void sessionStateTextChanged();
     void groupVolumeChanged();
+    void currentSourceIdChanged();
+    void currentMutedChanged();
 
 private slots:
     void handleExternalGraphChanged();
@@ -182,6 +188,13 @@ private:
     SessionListModel* sessionList_ = nullptr;
     SessionMemberListModel* sessionMembers_ = nullptr;
     SessionMemberListModel* currentMembers_ = nullptr;
+    SelectedSessionViewModel* selectedSession_ = nullptr;
+    bool uiSignalsPrimed_ = false;
+    QString lastEmittedSessionId_;
+    QString lastEmittedStateText_;
+    double lastEmittedGroupVolume_ = -1.0;
+    QString lastEmittedSourceId_;
+    bool lastEmittedMuted_ = false;
 };
 
 } // namespace auralis::session

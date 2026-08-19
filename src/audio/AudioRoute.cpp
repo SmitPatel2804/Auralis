@@ -70,4 +70,15 @@ QString toString(RouteError error)
     return QStringLiteral("InternalError");
 }
 
+QString toString(RouteOwnerType ownerType)
+{
+    switch (ownerType) {
+    case RouteOwnerType::Manual:
+        return QStringLiteral("Manual");
+    case RouteOwnerType::Session:
+        return QStringLiteral("Session");
+    }
+    return QStringLiteral("Manual");
+}
+
 } // namespace auralis::audio

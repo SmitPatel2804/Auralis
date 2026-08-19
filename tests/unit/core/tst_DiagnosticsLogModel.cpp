@@ -42,6 +42,12 @@ private slots:
         model.setSeverityFilter(QStringLiteral("DEBUG"));
         QVERIFY(model.rowCount() >= 0);
     }
+
+    void copyWithoutGuiApplicationReturnsFalse()
+    {
+        auralis::ui::DiagnosticsLogModel model;
+        QVERIFY(!model.copyVisibleToClipboard());
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDiagnosticsLogModel)

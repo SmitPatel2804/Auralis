@@ -528,6 +528,88 @@ private slots:
         QVERIFY(h.manager.retrySession(id) == SessionCommandResult::Accepted);
         QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
     }
+
+    void currentSourceAndMuteNotifyIndependentlyOfSessionId()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("Notify"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+        QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+
+        QSignalSpy idSpy(&h.manager, &SessionManager::currentSessionIdChanged);
+        QSignalSpy sourceSpy(&h.manager, &SessionManager::currentSourceIdChanged);
+        QSignalSpy muteSpy(&h.manager, &SessionManager::currentMutedChanged);
+        QVERIFY(h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio:alt")) == SessionCommandResult::Accepted);
+        QCOMPARE(h.manager.currentSourceId(), QStringLiteral("src:7:Stream/Output/Audio:alt"));
+        QCOMPARE(sourceSpy.count(), 1);
+        QCOMPARE(idSpy.count(), 0);
+        QVERIFY(h.manager.setSessionMuted(id, true) == SessionCommandResult::Accepted);
+        QCOMPARE(h.manager.currentMuted(), true);
+        QCOMPARE(muteSpy.count(), 1);
+        QCOMPARE(idSpy.count(), 0);
+    }
+
+    void duplicateSessionCopiesConfigWithoutSharingIdentity()
+    {
+        QTemporaryDir dir;
+        SessionManager manager(nullptr, nullptr, dir.filePath(QStringLiteral("sessions.json")));
+        manager.initialize();
+        const QString id = manager.createSession(QStringLiteral("Studio"));
+        QVERIFY(manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01")) == SessionCommandResult::Accepted);
+        QVERIFY(manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio")) == SessionCommandResult::Accepted);
+        QVERIFY(manager.setGroupVolume(id, 0.4) == SessionCommandResult::Accepted);
+        QVERIFY(manager.setSessionMuted(id, true) == SessionCommandResult::Accepted);
+        QVERIFY(manager.setRecoveryPolicy(id, QStringLiteral("None")) == SessionCommandResult::Accepted);
+
+        const QString copyId = manager.duplicateSession(id);
+        QVERIFY(!copyId.isEmpty());
+        QVERIFY(copyId != id);
+        const auto original = manager.sessionById(id);
+        const auto copy = manager.sessionById(copyId);
+        QVERIFY(original.has_value());
+        QVERIFY(copy.has_value());
+        QCOMPARE(copy->name, QStringLiteral("Studio Copy"));
+        QCOMPARE(copy->sourceId, original->sourceId);
+        QCOMPARE(copy->groupVolume, original->groupVolume);
+        QCOMPARE(copy->muted, original->muted);
+        QVERIFY(copy->recoveryPolicy == original->recoveryPolicy);
+        QCOMPARE(copy->devices.size(), original->devices.size());
+        QVERIFY(copy->state == SessionState::Idle);
+        QVERIFY(copy->devices.front().runtime.routeId.isEmpty());
+        QCOMPARE(original->name, QStringLiteral("Studio"));
+
+        const QString copy2 = manager.duplicateSession(id);
+        QCOMPARE(manager.sessionById(copy2)->name, QStringLiteral("Studio Copy 2"));
+    }
+
+    void restoreLastSessionActivatesMostRecentlyUsedAfterReload()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString firstId = h.manager.createSession(QStringLiteral("First"));
+        const QString secondId = h.manager.createSession(QStringLiteral("Second"));
+        h.manager.addDevice(firstId, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.addDevice(secondId, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(firstId, QStringLiteral("src:7:Stream/Output/Audio"));
+        h.manager.setSource(secondId, QStringLiteral("src:7:Stream/Output/Audio"));
+        QVERIFY(h.manager.activateSession(firstId) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(firstId)->state == SessionState::Active, 2000);
+        h.manager.deactivateSession(firstId);
+        QVERIFY(h.manager.activateSession(secondId) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(secondId)->state == SessionState::Active, 2000);
+        h.manager.deactivateSession(secondId);
+        h.manager.shutdown();
+
+        SessionManager reloaded(nullptr, nullptr, h.tempDir.filePath(QStringLiteral("sessions.json")));
+        QVERIFY(reloaded.initialize());
+        QVERIFY(reloaded.restoreLastSession() == SessionCommandResult::Accepted);
+        QCOMPARE(reloaded.currentSessionId(), secondId);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionManager)

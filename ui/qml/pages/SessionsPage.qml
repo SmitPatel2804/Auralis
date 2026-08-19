@@ -8,7 +8,15 @@ Item {
     readonly property var sessions: AppCore.sessions
     readonly property var bluetooth: AppCore.bluetooth
     readonly property var router: AppCore.audio ? AppCore.audio.router : null
+    readonly property var selected: sessions ? sessions.selectedSession : null
     property string selectedId: sessions ? sessions.currentSessionId : ""
+
+    onSelectedIdChanged: {
+        if (selected)
+            selected.sessionId = root.selectedId
+        if (sessions && sessions.sessionMembers)
+            sessions.sessionMembers.sessionId = root.selectedId
+    }
 
     function report(result) {
         if (result !== 0)
@@ -34,9 +42,27 @@ Item {
                 onClicked: renameDialog.open()
             }
             Button {
+                text: qsTr("Duplicate")
+                enabled: root.selectedId.length > 0
+                Accessible.name: qsTr("Duplicate session")
+                onClicked: {
+                    const id = sessions.duplicateSession(root.selectedId)
+                    if (id && id.length > 0) {
+                        root.selectedId = id
+                    } else {
+                        AppCore.notifications.postError(qsTr("Session"), qsTr("Could not duplicate session"))
+                    }
+                }
+            }
+            Button {
                 text: qsTr("Delete")
                 enabled: root.selectedId.length > 0
                 onClicked: deleteDialog.open()
+            }
+            Button {
+                text: qsTr("Restore last session")
+                Accessible.name: qsTr("Restore last session")
+                onClicked: report(sessions.restoreLastSession())
             }
             Item { Layout.fillWidth: true }
         }
@@ -63,10 +89,7 @@ Item {
                         width: ListView.view.width
                         text: name
                         highlighted: root.selectedId === sessionId
-                        onClicked: {
-                            root.selectedId = sessionId
-                            sessions.sessionMembers.sessionId = sessionId
-                        }
+                        onClicked: root.selectedId = sessionId
                         contentItem: Column {
                             spacing: 2
                             Label { text: name; color: Theme.text; elide: Text.ElideRight; width: parent.width }
@@ -92,14 +115,16 @@ Item {
                     anchors.fill: parent
                     anchors.margins: Metrics.sm
                     spacing: Metrics.sm
-                    visible: root.selectedId.length > 0
+                    visible: selected && selected.exists
 
-                    KeyValueRow { label: qsTr("State"); value: sessions ? sessions.sessionStateLabel(root.selectedId) : "" }
+                    KeyValueRow { label: qsTr("State"); value: selected ? selected.stateLabel : "" }
                     ComboBox {
+                        id: sourceCombo
                         Layout.fillWidth: true
                         model: router ? router.sources : null
                         textRole: "name"
                         valueRole: "sourceId"
+                        currentIndex: selected ? indexOfValue(selected.sourceId) : -1
                         displayText: currentIndex >= 0 ? currentText : qsTr("Select source")
                         onActivated: report(sessions.setSource(root.selectedId, currentValue))
                     }
@@ -110,17 +135,16 @@ Item {
                     }
                     VolumeControl {
                         label: qsTr("Group volume")
-                        value: {
-                            var v = 1
-                            // bind to sessionList updates
-                            return sessions ? sessions.groupVolume : 1
-                        }
+                        value: selected ? selected.groupVolume : 1
+                        muted: selected ? selected.muted : false
                         onVolumeCommitted: function(v) { report(sessions.setGroupVolume(root.selectedId, v)) }
                         onMuteToggled: function(m) { report(sessions.setSessionMuted(root.selectedId, m)) }
                     }
                     ComboBox {
+                        id: policyCombo
                         Layout.fillWidth: true
                         model: [ "ReconnectAndRestore", "RestoreRoutesOnly", "None" ]
+                        currentIndex: selected ? model.indexOf(selected.recoveryPolicy) : 0
                         onActivated: report(sessions.setRecoveryPolicy(root.selectedId, currentText))
                     }
 
@@ -161,7 +185,7 @@ Item {
                     }
                 }
                 EmptyState {
-                    visible: root.selectedId.length === 0
+                    visible: !selected || !selected.exists
                     anchors.centerIn: parent
                     title: qsTr("Select a session")
                 }
@@ -181,7 +205,6 @@ Item {
             const id = sessions.createSession(createName.text)
             if (id && id.length > 0) {
                 root.selectedId = id
-                sessions.sessionMembers.sessionId = id
             } else {
                 AppCore.notifications.postError(qsTr("Session"), qsTr("Could not create session"))
             }

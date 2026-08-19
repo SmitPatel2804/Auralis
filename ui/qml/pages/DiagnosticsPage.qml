@@ -9,6 +9,7 @@ Item {
     readonly property var audio: AppCore.audio
     readonly property var sessions: AppCore.sessions
     readonly property var logs: AppCore.diagnostics
+    readonly property var router: audio ? audio.router : null
 
     ColumnLayout {
         anchors.fill: parent
@@ -18,7 +19,7 @@ Item {
 
         ScrollView {
             Layout.fillWidth: true
-            Layout.preferredHeight: 280
+            Layout.preferredHeight: 420
             clip: true
             ColumnLayout {
                 width: parent.width
@@ -51,6 +52,69 @@ Item {
                         Layout.fillWidth: true
                     }
                 }
+                SectionCard {
+                    title: qsTr("Devices")
+                    Repeater {
+                        model: bluetooth ? bluetooth.devices : null
+                        delegate: KeyValueRow {
+                            required property string displayName
+                            required property bool connected
+                            required property bool paired
+                            required property string address
+                            label: displayName
+                            value: (connected ? qsTr("Connected") : qsTr("Disconnected"))
+                                   + " · " + (paired ? qsTr("Paired") : qsTr("Unpaired"))
+                                   + (address.length > 0 ? (" · " + address) : "")
+                        }
+                    }
+                    Label {
+                        visible: !bluetooth || bluetooth.deviceCount === 0
+                        text: qsTr("No Bluetooth devices")
+                        color: Theme.textMuted
+                    }
+                }
+                SectionCard {
+                    title: qsTr("Routes")
+                    Repeater {
+                        model: router ? router.routes : null
+                        delegate: KeyValueRow {
+                            required property string sourceName
+                            required property string ownerLabel
+                            required property string stateText
+                            required property int destinationCount
+                            label: sourceName
+                            value: ownerLabel + " · " + stateText + " · "
+                                   + qsTr("%1 destinations").arg(destinationCount)
+                        }
+                    }
+                    Label {
+                        visible: !router || (router.routes && router.routes.rowCount() === 0)
+                        text: qsTr("No routes")
+                        color: Theme.textMuted
+                    }
+                }
+                SectionCard {
+                    title: qsTr("Current session members")
+                    Repeater {
+                        model: sessions ? sessions.currentMembers : null
+                        delegate: KeyValueRow {
+                            required property string displayName
+                            required property bool connected
+                            required property bool recovering
+                            required property bool routeActive
+                            required property bool endpointAvailable
+                            label: displayName
+                            value: (recovering ? qsTr("Recovering") : (connected ? qsTr("Connected") : qsTr("Disconnected")))
+                                   + " · " + (routeActive ? qsTr("Route active") : qsTr("No route"))
+                                   + " · " + (endpointAvailable ? qsTr("Endpoint") : qsTr("No endpoint"))
+                        }
+                    }
+                    Label {
+                        visible: !sessions || sessions.currentSessionId.length === 0
+                        text: qsTr("No active session")
+                        color: Theme.textMuted
+                    }
+                }
             }
         }
 
@@ -68,9 +132,10 @@ Item {
             Button {
                 text: qsTr("Copy visible")
                 onClicked: {
-                    const text = logs.visibleText()
-                    if (text.length > 0)
-                        AppCore.notifications.postInfo(qsTr("Diagnostics"), qsTr("Log copied to clipboard is not wired; text length %1").arg(text.length))
+                    if (logs.copyVisibleToClipboard())
+                        AppCore.notifications.postInfo(qsTr("Diagnostics"), qsTr("Visible log copied to clipboard"))
+                    else
+                        AppCore.notifications.postError(qsTr("Diagnostics"), qsTr("Clipboard is unavailable"))
                 }
             }
         }

@@ -22,6 +22,7 @@ target_include_directories(auralis-core
 target_link_libraries(auralis-core
     PUBLIC
         Qt6::Core
+        Qt6::Gui
 )
 
 target_compile_definitions(auralis-core

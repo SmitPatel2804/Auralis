@@ -92,6 +92,12 @@ private slots:
         QVERIFY(manager.adapterPowered());
         QCOMPARE(manager.adapterName(), QStringLiteral("smit"));
         QCOMPARE(manager.deviceCount(), 1);
+        QVERIFY(manager.hasDevice(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_01")));
+        QCOMPARE(
+            manager.deviceDetails(QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_01"))
+                .value(QStringLiteral("address"))
+                .toString(),
+            QStringLiteral("AA:BB:CC:DD:EE:01"));
         QVERIFY(manager.canStartScan());
         QVERIFY(manager.devices() != nullptr);
         QCOMPARE(manager.devices()->rowCount(), 1);
@@ -509,7 +515,9 @@ private slots:
         client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
         QVERIFY(manager.userDisconnectRequestedForDevice(kDevicePath));
 
+        QVERIFY(manager.hasDevice(kDevicePath));
         manager.forgetDevice(kDevicePath);
+        QVERIFY(!manager.hasDevice(kDevicePath));
         QCOMPARE(manager.deviceCount(), 0);
 
         client->setDevice(kDevicePath, classicDevice());

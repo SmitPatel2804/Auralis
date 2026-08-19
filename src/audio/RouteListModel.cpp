@@ -62,6 +62,14 @@ QVariant RouteListModel::data(const QModelIndex& index, int role) const
         return route->volume;
     case MutedRole:
         return route->muted;
+    case OwnerTypeRole:
+        return static_cast<int>(route->ownerType);
+    case OwnerIdRole:
+        return route->ownerId;
+    case EditableRole:
+        return route->ownerType == RouteOwnerType::Manual;
+    case OwnerLabelRole:
+        return toString(route->ownerType);
     case Qt::DisplayRole:
         return route->id;
     default:
@@ -84,6 +92,10 @@ QHash<int, QByteArray> RouteListModel::roleNames() const
         {ErrorTextRole, "errorText"},
         {VolumeRole, "volume"},
         {MutedRole, "muted"},
+        {OwnerTypeRole, "ownerType"},
+        {OwnerIdRole, "ownerId"},
+        {EditableRole, "editable"},
+        {OwnerLabelRole, "ownerLabel"},
     };
 }
 

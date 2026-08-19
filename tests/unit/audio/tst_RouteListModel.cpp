@@ -56,6 +56,10 @@ private slots:
         QVERIFY(!routeId.isEmpty());
         QCOMPARE(model->rowCount(), 1);
         QCOMPARE(model->data(model->index(0, 0), auralis::audio::RouteListModel::IdRole).toString(), routeId);
+        QCOMPARE(model->data(model->index(0, 0), auralis::audio::RouteListModel::EditableRole).toBool(), true);
+        QCOMPARE(
+            model->data(model->index(0, 0), auralis::audio::RouteListModel::OwnerLabelRole).toString(),
+            QStringLiteral("Manual"));
 
         router.removeRoute(routeId);
         QCOMPARE(model->rowCount(), 0);

@@ -1,4 +1,5 @@
 #include <auralis/core/ConfigurationManager.h>
+#include <auralis/core/Logger.h>
 
 #include <QSettings>
 #include <QTemporaryDir>
@@ -118,6 +119,28 @@ private slots:
         QVERIFY(manager.resetToDefaults());
         QCOMPARE(manager.restoreLastSession(), false);
         QCOMPARE(manager.showDeveloperStatus(), true);
+    }
+
+    void fileLoggingToggleAppliesToLogger()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString path = dir.filePath(QStringLiteral("auralis.log"));
+        QVERIFY(manager.setLogFilePath(path));
+        QVERIFY(manager.setFileLoggingEnabled(true));
+        QVERIFY(auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(manager.setFileLoggingEnabled(false));
+        QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
     }
 };
 

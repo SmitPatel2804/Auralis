@@ -24,6 +24,7 @@ Column {
         text: root.name
         font.pixelSize: 15
         font.bold: true
+        color: Theme.text
         wrapMode: Text.WordWrap
         width: parent.width
     }
@@ -34,7 +35,7 @@ Column {
               + " · " + (root.transport.length > 0 ? root.transport : "Unknown")
               + (root.profile.length > 0 ? (" · " + root.profile) : "")
         font.pixelSize: 12
-        color: "#444444"
+        color: Theme.textMuted
         wrapMode: Text.WordWrap
         width: parent.width
     }
@@ -43,7 +44,7 @@ Column {
         visible: root.mapped && root.bluetoothDisplayName.length > 0
         text: "Mapped: " + root.bluetoothDisplayName
         font.pixelSize: 12
-        color: "#1565c0"
+        color: Theme.accent
     }
 
     Text {
@@ -52,6 +53,6 @@ Column {
               + (root.bluetoothAddress.length > 0 ? (" · " + root.bluetoothAddress) : "")
               + (root.codec.length > 0 ? (" · " + root.codec) : "")
         font.pixelSize: 11
-        color: "#777777"
+        color: Theme.textMuted
     }
 }

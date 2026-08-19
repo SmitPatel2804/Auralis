@@ -29,7 +29,11 @@ public:
         StateTextRole,
         ErrorTextRole,
         VolumeRole,
-        MutedRole
+        MutedRole,
+        OwnerTypeRole,
+        OwnerIdRole,
+        EditableRole,
+        OwnerLabelRole
     };
 
     explicit RouteListModel(AudioRouter* router, QObject* parent = nullptr);

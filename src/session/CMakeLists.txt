@@ -2,6 +2,7 @@ add_library(auralis-session
     AuralisSession.cpp
     RoutingCoordinator.cpp
     SessionManager.cpp
+    SelectedSessionViewModel.cpp
     SessionListModel.cpp
     SessionPersistence.cpp
     SessionStateMachine.cpp
@@ -11,6 +12,7 @@ add_library(auralis-session
     "${CMAKE_SOURCE_DIR}/include/auralis/session/ISessionManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/session/RoutingCoordinator.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/session/SessionManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/session/SelectedSessionViewModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/session/SessionListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/session/SessionPersistence.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/session/SessionStateMachine.h"

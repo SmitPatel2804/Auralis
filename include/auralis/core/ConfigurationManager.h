@@ -67,6 +67,7 @@ private:
     void applyEnvironmentOverrides();
     bool writeValue(const char* key, const QVariant& value);
     void setLastError(const QString& text);
+    void applyRuntimeFileLogging();
 
     std::unique_ptr<QSettings> settings_;
     bool initialized_ = false;

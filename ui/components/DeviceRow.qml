@@ -47,25 +47,26 @@ Column {
         text: root.displayName
         font.pixelSize: 16
         font.bold: true
+        color: Theme.text
     }
 
     Text {
         text: root.address.length > 0 ? root.address : "Address unknown"
         font.pixelSize: 13
-        color: "#444444"
+        color: Theme.textMuted
     }
 
     Text {
         text: (root.addressType.length > 0 ? root.addressType : "type unknown")
               + " / " + (root.transportHint.length > 0 ? root.transportHint : "Unknown")
         font.pixelSize: 13
-        color: "#444444"
+        color: Theme.textMuted
     }
 
     Text {
         text: root.hasRssi ? ("RSSI: " + root.rssi + " dBm") : "Signal: Unknown"
         font.pixelSize: 13
-        color: "#444444"
+        color: Theme.textMuted
     }
 
     Text {
@@ -78,28 +79,28 @@ Column {
               + ((root.trusted || root.connected || root.paired) && root.servicesResolved ? " · " : "")
               + (root.servicesResolved ? "Services resolved" : "")
         font.pixelSize: 12
-        color: "#666666"
+        color: Theme.textMuted
     }
 
     Text {
         visible: root.audioStatus.length > 0
         text: "Audio: " + root.audioStatus
         font.pixelSize: 12
-        color: root.audioStatus === "Available" ? "#2e7d32" : "#1565c0"
+        color: root.audioStatus === "Available" ? Theme.success : Theme.accent
     }
 
     Text {
         visible: root.operationText.length > 0
         text: root.operationText
         font.pixelSize: 12
-        color: "#1565c0"
+        color: Theme.accent
     }
 
     Text {
         visible: root.lastErrorMessage.length > 0
         text: root.lastErrorMessage
         font.pixelSize: 12
-        color: "#c62828"
+        color: Theme.danger
         wrapMode: Text.WordWrap
         width: parent.width
     }

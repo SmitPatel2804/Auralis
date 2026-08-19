@@ -18,6 +18,7 @@ private slots:
         QVERIFY(!route.enabled);
         QVERIFY(!route.error.hasError());
         QCOMPARE(route.volume, 1.0);
+        QVERIFY(route.ownerType == auralis::audio::RouteOwnerType::Manual);
     }
 
     void uniqueIdsAreDistinct()

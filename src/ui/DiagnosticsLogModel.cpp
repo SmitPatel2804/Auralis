@@ -2,6 +2,9 @@
 
 #include <auralis/core/Logger.h>
 
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QCoreApplication>
 #include <QMetaObject>
 
 namespace auralis::ui {
@@ -150,6 +153,20 @@ QString DiagnosticsLogModel::visibleText() const
             + entry.category + QLatin1Char(' ') + entry.message);
     }
     return lines.join(QLatin1Char('\n'));
+}
+
+bool DiagnosticsLogModel::copyVisibleToClipboard() const
+{
+    auto* gui = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
+    if (gui == nullptr) {
+        return false;
+    }
+    QClipboard* clipboard = gui->clipboard();
+    if (clipboard == nullptr) {
+        return false;
+    }
+    clipboard->setText(visibleText());
+    return true;
 }
 
 void DiagnosticsLogModel::clear()

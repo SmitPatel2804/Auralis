@@ -536,6 +536,44 @@ private slots:
         QVERIFY(router.ownedLinkCount() == 0);
         QCOMPARE(backend.createCalls, 0);
     }
+
+    void sessionOwnedRoutesAreIsolatedFromPlanner()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        const QString sessionRoute = h.router.createSessionRoute(
+            QStringLiteral("session-a"), h.sourceId(), {QStringLiteral("dest-a")});
+        QVERIFY(!sessionRoute.isEmpty());
+        QVERIFY(h.router.currentRouteId().isEmpty());
+        const QString sessionSource = h.router.routeById(sessionRoute)->sourceId;
+        const QStringList sessionDests = h.router.routeById(sessionRoute)->destinationIds;
+
+        const QString manual = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-b")});
+        QVERIFY(!manual.isEmpty());
+        QCOMPARE(h.router.currentRouteId(), manual);
+        h.router.setRouteDestinations(manual, {QStringLiteral("dest-b")});
+        h.router.setRouteVolume(manual, 0.4);
+        h.router.setRouteMuted(manual, true);
+
+        const auto session = h.router.routeById(sessionRoute);
+        QVERIFY(session.has_value());
+        QCOMPARE(session->sourceId, sessionSource);
+        QCOMPARE(session->destinationIds, sessionDests);
+        QCOMPARE(session->volume, 1.0);
+        QCOMPARE(session->muted, false);
+        QCOMPARE(static_cast<int>(session->ownerType), static_cast<int>(auralis::audio::RouteOwnerType::Session));
+        QCOMPARE(session->ownerId, QStringLiteral("session-a"));
+
+        QSignalSpy errorSpy(&h.router, &AudioRouter::routeError);
+        h.router.setRouteSource(sessionRoute, h.sourceId());
+        h.router.setRouteVolume(sessionRoute, 0.1);
+        h.router.setRouteMuted(sessionRoute, true);
+        QCOMPARE(h.router.routeById(sessionRoute)->volume, 1.0);
+        QCOMPARE(h.router.routeById(sessionRoute)->muted, false);
+        QVERIFY(errorSpy.count() >= 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioRouter)

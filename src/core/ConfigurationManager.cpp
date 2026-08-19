@@ -1,5 +1,6 @@
 #include <auralis/core/ConfigurationManager.h>
 
+#include <auralis/core/Logger.h>
 #include <auralis/core/LoggingCategories.h>
 
 #include <QByteArray>
@@ -151,6 +152,7 @@ bool ConfigurationManager::setFileLoggingEnabled(bool enabled)
     }
     fileLoggingEnabled_ = enabled;
     emit fileLoggingEnabledChanged();
+    applyRuntimeFileLogging();
     return true;
 }
 
@@ -332,6 +334,20 @@ void ConfigurationManager::setLastError(const QString& text)
     }
     lastErrorText_ = text;
     emit lastErrorTextChanged();
+}
+
+void ConfigurationManager::applyRuntimeFileLogging()
+{
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+    if (!Logger::isInitialized()) {
+        return;
+    }
+    if (fileLoggingEnabled_) {
+        Logger::enableFileLogging(logFilePath_);
+    } else {
+        Logger::disableFileLogging();
+    }
+#endif
 }
 
 } // namespace auralis::core

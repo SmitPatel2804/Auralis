@@ -46,6 +46,7 @@ Dialog {
             text: request ? (request.deviceName.length > 0 ? request.deviceName : request.devicePath) : ""
             font.pixelSize: 16
             font.bold: true
+            color: Theme.text
         }
 
         Text {
@@ -53,6 +54,7 @@ Dialog {
             wrapMode: Text.WordWrap
             visible: request && request.message.length > 0
             text: request ? request.message : ""
+            color: Theme.textMuted
         }
 
         Text {
@@ -60,6 +62,7 @@ Dialog {
             visible: request && request.pinCode.length > 0
             text: request ? ("PIN: " + request.pinCode) : ""
             font.pixelSize: 14
+            color: Theme.text
         }
 
         Text {
@@ -68,6 +71,7 @@ Dialog {
             text: request ? ("Passkey: " + ("000000" + request.passkey).slice(-6)) : ""
             font.family: "monospace"
             font.pixelSize: 18
+            color: Theme.text
         }
 
         TextField {

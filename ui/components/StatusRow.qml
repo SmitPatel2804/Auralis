@@ -13,12 +13,13 @@ RowLayout {
     Text {
         text: root.label
         font.pixelSize: 16
+        color: Theme.text
         Layout.preferredWidth: 160
     }
 
     Text {
         text: root.status
         font.pixelSize: 16
-        color: root.healthy ? "#2e7d32" : "#6d4c41"
+        color: root.healthy ? Theme.success : Theme.warning
     }
 }

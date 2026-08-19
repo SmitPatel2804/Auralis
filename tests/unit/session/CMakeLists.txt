@@ -15,3 +15,6 @@ target_link_libraries(tst_VolumeCoordinator PRIVATE auralis-session auralis-audi
 
 auralis_add_test(tst_SessionListModel tst_SessionListModel.cpp)
 target_link_libraries(tst_SessionListModel PRIVATE auralis-session auralis-audio auralis-bluetooth)
+
+auralis_add_test(tst_SelectedSessionViewModel tst_SelectedSessionViewModel.cpp)
+target_link_libraries(tst_SelectedSessionViewModel PRIVATE auralis-session auralis-audio auralis-bluetooth)

@@ -69,6 +69,10 @@ public:
     AudioRoute* mutableRoute(const QString& id);
 
     Q_INVOKABLE QString createRoute(const QString& sourceId, const QStringList& destinationEndpointIds);
+    QString createSessionRoute(
+        const QString& sessionId,
+        const QString& sourceId,
+        const QStringList& destinationEndpointIds);
     Q_INVOKABLE void removeRoute(const QString& routeId);
     Q_INVOKABLE void activateRoute(const QString& routeId);
     Q_INVOKABLE void deactivateRoute(const QString& routeId);
@@ -119,6 +123,13 @@ private:
     void stopAllActivationTimeouts();
     void invalidateOwnedLinks(AudioRoute& route);
     QVector<QPair<QString, quint32>> destinationNodes(const AudioRoute& route) const;
+    const AudioRoute* plannerRoute() const;
+    QString createRouteInternal(
+        const QString& sourceId,
+        const QStringList& destinationEndpointIds,
+        RouteOwnerType ownerType,
+        const QString& ownerId);
+    bool rejectPlannerMutation(const AudioRoute& route);
 
     PipeWireObjectStore* store_ = nullptr;
     AudioEndpointRegistry* endpoints_ = nullptr;

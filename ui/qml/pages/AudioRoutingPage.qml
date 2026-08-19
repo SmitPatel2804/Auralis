@@ -88,16 +88,19 @@ Flickable {
                     required property string stateText
                     required property string errorText
                     required property bool active
+                    required property bool editable
+                    required property string ownerLabel
                     Layout.fillWidth: true
                     RowLayout {
                         Label { text: sourceName; color: Theme.text; font.bold: true; Layout.fillWidth: true }
+                        StatusBadge { label: ownerLabel; kind: editable ? "idle" : "busy" }
                         StatusBadge { label: stateText; kind: active ? "active" : (stateText === "Failed" ? "error" : "idle") }
                     }
                     Label { text: qsTr("%1 destinations").arg(destinationCount); color: Theme.textMuted }
                     Label { visible: errorText.length > 0; text: errorText; color: Theme.danger; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
-                        Button { text: qsTr("Activate"); onClicked: router.activateRoute(routeId) }
-                        Button { text: qsTr("Deactivate"); onClicked: router.deactivateRoute(routeId) }
+                        Button { text: qsTr("Activate"); enabled: editable; onClicked: router.activateRoute(routeId) }
+                        Button { text: qsTr("Deactivate"); enabled: editable; onClicked: router.deactivateRoute(routeId) }
                     }
                 }
             }

@@ -7,6 +7,7 @@
 #include <QAbstractItemModel>
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
 
 namespace auralis::bluetooth {
 
@@ -89,6 +90,8 @@ public:
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
     Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
     Q_INVOKABLE int connectedDeviceCount() const;
+    Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
+    Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
 
     DeviceRegistry* deviceRegistry() const noexcept;
     ReconnectPolicy* reconnectPolicy() const noexcept;

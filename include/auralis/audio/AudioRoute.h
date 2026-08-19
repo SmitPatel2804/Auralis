@@ -47,6 +47,12 @@ enum class RouteError {
     InternalError
 };
 
+enum class RouteOwnerType {
+    Manual,
+    Session
+};
+Q_ENUM_NS(RouteOwnerType)
+
 enum class RouteRecoveryPolicy {
     NoAutomaticRecovery,
     RebindOnGraphReplacement
@@ -84,9 +90,12 @@ struct AudioRoute {
     double volume = 1.0;
     bool muted = false;
     RouteRecoveryPolicy recoveryPolicy = RouteRecoveryPolicy::RebindOnGraphReplacement;
+    RouteOwnerType ownerType = RouteOwnerType::Manual;
+    QString ownerId;
 };
 
 QString toString(RouteState state);
 QString toString(RouteError error);
+QString toString(RouteOwnerType ownerType);
 
 } // namespace auralis::audio

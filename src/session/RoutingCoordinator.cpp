@@ -136,7 +136,7 @@ void RoutingCoordinator::reconcile(
                 sessionRouteOwners_.remove(device.runtime.routeId);
                 device.runtime.routeId.clear();
             }
-            const QString routeId = router_->createRoute(session.sourceId, {wanted.endpointId});
+            const QString routeId = router_->createSessionRoute(session.id, session.sourceId, {wanted.endpointId});
             if (routeId.isEmpty()) {
                 device.runtime.routeRequested = false;
                 device.runtime.routeActive = false;

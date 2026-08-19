@@ -74,7 +74,7 @@ ColumnLayout {
         visible: !router || router.sourceCount === 0
         text: "No routable sources yet. Play audio or wait for a capture source."
         font.pixelSize: 12
-        color: "#666666"
+        color: Theme.textMuted
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
@@ -83,6 +83,7 @@ ColumnLayout {
         text: "Playback destinations"
         font.pixelSize: 13
         font.bold: true
+        color: Theme.text
     }
 
     Flickable {
@@ -133,13 +134,14 @@ ColumnLayout {
     Text {
         text: "State: " + (router ? router.routeStateText : "Inactive")
         font.pixelSize: 13
+        color: Theme.text
     }
 
     Text {
         visible: router && router.lastErrorText.length > 0
         text: router ? router.lastErrorText : ""
         font.pixelSize: 12
-        color: "#c62828"
+        color: Theme.danger
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
@@ -152,6 +154,7 @@ ColumnLayout {
         Text {
             text: "Route volume"
             font.pixelSize: 13
+            color: Theme.text
         }
 
         Slider {
@@ -179,7 +182,7 @@ ColumnLayout {
         visible: router && !router.volumeCapable && router.currentRouteId.length > 0
         text: "Volume control is not available for the current destinations."
         font.pixelSize: 12
-        color: "#666666"
+        color: Theme.textMuted
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
@@ -190,7 +193,7 @@ ColumnLayout {
               ? ("owned links=" + router.ownedLinkCount + " · route=" + router.currentRouteId)
               : ""
         font.pixelSize: 11
-        color: "#777777"
+        color: Theme.textMuted
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }

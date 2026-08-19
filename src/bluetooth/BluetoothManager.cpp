@@ -18,6 +18,7 @@
 #include <auralis/core/LoggingCategories.h>
 
 #include <QSet>
+#include <QVariantMap>
 
 namespace auralis::bluetooth {
 namespace {
@@ -130,6 +131,47 @@ int BluetoothManager::connectedDeviceCount() const
         }
     }
     return count;
+}
+
+bool BluetoothManager::hasDevice(const QString& objectPath) const
+{
+    return registry_ != nullptr && registry_->findByObjectPath(objectPath) != nullptr;
+}
+
+QVariantMap BluetoothManager::deviceDetails(const QString& objectPath) const
+{
+    QVariantMap details;
+    if (registry_ == nullptr) {
+        return details;
+    }
+    const BluetoothDeviceData* device = registry_->findByObjectPath(objectPath);
+    if (device == nullptr) {
+        return details;
+    }
+    details.insert(QStringLiteral("objectPath"), device->objectPath);
+    details.insert(QStringLiteral("name"), device->name);
+    details.insert(QStringLiteral("alias"), device->alias);
+    details.insert(QStringLiteral("displayName"), device->displayName());
+    details.insert(QStringLiteral("address"), device->address);
+    details.insert(QStringLiteral("addressType"), device->addressType);
+    details.insert(QStringLiteral("rssi"), device->rssi);
+    details.insert(QStringLiteral("hasRssi"), device->hasRssi);
+    details.insert(QStringLiteral("paired"), device->paired);
+    details.insert(QStringLiteral("trusted"), device->trusted);
+    details.insert(QStringLiteral("connected"), device->connected);
+    details.insert(QStringLiteral("blocked"), device->blocked);
+    details.insert(QStringLiteral("servicesResolved"), device->servicesResolved);
+    details.insert(QStringLiteral("classOfDevice"), device->hasClassOfDevice ? QVariant(device->classOfDevice) : QVariant());
+    details.insert(QStringLiteral("hasClass"), device->hasClassOfDevice);
+    details.insert(QStringLiteral("appearance"), device->hasAppearance ? QVariant(device->appearance) : QVariant());
+    details.insert(QStringLiteral("hasAppearance"), device->hasAppearance);
+    details.insert(
+        QStringLiteral("lastSeen"),
+        device->lastSeen.isValid() ? device->lastSeen.toLocalTime().toString(Qt::ISODate) : QString());
+    details.insert(QStringLiteral("transport"), device->transportHint());
+    details.insert(QStringLiteral("icon"), device->icon);
+    details.insert(QStringLiteral("uuids"), device->uuids);
+    return details;
 }
 
 ReconnectPolicy* BluetoothManager::reconnectPolicy() const noexcept
