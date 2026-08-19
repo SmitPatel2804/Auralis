@@ -37,13 +37,19 @@ void ReconnectPolicy::scheduleReconnect(const QString& devicePath)
         return;
     }
     if (entry.attempt >= config_.maxAttempts) {
-        if (!entry.exhaustedEmitted) {
-            entry.exhaustedEmitted = true;
+        const bool alreadyEmitted = entry.exhaustedEmitted;
+        const int attempts = entry.attempt;
+        if (entry.timer != nullptr) {
+            entry.timer->stop();
+            entry.timer->deleteLater();
+        }
+        entries_.remove(devicePath);
+        if (!alreadyEmitted) {
             qCInfo(auralisBluetooth) << "ManagedReconnectExhausted" << devicePath
-                                     << "attempts=" << entry.attempt;
+                                     << "attempts=" << attempts;
             emit reconnectExhausted(
                 devicePath,
-                entry.attempt,
+                attempts,
                 QStringLiteral("Reconnect attempt budget exhausted"));
         }
         return;
@@ -123,6 +129,36 @@ bool ReconnectPolicy::isReconnectInProgress(const QString& devicePath) const
 int ReconnectPolicy::attempt(const QString& devicePath) const
 {
     return entries_.value(devicePath).attempt;
+}
+
+void ReconnectPolicy::retryAfterContention(const QString& devicePath)
+{
+    auto it = entries_.find(devicePath);
+    if (it == entries_.end()) {
+        return;
+    }
+    it->inFlight = false;
+    --it->attempt;
+    if (it->attempt < 0) {
+        it->attempt = 0;
+    }
+    qCInfo(auralisBluetooth) << "ReconnectRetryAfterContention" << devicePath << "attempt=" << it->attempt;
+    scheduleReconnect(devicePath);
+}
+
+void ReconnectPolicy::reportTerminalFailure(const QString& devicePath, const QString& reason)
+{
+    auto it = entries_.find(devicePath);
+    const int attempts = (it != entries_.end()) ? it->attempt : 0;
+    if (it != entries_.end()) {
+        if (it->timer != nullptr) {
+            it->timer->stop();
+            it->timer->deleteLater();
+        }
+        entries_.erase(it);
+    }
+    qCInfo(auralisBluetooth) << "ManagedReconnectTerminalFailure" << devicePath << "attempts=" << attempts << reason;
+    emit reconnectTerminalFailure(devicePath, attempts, reason);
 }
 
 void ReconnectPolicy::fire(const QString& devicePath)

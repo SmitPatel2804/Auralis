@@ -139,6 +139,77 @@ private slots:
         QCOMPARE(exhaustedSpy.count(), 1);
         QCOMPARE(dueSpy.count(), 1);
     }
+
+    void retryAfterContentionDoesNotConsumeAttempt()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 3;
+        config.initialDelayMs = 30;
+        config.maxDelayMs = 30;
+        config.backoffMultiplier = 1.0;
+        policy.setConfig(config);
+
+        QSignalSpy dueSpy(&policy, &ReconnectPolicy::reconnectDue);
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+        QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 1);
+
+        policy.retryAfterContention(QStringLiteral("/dev/1"));
+        QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 1);
+        QVERIFY(policy.isScheduled(QStringLiteral("/dev/1")));
+
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 2, 500);
+        policy.completeReconnectAttempt(QStringLiteral("/dev/1"));
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 3, 500);
+        QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 2);
+    }
+
+    void terminalFailureCleansUpEntry()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 5;
+        config.initialDelayMs = 30;
+        config.maxDelayMs = 30;
+        policy.setConfig(config);
+
+        QSignalSpy termSpy(&policy, &ReconnectPolicy::reconnectTerminalFailure);
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTRY_VERIFY_WITH_TIMEOUT(policy.attempt(QStringLiteral("/dev/1")) >= 1, 500);
+
+        policy.reportTerminalFailure(QStringLiteral("/dev/1"), QStringLiteral("AuthFailed"));
+        QCOMPARE(termSpy.count(), 1);
+        QCOMPARE(termSpy.at(0).at(2).toString(), QStringLiteral("AuthFailed"));
+        QVERIFY(!policy.isScheduled(QStringLiteral("/dev/1")));
+        QVERIFY(!policy.isReconnectInProgress(QStringLiteral("/dev/1")));
+        QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 0);
+    }
+
+    void exhaustionCleansUpEntry()
+    {
+        ReconnectPolicy policy;
+        ReconnectPolicyConfig config;
+        config.enabled = true;
+        config.maxAttempts = 1;
+        config.initialDelayMs = 30;
+        config.maxDelayMs = 30;
+        policy.setConfig(config);
+
+        QSignalSpy dueSpy(&policy, &ReconnectPolicy::reconnectDue);
+        QSignalSpy exhaustedSpy(&policy, &ReconnectPolicy::reconnectExhausted);
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+        policy.completeReconnectAttempt(QStringLiteral("/dev/1"));
+
+        policy.scheduleReconnect(QStringLiteral("/dev/1"));
+        QCOMPARE(exhaustedSpy.count(), 1);
+        QCOMPARE(policy.attempt(QStringLiteral("/dev/1")), 0);
+        QVERIFY(!policy.isScheduled(QStringLiteral("/dev/1")));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstReconnectPolicy)

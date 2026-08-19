@@ -458,6 +458,74 @@ private slots:
         QVERIFY(!h.reconnect.isScheduled(path));
         QCOMPARE(dueSpy.count(), 0);
     }
+
+    void suppressAutoReconnectBlocksUnexpectedDisconnect()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.lifecycle.suppressAutoReconnect(path);
+        QVERIFY(h.lifecycle.isAutoReconnectSuppressed(path));
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+
+        QTest::qWait(150);
+        QCOMPARE(dueSpy.count(), 0);
+        QVERIFY(!h.reconnect.isScheduled(path));
+
+        h.lifecycle.unsuppressAutoReconnect(path);
+        QVERIFY(!h.lifecycle.isAutoReconnectSuppressed(path));
+    }
+
+    void suppressAutoReconnectBlocksReevaluation()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, false, true));
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.lifecycle.suppressAutoReconnect(path);
+        h.lifecycle.onBlueZAvailabilityChanged(false);
+        h.lifecycle.onBlueZAvailabilityChanged(true);
+        h.lifecycle.onSnapshotApplied();
+
+        QTest::qWait(150);
+        QCOMPARE(dueSpy.count(), 0);
+    }
+
+    void terminalReconnectFailureEmitsSignal()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy termSpy(&h.reconnect, &ReconnectPolicy::reconnectTerminalFailure);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+
+        emit h.client.connectDeviceFinished(
+            path,
+            false,
+            QStringLiteral("org.bluez.Error.AuthenticationFailed"),
+            QStringLiteral("auth failed"));
+
+        QCOMPARE(termSpy.count(), 1);
+        QCOMPARE(termSpy.at(0).at(0).toString(), path);
+        QVERIFY(!h.reconnect.isScheduled(path));
+        QCOMPARE(h.reconnect.attempt(path), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstDeviceLifecycle)

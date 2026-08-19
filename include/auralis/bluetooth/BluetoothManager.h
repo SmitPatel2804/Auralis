@@ -77,6 +77,8 @@ public:
     /// reconnectDevice() for session recovery intent so Phase 3 owns retry timing.
     void requestManagedReconnect(const QString& deviceId);
     void cancelManagedReconnect(const QString& deviceId);
+    void suppressAutoReconnect(const QString& deviceId);
+    void unsuppressAutoReconnect(const QString& deviceId);
     Q_INVOKABLE void cancelDeviceOperation(const QString& deviceId);
     Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
     Q_INVOKABLE void rejectPairingRequest(const QString& requestId);
@@ -99,6 +101,7 @@ signals:
     void pendingPairingRequestChanged();
     void agentRegisteredChanged();
     void managedReconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
+    void managedReconnectTerminalFailure(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     void connectClientSignals();

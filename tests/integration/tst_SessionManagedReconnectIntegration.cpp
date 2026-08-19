@@ -244,6 +244,55 @@ private slots:
         QVERIFY(!stack.bluetooth.reconnectPolicy()->isScheduled(devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"))));
         QVERIFY(!stack.bluetooth.reconnectPolicy()->isReconnectInProgress(devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"))));
     }
+
+    void activeSessionSuppressesLowerLayerAutoReconnect()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(stack.sessions.sessionById(id).has_value());
+        QVERIFY(stack.sessions.sessionById(id)->state == SessionState::Active);
+
+        stack.sessions.setRecoveryPolicy(id, QStringLiteral("None"));
+
+        stack.endpoints.removeById(QStringLiteral("dest-b"));
+        stack.client->updateDevice(devicePath(QStringLiteral("AA:BB:CC:DD:EE:02")), {{QStringLiteral("Connected"), false}}, {});
+        stack.sessions.refreshActiveSession();
+
+        QTest::qWait(100);
+        QVERIFY(!stack.bluetooth.reconnectPolicy()->isScheduled(devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"))));
+
+        stack.sessions.deactivateSession(id);
+        stack.client->updateDevice(devicePath(QStringLiteral("AA:BB:CC:DD:EE:02")), {{QStringLiteral("Connected"), false}}, {});
+        QTest::qWait(100);
+    }
+
+    void terminalReconnectFailureReachesSessionState()
+    {
+        Stack stack;
+        stack.client->setConnectResult(
+            false,
+            QStringLiteral("org.bluez.Error.AuthenticationFailed"),
+            QStringLiteral("auth failed"));
+
+        const QString id = stack.startActiveSession();
+        QVERIFY(stack.sessions.sessionById(id).has_value());
+        QVERIFY(stack.sessions.sessionById(id)->state == SessionState::Active);
+
+        QSignalSpy errorSpy(&stack.sessions, &SessionManager::sessionError);
+
+        stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+        QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() >= 1, 2000);
+        bool sawExhausted = false;
+        for (int i = 0; i < errorSpy.count(); ++i) {
+            if (errorSpy.at(i).at(1).value<SessionError>() == SessionError::RecoveryExhausted) {
+                sawExhausted = true;
+                break;
+            }
+        }
+        QVERIFY(sawExhausted);
+        QVERIFY(!stack.sessions.sessionById(id)->devices.at(1).runtime.recovering);
+        QVERIFY(stack.sessions.sessionById(id)->devices.front().runtime.routeActive);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionManagedReconnectIntegration)

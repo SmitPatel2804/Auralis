@@ -127,10 +127,48 @@ No ASan/UBSan failures.
 
 Not re-run in this software-gate pass. Prior live validation: single BT device (`88:08:94:9D:B4:22`); two-device live session remains opt-in via `AURALIS_RUN_SESSION_INTEGRATION` + `AURALIS_EXPECT_DEVICE_ADDRESSES`.
 
+## Recovery-Boundary Closure Pass (2026-08-19)
+
+Prompt: `docs/prompts/phase-6/Auralis_PHASE_6_Final_Recovery_Boundary_Closure_Prompt.md`
+
+Four final recovery-boundary defects addressed:
+
+### H. Session recovery policy does not fully override device-level auto-reconnect
+
+- **Root cause:** `DeviceLifecycleManager::handleUnexpectedDisconnect` and `reevaluateReconnectCandidates` scheduled reconnect based on `device.autoReconnectEnabled` with no session policy gate.
+- **Fix:** Per-device suppression API (`suppressAutoReconnect` / `unsuppressAutoReconnect`) on `DeviceLifecycleManager`, forwarded via `BluetoothManager`. `SessionManager` installs suppressions on `activateSession` and removes on `stopSession`/shutdown. Session layer is sole reconnect authority for active members.
+- **Files:** `DeviceLifecycleManager.{h,cpp}`, `BluetoothManager.{h,cpp}`, `SessionManager.{h,cpp}`
+- **Tests:** `tst_DeviceLifecycle::suppressAutoReconnectBlocksUnexpectedDisconnect`, `suppressAutoReconnectBlocksReevaluation`; `tst_SessionManagedReconnectIntegration::activeSessionSuppressesLowerLayerAutoReconnect`
+
+### I. Terminal/non-retryable reconnect failures not propagated to SessionManager
+
+- **Root cause:** `handleConnectFinished` terminal path called `cancelReconnect` but emitted no upward signal. Only budget exhaustion reached the session.
+- **Fix:** `ReconnectPolicy::reportTerminalFailure` cleans up entry and emits `reconnectTerminalFailure`. Forwarded via `BluetoothManager::managedReconnectTerminalFailure`. `SessionManager::handleManagedReconnectTerminalFailure` clears recovery, sets `RecoveryExhausted`, emits `sessionError`, recomputes.
+- **Files:** `ReconnectPolicy.{h,cpp}`, `DeviceLifecycleManager.cpp`, `BluetoothManager.{h,cpp}`, `SessionManager.{h,cpp}`
+- **Tests:** `tst_ReconnectPolicy::terminalFailureCleansUpEntry`; `tst_DeviceLifecycle::terminalReconnectFailureEmitsSignal`; `tst_SessionManagedReconnectIntegration::terminalReconnectFailureReachesSessionState`
+
+### J. Due reconnect silently abandoned on lifecycle contention
+
+- **Root cause:** `reconnectDue` lambda called `completeReconnectAttempt` when `beginOperation` failed (device busy), consuming the attempt with no reschedule.
+- **Fix:** `ReconnectPolicy::retryAfterContention` rolls back the attempt counter and reschedules via `scheduleReconnect`.
+- **Files:** `ReconnectPolicy.{h,cpp}`, `DeviceLifecycleManager.cpp`
+- **Tests:** `tst_ReconnectPolicy::retryAfterContentionDoesNotConsumeAttempt`
+
+### K. Stopped reconnect timers/entries accumulate until destruction
+
+- **Root cause:** Exhausted entries remained in `entries_` with stopped timers indefinitely.
+- **Fix:** `scheduleReconnect` now deletes timer and erases entry on exhaustion after emitting. `reportTerminalFailure` also cleans up.
+- **Files:** `ReconnectPolicy.cpp`
+- **Tests:** `tst_ReconnectPolicy::exhaustionCleansUpEntry`
+
+### Test counts
+
+Pre-change: 35/35 PASS. Post-change: 35/35 PASS (new test cases added to existing test binaries).
+
 ## Final verdict
 
 ```text
 PHASE 6 STATUS: COMPLETE
 ```
 
-Software gates from the remaining-issues prompt are closed. Phase 7 Sessions UI is still out of scope. Two-device hardware live activate is opt-in, not a remaining software blocker.
+All software gates from both the remaining-issues prompt and the recovery-boundary closure prompt are closed. Phase 7 Sessions UI is still out of scope. Two-device hardware live activate is opt-in, not a remaining software blocker.

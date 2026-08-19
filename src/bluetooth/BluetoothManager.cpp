@@ -81,6 +81,13 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
         [this](const QString& devicePath, int attempts, const QString& reason) {
             emit managedReconnectExhausted(devicePath, attempts, reason);
         });
+    connect(
+        reconnect_,
+        &ReconnectPolicy::reconnectTerminalFailure,
+        this,
+        [this](const QString& devicePath, int attempts, const QString& reason) {
+            emit managedReconnectTerminalFailure(devicePath, attempts, reason);
+        });
     statusText_ = defaultMessage(BluetoothError::BlueZUnavailable);
 }
 
@@ -564,6 +571,20 @@ void BluetoothManager::cancelManagedReconnect(const QString& deviceId)
         return;
     }
     reconnect_->cancelReconnect(deviceId);
+}
+
+void BluetoothManager::suppressAutoReconnect(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr && !deviceId.trimmed().isEmpty()) {
+        lifecycle_->suppressAutoReconnect(deviceId);
+    }
+}
+
+void BluetoothManager::unsuppressAutoReconnect(const QString& deviceId)
+{
+    if (lifecycle_ != nullptr && !deviceId.trimmed().isEmpty()) {
+        lifecycle_->unsuppressAutoReconnect(deviceId);
+    }
 }
 
 void BluetoothManager::cancelDeviceOperation(const QString& deviceId)

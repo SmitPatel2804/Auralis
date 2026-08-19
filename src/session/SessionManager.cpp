@@ -128,6 +128,11 @@ bool SessionManager::initialize()
             &auralis::bluetooth::BluetoothManager::managedReconnectExhausted,
             this,
             &SessionManager::handleManagedReconnectExhausted);
+        connect(
+            bluetooth_,
+            &auralis::bluetooth::BluetoothManager::managedReconnectTerminalFailure,
+            this,
+            &SessionManager::handleManagedReconnectTerminalFailure);
     }
 
     recoverySweep_.setInterval(1000);
@@ -324,6 +329,12 @@ SessionCommandResult SessionManager::addDevice(const QString& sessionId, const Q
     device.runtime.autoRestoreAllowed = session->state == SessionState::Starting
         || policyAllowsAutoRouteRestore(*session);
     session->devices.push_back(device);
+    if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+        const QString path = devicePathForAddress(normalized);
+        if (!path.isEmpty()) {
+            bluetooth_->suppressAutoReconnect(path);
+        }
+    }
     touchUpdated(*session);
     const SessionCommandResult persistResult = persistAll(sessionId);
     emit sessionUpdated(sessionId);
@@ -346,6 +357,12 @@ SessionCommandResult SessionManager::removeDevice(const QString& sessionId, cons
             continue;
         }
         cancelRecovery(sessionId, normalized);
+        if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+            const QString path = devicePathForAddress(normalized);
+            if (!path.isEmpty()) {
+                bluetooth_->unsuppressAutoReconnect(path);
+            }
+        }
         if (!device.runtime.routeId.isEmpty() && router_ != nullptr) {
             router_->deactivateRoute(device.runtime.routeId);
             router_->removeRoute(device.runtime.routeId);
@@ -489,6 +506,8 @@ SessionCommandResult SessionManager::activateSession(const QString& sessionId)
     emit sessionStateChanged(sessionId, oldState, SessionState::Starting);
     emit sessionUpdated(sessionId);
     emitSessionUiSignals();
+
+    installReconnectSuppressions(*session);
 
     if (!recoverySweep_.isActive()) {
         recoverySweep_.start();
@@ -855,6 +874,43 @@ void SessionManager::handleManagedReconnectExhausted(const QString& devicePath, 
     emit sessionUpdated(session->id);
 }
 
+void SessionManager::handleManagedReconnectTerminalFailure(const QString& devicePath, int attempts, const QString& reason)
+{
+    const QString normalizedPath = devicePath.trimmed();
+    if (normalizedPath.isEmpty()) {
+        return;
+    }
+    AuralisSession* session = activeSessionId_.isEmpty() ? nullptr : mutableSession(activeSessionId_);
+    if (session == nullptr) {
+        return;
+    }
+    if (session->state == SessionState::Stopping || session->state == SessionState::Idle
+        || session->state == SessionState::Failed) {
+        return;
+    }
+    bool matched = false;
+    for (SessionDevice& device : session->devices) {
+        if (devicePathForAddress(device.deviceId) != normalizedPath) {
+            continue;
+        }
+        matched = true;
+        device.runtime.recovering = false;
+        device.runtime.managedReconnectRequested = false;
+        device.runtime.lastError = {
+            SessionError::RecoveryExhausted,
+            QStringLiteral("Reconnect terminal failure after %1 attempts: %2").arg(attempts).arg(reason)};
+        qCInfo(auralisSession) << "SessionRecoveryTerminalFailure session=" << session->id
+                               << "device=" << device.deviceId << "attempts=" << attempts;
+        emit sessionError(session->id, SessionError::RecoveryExhausted, device.runtime.lastError.detail);
+        break;
+    }
+    if (!matched) {
+        return;
+    }
+    recomputeSession(*session);
+    emit sessionUpdated(session->id);
+}
+
 AuralisSession* SessionManager::mutableSession(const QString& id)
 {
     for (AuralisSession& session : sessions_) {
@@ -1087,6 +1143,7 @@ void SessionManager::stopSession(AuralisSession& session, bool persist)
     bumpGeneration(session);
     const SessionState oldState = session.state;
     session.state = SessionState::Stopping;
+    removeReconnectSuppressions(session);
     cancelAllRecovery(session);
     for (SessionDevice& device : session.devices) {
         device.runtime.recovering = false;
@@ -1240,6 +1297,32 @@ void SessionManager::cancelAllRecovery(AuralisSession& session)
 {
     for (SessionDevice& device : session.devices) {
         cancelRecovery(session.id, device.deviceId);
+    }
+}
+
+void SessionManager::installReconnectSuppressions(const AuralisSession& session)
+{
+    if (bluetooth_ == nullptr) {
+        return;
+    }
+    for (const SessionDevice& device : session.devices) {
+        const QString path = devicePathForAddress(device.deviceId);
+        if (!path.isEmpty()) {
+            bluetooth_->suppressAutoReconnect(path);
+        }
+    }
+}
+
+void SessionManager::removeReconnectSuppressions(const AuralisSession& session)
+{
+    if (bluetooth_ == nullptr) {
+        return;
+    }
+    for (const SessionDevice& device : session.devices) {
+        const QString path = devicePathForAddress(device.deviceId);
+        if (!path.isEmpty()) {
+            bluetooth_->unsuppressAutoReconnect(path);
+        }
     }
 }
 

@@ -5,6 +5,7 @@
 #include <auralis/bluetooth/DeviceReconnectMetadata.h>
 
 #include <QHash>
+#include <QSet>
 #include <QVariantMap>
 #include <QObject>
 #include <QString>
@@ -49,6 +50,10 @@ public:
     void forgetDevice(const QString& objectPath);
     void reconnectDevice(const QString& objectPath);
     void cancelDeviceOperation(const QString& objectPath);
+
+    void suppressAutoReconnect(const QString& objectPath);
+    void unsuppressAutoReconnect(const QString& objectPath);
+    bool isAutoReconnectSuppressed(const QString& objectPath) const;
 
 signals:
     void deviceOperationChanged(const QString& objectPath);
@@ -96,6 +101,7 @@ private:
     QHash<QString, PendingOp> pending_;
     QHash<QString, quint64> generations_;
     QHash<QString, DeviceReconnectMetadata> reconnectMetadata_;
+    QSet<QString> autoReconnectSuppressed_;
 };
 
 } // namespace auralis::bluetooth

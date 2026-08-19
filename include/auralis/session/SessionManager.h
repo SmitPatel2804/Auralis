@@ -113,6 +113,7 @@ private slots:
     void handleDeviceRegistryChanged();
     void handleRecoveryTick();
     void handleManagedReconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
+    void handleManagedReconnectTerminalFailure(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     AuralisSession* mutableSession(const QString& id);
@@ -134,6 +135,8 @@ private:
     void requestManagedReconnect(AuralisSession& session, SessionDevice& device);
     void cancelRecovery(const QString& sessionId, const QString& deviceId);
     void cancelAllRecovery(AuralisSession& session);
+    void installReconnectSuppressions(const AuralisSession& session);
+    void removeReconnectSuppressions(const AuralisSession& session);
     void clearStaleMemberErrors(AuralisSession& session);
     QString devicePathForAddress(const QString& address) const;
     SessionCommandResult validateVolume(double value) const;

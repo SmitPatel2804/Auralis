@@ -36,9 +36,13 @@ public:
     bool isReconnectInProgress(const QString& devicePath) const;
     int attempt(const QString& devicePath) const;
 
+    void reportTerminalFailure(const QString& devicePath, const QString& reason);
+    void retryAfterContention(const QString& devicePath);
+
 signals:
     void reconnectDue(const QString& devicePath, int attempt, int maxAttempts);
     void reconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
+    void reconnectTerminalFailure(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     struct Entry {
