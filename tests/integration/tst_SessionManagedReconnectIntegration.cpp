@@ -414,6 +414,56 @@ private slots:
         QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathA));
         QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathB));
     }
+
+    void disableMemberCancelsScheduledReconnect()
+    {
+        Stack stack;
+        const QString id = stack.startActiveSession();
+        QVERIFY(!id.isEmpty());
+        stack.sessions.setAutoReconnect(id, true);
+        stack.sessions.setRecoveryPolicy(id, QStringLiteral("ReconnectAndRestore"));
+
+        const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+        stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+        QVERIFY(stack.bluetooth.reconnectPolicy()->isScheduled(pathB));
+
+        QVERIFY(stack.sessions.setDeviceEnabled(id, QStringLiteral("AA:BB:CC:DD:EE:02"), false)
+                == SessionCommandResult::Accepted);
+        QVERIFY(!stack.bluetooth.reconnectPolicy()->isScheduled(pathB));
+        QVERIFY(!stack.bluetooth.isAutoReconnectSuppressed(pathB));
+        QVERIFY(!stack.sessions.sessionById(id)->devices.at(1).runtime.recovering);
+        QVERIFY(stack.sessions.sessionById(id)->devices.front().runtime.routeActive);
+    }
+
+    void devicePreferenceMatrix()
+    {
+        struct Row {
+            bool devicePref = true;
+            bool sessionAutoReconnect = true;
+            const char* policy = "ReconnectAndRestore";
+            bool expectScheduled = true;
+        };
+        const Row rows[] = {
+            {true, true, "ReconnectAndRestore", true},
+            {true, false, "ReconnectAndRestore", false},
+            {false, true, "ReconnectAndRestore", false},
+            {true, true, "None", false},
+            {true, true, "RestoreRoutesOnly", false},
+        };
+
+        for (const Row& row : rows) {
+            Stack stack;
+            const QString id = stack.startActiveSession();
+            QVERIFY(!id.isEmpty());
+            stack.sessions.setAutoReconnect(id, row.sessionAutoReconnect);
+            stack.sessions.setRecoveryPolicy(id, QString::fromUtf8(row.policy));
+            const QString pathB = devicePath(QStringLiteral("AA:BB:CC:DD:EE:02"));
+            stack.bluetooth.deviceRegistry()->setAutoReconnectEnabled(pathB, row.devicePref);
+            stack.disconnectMember(QStringLiteral("AA:BB:CC:DD:EE:02"), QStringLiteral("dest-b"));
+            QTest::qWait(50);
+            QCOMPARE(stack.bluetooth.reconnectPolicy()->isScheduled(pathB), row.expectScheduled);
+        }
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionManagedReconnectIntegration)

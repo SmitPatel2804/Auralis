@@ -562,6 +562,33 @@ private slots:
         QVERIFY(!h.reconnect.isScheduled(path));
     }
 
+    void busyOperationDefersThenReconnectConnectsOnce()
+    {
+        Harness h;
+        h.seedAdapter();
+        h.setReconnectConfig(200, 5, 200);
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path, true, true, true));
+        h.client.setAutoCompleteDeviceOps(false);
+        QSignalSpy dueSpy(&h.reconnect, &ReconnectPolicy::reconnectDue);
+
+        h.registry.applyPropertyChanges(path, {{QStringLiteral("Connected"), false}}, {});
+        h.lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Connected"), false}}, {});
+        QVERIFY(h.reconnect.isScheduled(path));
+
+        h.lifecycle.connectDevice(path);
+        QCOMPARE(h.client.connectRequests(), 1);
+
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 500);
+        QCOMPARE(h.client.connectRequests(), 1);
+
+        emit h.client.connectDeviceFinished(
+            path, false, QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("failed"));
+
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 2, 500);
+        QCOMPARE(h.client.connectRequests(), 2);
+    }
+
     void deferredReconnectCancelled()
     {
         Harness h;

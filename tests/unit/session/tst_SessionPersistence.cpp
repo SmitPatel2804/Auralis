@@ -118,6 +118,51 @@ private slots:
         QVERIFY(!persistence.save(document, &error));
         QVERIFY(!error.isEmpty());
     }
+
+    void unsupportedSchemaVersionFailsLoad()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("sessions.json"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(R"({
+  "schemaVersion": 99,
+  "sessions": [{
+    "id": "abc",
+    "name": "Future",
+    "devices": []
+  }]
+})");
+        file.close();
+
+        SessionPersistence persistence(path);
+        QString error;
+        const SessionPersistenceDocument loaded = persistence.load(&error);
+        QVERIFY(loaded.sessions.isEmpty());
+        QVERIFY(error.contains(QStringLiteral("Unsupported session schema version")));
+    }
+
+    void skipsDuplicateSessionIds()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("sessions.json"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(R"({
+  "schemaVersion": 1,
+  "sessions": [
+    {"id": "abc", "name": "First", "devices": []},
+    {"id": "abc", "name": "Second", "devices": []}
+  ]
+})");
+        file.close();
+
+        SessionPersistence persistence(path);
+        const SessionPersistenceDocument loaded = persistence.load();
+        QCOMPARE(loaded.sessions.size(), 1);
+        QCOMPARE(loaded.sessions.front().id, QStringLiteral("abc"));
+        QCOMPARE(loaded.sessions.front().name, QStringLiteral("First"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionPersistence)

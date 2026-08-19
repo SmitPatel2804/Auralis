@@ -168,6 +168,29 @@ private slots:
         QVERIFY(route->state != RouteState::Active);
     }
 
+    void staleGenerationReconcileIsNoOp()
+    {
+        Harness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"));
+        AuralisSession session;
+        session.id = QStringLiteral("sess-stale");
+        session.sourceId = QStringLiteral("src:7:Stream/Output/Audio");
+        SessionDevice left;
+        left.deviceId = QStringLiteral("AA:BB:CC:DD:EE:01");
+        session.devices = {left};
+        session.operationGeneration = 1;
+        QHash<QString, quint64> generations{{session.id, 1}};
+        h.coordinator.reconcile(session, 1, generations);
+        QVERIFY(!session.devices.front().runtime.routeId.isEmpty());
+        const int creates = h.backend.createCalls;
+        const QString routeId = session.devices.front().runtime.routeId;
+
+        h.coordinator.reconcile(session, 0, generations);
+        QCOMPARE(h.backend.createCalls, creates);
+        QCOMPARE(session.devices.front().runtime.routeId, routeId);
+    }
+
     void groupAndTrimCombine()
     {
         AuralisSession session;

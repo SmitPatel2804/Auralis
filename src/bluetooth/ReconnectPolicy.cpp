@@ -173,7 +173,7 @@ void ReconnectPolicy::destroyEntryTimer(Entry& entry)
 
 int ReconnectPolicy::liveRetryTimerCountForTesting() const
 {
-    return findChildren<QTimer*>().count();
+    return static_cast<int>(findChildren<QTimer*>().size());
 }
 
 } // namespace auralis::bluetooth

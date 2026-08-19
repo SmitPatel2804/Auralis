@@ -311,6 +311,26 @@ private slots:
         QCOMPARE(h.router.ownedLinkCount(), 0);
     }
 
+    void repeatedStartStopDoesNotRestoreStaleGeneration()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("Stress"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+
+        for (int i = 0; i < 500; ++i) {
+            QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+            QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+            h.manager.deactivateSession(id);
+            QVERIFY(h.manager.sessionById(id)->state == SessionState::Idle);
+            h.manager.refreshActiveSession();
+            QVERIFY(h.manager.sessionById(id)->state == SessionState::Idle);
+            QCOMPARE(h.router.ownedLinkCount(), 0);
+        }
+    }
+
     void disableMemberDuringRecoveryDoesNotRestore()
     {
         ActiveHarness h;
