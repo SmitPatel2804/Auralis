@@ -29,17 +29,24 @@ public:
     void pauseAll();
     void resumeAll();
     void onConnected(const QString& devicePath);
+    /// Call after a due reconnect attempt finishes (success or failure) so the next
+    /// scheduleReconnect can start a new attempt.
+    void completeReconnectAttempt(const QString& devicePath);
     bool isScheduled(const QString& devicePath) const;
+    bool isReconnectInProgress(const QString& devicePath) const;
     int attempt(const QString& devicePath) const;
 
 signals:
     void reconnectDue(const QString& devicePath, int attempt, int maxAttempts);
+    void reconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     struct Entry {
         int attempt = 0;
         QTimer* timer = nullptr;
         bool userDisconnected = false;
+        bool inFlight = false;
+        bool exhaustedEmitted = false;
     };
 
     void fire(const QString& devicePath);

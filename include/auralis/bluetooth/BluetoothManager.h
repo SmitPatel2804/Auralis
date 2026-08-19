@@ -86,6 +86,7 @@ public:
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
 
     DeviceRegistry* deviceRegistry() const noexcept;
+    ReconnectPolicy* reconnectPolicy() const noexcept;
     void setReconnectPolicyConfig(const ReconnectPolicyConfig& config);
 
 signals:
@@ -97,6 +98,7 @@ signals:
     void errorTextChanged();
     void pendingPairingRequestChanged();
     void agentRegisteredChanged();
+    void managedReconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     void connectClientSignals();

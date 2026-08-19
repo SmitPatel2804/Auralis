@@ -16,6 +16,7 @@ These documents describe **how to verify** a completed phase. They are not the p
 | [phase-6.md](phase-6.md) | 6 Session engine | Multi-device session tests, live prerequisites, persistence |
 | [phase-6-audit.md](phase-6-audit.md) | 6 | Independent Phase 6 live machine validation audit |
 | [phase-6-final-closure.md](phase-6-final-closure.md) | 6 | Correction/hardening final closure |
+| [phase-6-independent-rigorous-audit.md](phase-6-independent-rigorous-audit.md) | 6 | Independent adversarial audit after final fixes |
 
 Default `ctest` must pass without Bluetooth hardware and without a live PipeWire daemon. Live tests are opt-in via environment variables documented in the phase files.
 

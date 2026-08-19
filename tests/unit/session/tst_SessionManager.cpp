@@ -2,6 +2,7 @@
 #include "../audio/FakePipeWireLinkBackend.h"
 
 #include <auralis/audio/AudioEndpointRegistry.h>
+#include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/core/ServiceStatus.h>
@@ -19,6 +20,7 @@ using auralis::audio::AudioRouter;
 using auralis::audio::PipeWireConnectionState;
 using auralis::audio::PipeWireObjectStore;
 using auralis::session::SessionCommandResult;
+using auralis::session::SessionError;
 using auralis::session::SessionManager;
 using auralis::session::SessionState;
 using auralis::test::FakePipeWireLinkBackend;
@@ -432,8 +434,79 @@ private slots:
         QSignalSpy spy(&manager, &SessionManager::sessionError);
         manager.initialize();
         const QString id = manager.createSession(QStringLiteral("PersistFail"));
-        QVERIFY(!id.isEmpty());
+        QVERIFY(id.isEmpty());
+        QCOMPARE(manager.sessionCount(), 0);
         QVERIFY(spy.count() >= 1);
+    }
+
+    void midSessionSourceLossAndReturn()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("SrcLoss"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+        QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+
+        h.store.remove(1);
+        h.store.remove(11);
+        h.store.remove(12);
+        h.router.refreshSources();
+        h.manager.refreshActiveSession();
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Recovering, 2000);
+
+        h.addSource();
+        h.manager.refreshActiveSession();
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+    }
+
+    void deactivateSessionIsReentrancySafe()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:02"), 3, 31, 32, QStringLiteral("dest-b"), true);
+        const QString id = h.manager.createSession(QStringLiteral("Stop"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:02"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+        QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+        const int creates = h.backend.createCalls;
+        QVERIFY(h.manager.deactivateSession(id) == SessionCommandResult::Accepted);
+        QVERIFY(h.manager.sessionById(id)->state == SessionState::Idle);
+        QCOMPARE(h.router.ownedLinkCount(), 0);
+        QCOMPARE(h.backend.createCalls, creates);
+    }
+
+    void recoveryPolicyNoneDoesNotReactivateInactiveRoute()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("NoneInactive"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+        h.manager.setRecoveryPolicy(id, QStringLiteral("None"));
+        h.manager.setAutoReconnect(id, false);
+        QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+        const QString routeId = h.manager.sessionById(id)->devices.front().runtime.routeId;
+        QVERIFY(!routeId.isEmpty());
+        const int creates = h.backend.createCalls;
+        h.router.deactivateRoute(routeId);
+        h.manager.refreshActiveSession();
+        QVERIFY(h.manager.sessionById(id)->state == SessionState::Degraded
+            || h.manager.sessionById(id)->state == SessionState::Failed);
+        QCOMPARE(h.backend.createCalls, creates);
+        const auto route = h.router.routeById(routeId);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state != auralis::audio::RouteState::Active);
+
+        QVERIFY(h.manager.retrySession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
     }
 };
 

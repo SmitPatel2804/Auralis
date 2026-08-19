@@ -44,6 +44,7 @@ docs/
 | [validation/phase-6.md](validation/phase-6.md) | Phase 6 session validation |
 | [validation/phase-6-audit.md](validation/phase-6-audit.md) | Phase 6 live machine audit |
 | [validation/phase-6-final-closure.md](validation/phase-6-final-closure.md) | Phase 6 correction/hardening closure |
+| [validation/phase-6-independent-rigorous-audit.md](validation/phase-6-independent-rigorous-audit.md) | Phase 6 independent adversarial audit |
 
 ## Product specification
 

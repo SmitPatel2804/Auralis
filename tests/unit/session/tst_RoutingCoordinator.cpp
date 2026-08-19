@@ -137,6 +137,37 @@ private slots:
         QCOMPARE(h.router.ownedLinkCount(), 0);
     }
 
+    void policyNoneDoesNotReactivateExistingRoute()
+    {
+        Harness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"));
+        AuralisSession session;
+        session.id = QStringLiteral("sess-none");
+        session.sourceId = QStringLiteral("src:7:Stream/Output/Audio");
+        session.state = SessionState::Active;
+        SessionDevice left;
+        left.deviceId = QStringLiteral("AA:BB:CC:DD:EE:01");
+        left.runtime.autoRestoreAllowed = false;
+        session.devices = {left};
+        session.operationGeneration = 1;
+        QHash<QString, quint64> generations{{session.id, 1}};
+        left.runtime.autoRestoreAllowed = true;
+        session.devices = {left};
+        h.coordinator.reconcile(session, 1, generations);
+        QVERIFY(session.devices.front().runtime.routeActive);
+        const QString routeId = session.devices.front().runtime.routeId;
+        const int creates = h.backend.createCalls;
+        h.router.deactivateRoute(routeId);
+        session.devices.front().runtime.autoRestoreAllowed = false;
+        session.state = SessionState::Degraded;
+        h.coordinator.reconcile(session, 1, generations);
+        QCOMPARE(h.backend.createCalls, creates);
+        const auto route = h.router.routeById(routeId);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state != RouteState::Active);
+    }
+
     void groupAndTrimCombine()
     {
         AuralisSession session;

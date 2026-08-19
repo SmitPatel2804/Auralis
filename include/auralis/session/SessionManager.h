@@ -112,6 +112,7 @@ private slots:
     void handleRouteRemoved(const QString& routeId);
     void handleDeviceRegistryChanged();
     void handleRecoveryTick();
+    void handleManagedReconnectExhausted(const QString& devicePath, int attempts, const QString& reason);
 
 private:
     AuralisSession* mutableSession(const QString& id);

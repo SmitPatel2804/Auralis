@@ -1,5 +1,8 @@
 #include <auralis/bluetooth/ReconnectPolicy.h>
 
+#include <auralis/core/LoggingCategories.h>
+
+#include <QString>
 #include <QtMath>
 
 namespace auralis::bluetooth {
@@ -28,7 +31,21 @@ void ReconnectPolicy::scheduleReconnect(const QString& devicePath)
     if (entry.userDisconnected) {
         return;
     }
+    if ((entry.timer != nullptr && entry.timer->isActive()) || entry.inFlight) {
+        qCDebug(auralisBluetooth) << "ManagedReconnectAlreadyScheduled" << devicePath
+                                  << "attempt=" << entry.attempt;
+        return;
+    }
     if (entry.attempt >= config_.maxAttempts) {
+        if (!entry.exhaustedEmitted) {
+            entry.exhaustedEmitted = true;
+            qCInfo(auralisBluetooth) << "ManagedReconnectExhausted" << devicePath
+                                     << "attempts=" << entry.attempt;
+            emit reconnectExhausted(
+                devicePath,
+                entry.attempt,
+                QStringLiteral("Reconnect attempt budget exhausted"));
+        }
         return;
     }
     ++entry.attempt;
@@ -41,6 +58,7 @@ void ReconnectPolicy::scheduleReconnect(const QString& devicePath)
         static_cast<int>(config_.initialDelayMs * qPow(config_.backoffMultiplier, entry.attempt - 1)),
         config_.maxDelayMs);
     entry.timer->start(delay);
+    qCInfo(auralisBluetooth) << "ManagedReconnectRequested" << devicePath << "attempt=" << entry.attempt;
 }
 
 void ReconnectPolicy::cancelReconnect(const QString& devicePath)
@@ -81,10 +99,25 @@ void ReconnectPolicy::onConnected(const QString& devicePath)
     cancelReconnect(devicePath);
 }
 
+void ReconnectPolicy::completeReconnectAttempt(const QString& devicePath)
+{
+    auto it = entries_.find(devicePath);
+    if (it == entries_.end()) {
+        return;
+    }
+    it->inFlight = false;
+}
+
 bool ReconnectPolicy::isScheduled(const QString& devicePath) const
 {
     const auto it = entries_.constFind(devicePath);
     return it != entries_.cend() && it->timer != nullptr && it->timer->isActive();
+}
+
+bool ReconnectPolicy::isReconnectInProgress(const QString& devicePath) const
+{
+    const auto it = entries_.constFind(devicePath);
+    return it != entries_.cend() && it->inFlight;
 }
 
 int ReconnectPolicy::attempt(const QString& devicePath) const
@@ -94,8 +127,12 @@ int ReconnectPolicy::attempt(const QString& devicePath) const
 
 void ReconnectPolicy::fire(const QString& devicePath)
 {
-    const Entry entry = entries_.value(devicePath);
-    emit reconnectDue(devicePath, entry.attempt, config_.maxAttempts);
+    auto it = entries_.find(devicePath);
+    if (it == entries_.end()) {
+        return;
+    }
+    it->inFlight = true;
+    emit reconnectDue(devicePath, it->attempt, config_.maxAttempts);
 }
 
 } // namespace auralis::bluetooth

@@ -122,6 +122,13 @@ bool SessionManager::initialize()
         connect(deviceRegistry_, &auralis::bluetooth::DeviceRegistry::deviceRemoved, this, &SessionManager::handleDeviceRegistryChanged);
         connect(deviceRegistry_, &auralis::bluetooth::DeviceRegistry::deviceAdded, this, &SessionManager::handleDeviceRegistryChanged);
     }
+    if (bluetooth_ != nullptr) {
+        connect(
+            bluetooth_,
+            &auralis::bluetooth::BluetoothManager::managedReconnectExhausted,
+            this,
+            &SessionManager::handleManagedReconnectExhausted);
+    }
 
     recoverySweep_.setInterval(1000);
     connect(&recoverySweep_, &QTimer::timeout, this, &SessionManager::handleRecoveryTick);
@@ -238,13 +245,15 @@ QString SessionManager::createSession(const QString& name)
     session.state = SessionState::Idle;
     sessions_.push_back(session);
     const SessionCommandResult persistResult = persistAll(session.id);
+    if (persistResult != SessionCommandResult::Accepted) {
+        qCWarning(auralisSession) << "SessionPersistenceCreateFailed id=" << session.id << "name=" << session.name;
+        sessions_.pop_back();
+        return {};
+    }
     qCInfo(auralisSession) << "SessionCreated id=" << session.id << "name=" << session.name;
     emit sessionAdded(session.id);
     emit sessionsChanged();
     emitSessionUiSignals();
-    if (persistResult != SessionCommandResult::Accepted) {
-        emit sessionError(session.id, SessionError::PersistenceFailure, QStringLiteral("Failed to persist new session"));
-    }
     return session.id;
 }
 
@@ -515,7 +524,10 @@ SessionCommandResult SessionManager::retrySession(const QString& sessionId)
     for (SessionDevice& device : session->devices) {
         device.runtime.autoRestoreAllowed = true;
         device.runtime.managedReconnectRequested = false;
+        device.runtime.lastError = {};
+        device.runtime.recovering = false;
     }
+    session->error = {};
     return activateSession(sessionId);
 }
 
@@ -744,7 +756,13 @@ void SessionManager::handleRouteStateChanged(const QString& routeId, auralis::au
         break;
     }
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
-        if (!allowsRouteCreation(session->state) && session->state != SessionState::Stopping) {
+        if (session->state == SessionState::Stopping || session->state == SessionState::Idle
+            || session->state == SessionState::Failed) {
+            qCDebug(auralisSession) << "RouteCallbackIgnoredDuringStopping" << session->id << routeId
+                                    << toString(session->state);
+            return;
+        }
+        if (!allowsRouteCreation(session->state)) {
             return;
         }
         reconcileActiveSession(*session);
@@ -797,6 +815,44 @@ void SessionManager::handleRecoveryTick()
         }
         reconcileActiveSession(*session);
     }
+}
+
+void SessionManager::handleManagedReconnectExhausted(const QString& devicePath, int attempts, const QString& reason)
+{
+    const QString normalizedPath = devicePath.trimmed();
+    if (normalizedPath.isEmpty()) {
+        return;
+    }
+    AuralisSession* session = activeSessionId_.isEmpty() ? nullptr : mutableSession(activeSessionId_);
+    if (session == nullptr) {
+        return;
+    }
+    if (session->state == SessionState::Stopping || session->state == SessionState::Idle
+        || session->state == SessionState::Failed) {
+        return;
+    }
+    bool matched = false;
+    for (SessionDevice& device : session->devices) {
+        if (devicePathForAddress(device.deviceId) != normalizedPath) {
+            continue;
+        }
+        matched = true;
+        device.runtime.recovering = false;
+        device.runtime.managedReconnectRequested = false;
+        device.runtime.lastError = {
+            SessionError::RecoveryExhausted,
+            QStringLiteral("Reconnect exhausted after %1 attempts: %2").arg(attempts).arg(reason)};
+        qCInfo(auralisSession) << "SessionRecoveryExhausted session=" << session->id
+                               << "device=" << device.deviceId << "attempts=" << attempts;
+        emit sessionError(session->id, SessionError::RecoveryExhausted, device.runtime.lastError.detail);
+        break;
+    }
+    if (!matched) {
+        return;
+    }
+    session->error = {SessionError::RecoveryExhausted, reason};
+    recomputeSession(*session);
+    emit sessionUpdated(session->id);
 }
 
 AuralisSession* SessionManager::mutableSession(const QString& id)
@@ -884,7 +940,7 @@ SessionIntent SessionManager::currentIntent(const AuralisSession& session) const
                 return SessionIntent::Recovering;
             }
         }
-        if (routing_ != nullptr && !routing_->sourceAvailable(session)) {
+        if (routing_ != nullptr && !routing_->sourceAvailable(session) && policyAllowsAutoRouteRestore(session)) {
             return SessionIntent::Recovering;
         }
     }
@@ -913,8 +969,10 @@ void SessionManager::recomputeSession(AuralisSession& session)
             persistAll(session.id);
         }
         if (newState == SessionState::Failed) {
-            session.error = {SessionError::SourceUnavailable, QStringLiteral("Session failed")};
-            emit sessionError(session.id, session.error.category, session.error.detail);
+            if (session.error.category != SessionError::RecoveryExhausted) {
+                session.error = {SessionError::SourceUnavailable, QStringLiteral("Session failed")};
+                emit sessionError(session.id, session.error.category, session.error.detail);
+            }
         }
         emitSessionUiSignals();
     }
@@ -932,29 +990,15 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
     reconciling_ = true;
     reconcilePending_ = false;
 
-    if (session.state == SessionState::Stopping) {
-        if (routing_ != nullptr) {
-            routing_->stopSessionRoutes(session);
-            routing_->refreshRuntime(session);
-        }
-        recomputeSession(session);
-        if (session.state == SessionState::Idle) {
-            persistAll(session.id);
-            emit sessionUpdated(session.id);
-        }
+    if (session.state == SessionState::Stopping || session.state == SessionState::Idle
+        || session.state == SessionState::Failed) {
         reconciling_ = false;
-        if (reconcilePending_ && generations_.value(session.id) == session.operationGeneration) {
-            reconcileActiveSession(session);
-        }
+        reconcilePending_ = false;
         return;
     }
 
-    if (session.state == SessionState::Failed || session.state == SessionState::Idle) {
-        if (routing_ != nullptr) {
-            routing_->reconcile(session, session.operationGeneration, generations_, ReconcileMode::SuppressCreate);
-        }
-        reconciling_ = false;
-        return;
+    if (routing_ != nullptr) {
+        routing_->refreshRuntime(session);
     }
 
     applyAutoRestoreFlags(session);
@@ -970,7 +1014,7 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
     }
 
     const bool sourceAvailable = routing_ != nullptr && routing_->sourceAvailable(session);
-    if (!sourceAvailable && session.state != SessionState::Starting) {
+    if (!sourceAvailable && session.state != SessionState::Starting && policyAllowsAutoRouteRestore(session)) {
         for (SessionDevice& device : session.devices) {
             if (device.enabled) {
                 device.runtime.recovering = true;
@@ -1016,6 +1060,11 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
             continue;
         }
 
+        if (device.runtime.lastError.category == SessionError::RecoveryExhausted) {
+            device.runtime.recovering = false;
+            continue;
+        }
+
         device.runtime.recovering = true;
         if (policyAllowsBluetoothReconnect(session) && !device.runtime.connected) {
             requestManagedReconnect(session, device);
@@ -1035,6 +1084,7 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
 
 void SessionManager::stopSession(AuralisSession& session, bool persist)
 {
+    bumpGeneration(session);
     const SessionState oldState = session.state;
     session.state = SessionState::Stopping;
     cancelAllRecovery(session);
@@ -1125,19 +1175,9 @@ void SessionManager::applyAutoRestoreFlags(AuralisSession& session)
         }
         return;
     }
-    const bool sourceAvailable = routing_ != nullptr && routing_->sourceAvailable(session);
     if (session.recoveryPolicy == RecoveryPolicy::None) {
         for (SessionDevice& device : session.devices) {
-            if (!device.enabled) {
-                device.runtime.autoRestoreAllowed = false;
-                continue;
-            }
-            if (!sourceAvailable) {
-                // Source-wide loss: restore members that already had a route when the source returns.
-                device.runtime.autoRestoreAllowed = device.runtime.routeRequested;
-                continue;
-            }
-            if (!device.runtime.routeActive) {
+            if (!device.enabled || !device.runtime.routeActive) {
                 device.runtime.autoRestoreAllowed = false;
             }
         }

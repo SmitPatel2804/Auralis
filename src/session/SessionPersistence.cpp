@@ -190,8 +190,8 @@ SessionPersistenceDocument SessionPersistence::load(QString* error) const
         }
         return document;
     }
-    const QJsonParseError parseError;
-    const QJsonDocument json = QJsonDocument::fromJson(file.readAll(), const_cast<QJsonParseError*>(&parseError));
+    QJsonParseError parseError;
+    const QJsonDocument json = QJsonDocument::fromJson(file.readAll(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !json.isObject()) {
         if (error != nullptr) {
             *error = QStringLiteral("Invalid session persistence JSON: %1").arg(parseError.errorString());

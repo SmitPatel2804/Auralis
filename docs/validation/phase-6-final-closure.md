@@ -1,82 +1,131 @@
-# Phase 6 Final Closure — Correction & Hardening
+# Phase 6 Final Closure — Remaining Issues 100% Correction
 
 Date: **2026-08-19**  
-Prompt: `docs/prompts/phase-6/Auralis_PHASE_6_Correction_Hardening_and_Final_Closure_Prompt.md`  
-Baseline: Phase 6 substantially implemented; this pass corrects defects A–N and expands tests.
+Prompt: `docs/prompts/phase-6/Auralis_PHASE_6_Final_Remaining_Issues_100_Percent_Correction_Prompt.md`  
+Prior hardening: this file previously recorded the A–N correction pass; this document now records the **final remaining-issue pass** (duplicate reconnect, exhaustion, stop reentrancy, Policy None reactivation, JSON UB, createSession contract, mid-session source loss).
 
 ## Baseline
 
-- Clean configure/build with Ninja.
-- Default `ctest`: **34/34** pass (live targets SKIP by default).
-
-## Identified defects addressed
-
-| Id | Defect | Resolution |
-|---|---|---|
-| A | Recovery policy not authoritative | `autoRestoreAllowed` + `ReconcileMode`; None does not auto-recreate |
-| B | Competing reconnect loops | Removed session `start(500)` timers; `requestManagedReconnect` / `cancelManagedReconnect` via Phase 3 `ReconnectPolicy` |
-| C | Failed recreates routes | Failed/Idle/Stopping suppress create; missing source suppresses create |
-| D | Persistence parent dir | `QDir::mkpath` before `QSaveFile` |
-| E | Silent persist success | `SessionCommandResult::PersistenceFailure` + `sessionError` |
-| F | Recovery survives policy changes | Cancel matrix on stop/delete/disable/None/autoReconnect/shutdown |
-| G | Stale generation | Bump generation on activate/deactivate/delete/policy/autoReconnect; capture for reconcile |
-| H | Member return test | Lifecycle + manager tests with new endpoint id + volume/mute |
-| I | Source loss semantics | Mid-session → Recovering; activate without source → Failed until retry |
-| J | `lastUsedAt` | Active or meaningful Degraded after Starting only |
-| K | Stable source id | Confirmed Phase 5 `src:{serial\|nodeName}:…`; activate after node-id change |
-| L | `sessionError` | Emit on persist/route/fail; clear member error on recover |
-| M | Invalid volume | Reject NaN/±Inf; clamp finite out-of-range |
-| N | Stale docs | README / architecture / docs hub / phase-6 docs updated |
-
-## Recovery policy semantics
-
-| Policy | BT reconnect | Auto route restore |
-|---|---|---|
-| None | no | no |
-| RestoreRoutesOnly | no | yes |
-| ReconnectAndRestore | yes (managed) | yes |
-
-## Reconnect ownership
-
-Session expresses intent once per loss episode. Phase 3 `ReconnectPolicy` owns backoff/attempts. Session cancels managed reconnect when intent is withdrawn.
-
-## Tests added/expanded
-
-- Policy None / RestoreRoutesOnly / ReconnectAndRestore
-- Failed source quiescence + retry
-- Disable member / policy flip cancel
-- Stale stop generation
-- Persistence mkpath + failure surface
-- Invalid volume
-- Source serial stable across node id change
-- Member return with new endpoint id (integration)
-- Live two-address membership smoke (SKIP unless env set)
-- State machine Failed stays Failed without Starting intent
-
-## Exact verification
-
-```bash
-rm -rf build && cmake -S . -B build -G Ninja && cmake --build build
+```text
+git: master @ ac40a5e (working tree then edited)
+cmake -S . -B build -G Ninja
+cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Result on closure machine: **34 tests, 0 failed** (live SKIP without flags).
+Pre-change default ctest: **34/34 PASS**.
 
-## Hardware status
+Post-change clean tree: **35/35 PASS** (added `tst_SessionManagedReconnectIntegration`).
+
+## Remaining issues
+
+### A. Duplicate managed reconnect scheduling
+
+- **Root cause:** `ReconnectPolicy::scheduleReconnect` always incremented `attempt` and restarted the timer. `DeviceLifecycleManager::handleUnexpectedDisconnect` and `BluetoothManager::requestManagedReconnect` (from `SessionManager`) both scheduled on one `Connected=false`.
+- **Files:** `include/auralis/bluetooth/ReconnectPolicy.h`, `src/bluetooth/ReconnectPolicy.cpp`, `src/bluetooth/DeviceLifecycleManager.cpp`, `src/bluetooth/BluetoothManager.cpp`
+- **Fix:** If a timer is active or a due attempt is in-flight, `scheduleReconnect` is a no-op (`ManagedReconnectAlreadyScheduled`). Callers skip when `isScheduled` or `isReconnectInProgress`. DLM calls `completeReconnectAttempt` before a retry so the next attempt can start.
+- **Tests:** `tst_ReconnectPolicy::duplicateScheduleWhileTimerActiveDoesNotConsumeAttempt`; `tst_SessionManagedReconnectIntegration::oneDisconnectSchedulesReconnectOnce`
+- **Result:** PASS
+
+### B. Reconnect exhaustion must reach session state
+
+- **Root cause:** At `maxAttempts`, `scheduleReconnect` returned silently. Session members could stay `recovering`.
+- **Files:** `ReconnectPolicy` (`reconnectExhausted`), `BluetoothManager::managedReconnectExhausted`, `SessionManager::handleManagedReconnectExhausted`
+- **Fix:** Emit exhaustion once; SessionManager clears recovering / managed request, sets `RecoveryExhausted`, emits `sessionError`, recomputes. Exhausted members are not rescheduled until `retrySession()`. Healthy peer → `Degraded`; no healthy members → `Failed`.
+- **Tests:** `tst_ReconnectPolicy::emitsExhaustedOnceAfterBudget`; `tst_SessionManagedReconnectIntegration::reconnectExhaustionLeavesPeerHealthyDegraded`; `reconnectExhaustionWithNoHealthyMembersFails`
+- **Result:** PASS
+
+### C. Stop/deactivate reentrancy
+
+- **Root cause:** `AudioRouter::deactivateRoute` emits Inactive synchronously. `handleRouteStateChanged` still reconciled during `Stopping`, which called `stopSessionRoutes` again.
+- **Files:** `src/session/SessionManager.cpp`
+- **Fix:** `stopSession` bumps generation first. Route callbacks in Stopping/Idle/Failed return after optional bookkeeping (`RouteCallbackIgnoredDuringStopping`). Reconcile does not own stop teardown.
+- **Tests:** `tst_SessionManager::deactivateSessionIsReentrancySafe`
+- **Result:** PASS (also ASan/UBSan)
+
+### D. RecoveryPolicy::None existing-route reactivation
+
+- **Root cause:** Create was gated by `autoRestoreAllowed`; `else if (!routeActive) activateRoute` was not. Runtime flags were stale until after reconcile.
+- **Files:** `src/session/RoutingCoordinator.cpp`, `src/session/SessionManager.cpp` (`refreshRuntime` before `applyAutoRestoreFlags`)
+- **Fix:** Reactivation uses the same gate as create. None never auto-restores missing or inactive routes; `retrySession()` sets `autoRestoreAllowed`.
+- **Tests:** `tst_RoutingCoordinator::policyNoneDoesNotReactivateExistingRoute`; `tst_SessionManager::recoveryPolicyNoneDoesNotReactivateInactiveRoute`
+- **Result:** PASS
+
+### E. JSON parse const-cast UB
+
+- **Root cause:** `const QJsonParseError` + `const_cast` in `SessionPersistence::load`.
+- **Files:** `src/session/SessionPersistence.cpp`
+- **Fix:** Mutable `QJsonParseError parseError`; `fromJson(data, &parseError)`.
+- **Tests:** `tst_SessionPersistence::invalidJsonDoesNotCrash` (now asserts error string)
+- **Result:** PASS; `rg const_cast` on `*.{h,cpp}` is empty
+
+### F. createSession persistence failure contract
+
+- **Root cause:** Returned a UUID and kept the in-memory session on persist failure (`sessionError` only).
+- **Files:** `src/session/SessionManager.cpp`
+- **Fix:** Keep `Q_INVOKABLE QString createSession`. On failure: log `SessionPersistenceCreateFailed`, emit `sessionError` via `persistAll`, pop the in-memory session, return `{}`.
+- **Tests:** `tst_SessionManager::persistenceFailureSurfacesError`
+- **Result:** PASS
+
+### G. Mid-session source loss/return
+
+- **Root cause:** `SuppressCreate` only refreshed runtime, so routes stayed Active; recovering flags were cleared because `routeActive` was still true. State went `Degraded` instead of `Recovering`.
+- **Files:** `RoutingCoordinator` SuppressCreate now tears down routes but keeps `routeRequested`; SessionManager sets recovering when policy allows restore.
+- **Semantics (locked):** Active → source disappears → Recovering → source returns → Active without `retrySession`. Activate with no source still Failed until retry (`failedSourceStaysQuiescentUntilRetry`).
+- **Tests:** `tst_SessionManager::midSessionSourceLossAndReturn`
+- **Result:** PASS
+
+## Reconnect ownership
+
+`ReconnectPolicy` is the single schedule state: one attempt counter, one backoff timer, one in-flight flag per device path. DLM is the primary scheduler on unexpected disconnect. SessionManager only requests managed reconnect as session recovery intent; both paths are idempotent. Duplicate `Connected=false` cannot increment attempts while a timer or in-flight attempt exists.
+
+## Recovery exhaustion path
 
 ```text
-PHASE 6 SOFTWARE STATUS: COMPLETE
-PHASE 6 LIVE HARDWARE VALIDATION: NOT RUN — opt-in only
+ReconnectPolicy::reconnectExhausted
+  -> BluetoothManager::managedReconnectExhausted
+    -> SessionManager::handleManagedReconnectExhausted
 ```
 
-Two-device live playthrough remains optional via `AURALIS_RUN_SESSION_INTEGRATION` and `AURALIS_EXPECT_DEVICE_ADDRESSES`.
+## Stop/reentrancy safety
 
-## Remaining limitations
+Outer `stopSession` owns teardown. Synchronous router Inactive/Removed during Stopping is ignored for reconcile/create/reconnect.
 
-- No Phase 7 Sessions UI
-- No latency sync
-- Do not mix RoutePanel activation with an active session
-- Full live multi-device audio playthrough not executed in this closure pass
+## Policy None
+
+Create **and** reactivate of inactive/failed routes are suppressed outside `Starting` unless `autoRestoreAllowed` (set by `retrySession` / explicit start).
+
+## Persistence
+
+Parser has no const-cast. `createSession` does not report success on persist failure.
+
+## Test commands
+
+```bash
+ctest --test-dir build --output-on-failure
+# 35/35 PASS
+
+./build/tests/unit/bluetooth/tst_ReconnectPolicy
+./build/tests/unit/session/tst_SessionManager
+./build/tests/integration/tst_SessionManagedReconnectIntegration
+```
+
+## Sanitizer
+
+Temporary `build-asan` with `-fsanitize=address,undefined` (not a project CMake policy change):
+
+```text
+tst_ReconnectPolicy: 9 passed
+tst_SessionManager: 21 passed
+tst_SessionLifecycleIntegration: 4 passed
+tst_SessionManagedReconnectIntegration: 6 passed
+```
+
+No ASan/UBSan failures.
+
+## Hardware
+
+Not re-run in this software-gate pass. Prior live validation: single BT device (`88:08:94:9D:B4:22`); two-device live session remains opt-in via `AURALIS_RUN_SESSION_INTEGRATION` + `AURALIS_EXPECT_DEVICE_ADDRESSES`.
 
 ## Final verdict
 
@@ -84,4 +133,4 @@ Two-device live playthrough remains optional via `AURALIS_RUN_SESSION_INTEGRATIO
 PHASE 6 STATUS: COMPLETE
 ```
 
-Software gates from the correction prompt are met. Live two-device hardware proof is explicitly **not claimed**.
+Software gates from the remaining-issues prompt are closed. Phase 7 Sessions UI is still out of scope. Two-device hardware live activate is opt-in, not a remaining software blocker.

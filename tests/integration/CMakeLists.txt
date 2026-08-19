@@ -35,3 +35,10 @@ target_link_libraries(tst_SessionLifecycleIntegration PRIVATE auralis-session au
 auralis_add_test(tst_SessionLiveIntegration tst_SessionLiveIntegration.cpp)
 target_link_libraries(tst_SessionLiveIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)
 
+auralis_add_test(tst_SessionManagedReconnectIntegration tst_SessionManagedReconnectIntegration.cpp)
+target_link_libraries(tst_SessionManagedReconnectIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)
+target_include_directories(tst_SessionManagedReconnectIntegration PRIVATE
+    "${CMAKE_SOURCE_DIR}/tests/unit/bluetooth"
+    "${CMAKE_SOURCE_DIR}/tests/unit/audio"
+)
+

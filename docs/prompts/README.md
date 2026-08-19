@@ -54,5 +54,7 @@ The Phase 5 validation and audit **results** are [../validation/phase-5.md](../v
 | [phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md](phase-6/Auralis_Phase_6_Multi_Device_Session_Engine_Implementation_Prompt.md) | Implementation (archive) |
 | [phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md](phase-6/Auralis_Phase_6_Live_Machine_Validation_Prompt.md) | Live machine validation |
 | [phase-6/Auralis_PHASE_6_Correction_Hardening_and_Final_Closure_Prompt.md](phase-6/Auralis_PHASE_6_Correction_Hardening_and_Final_Closure_Prompt.md) | Correction / hardening / final closure |
+| [phase-6/Auralis_PHASE_6_Independent_Deep_Rigorous_Test_and_Audit_Prompt.md](phase-6/Auralis_PHASE_6_Independent_Deep_Rigorous_Test_and_Audit_Prompt.md) | Independent rigorous audit prompt |
+| [phase-6/Auralis_PHASE_6_Final_Remaining_Issues_100_Percent_Correction_Prompt.md](phase-6/Auralis_PHASE_6_Final_Remaining_Issues_100_Percent_Correction_Prompt.md) | Final remaining issues correction |
 
-Validation **results**: [../validation/phase-6.md](../validation/phase-6.md), [../validation/phase-6-audit.md](../validation/phase-6-audit.md), [../validation/phase-6-final-closure.md](../validation/phase-6-final-closure.md).
+Validation **results**: [../validation/phase-6.md](../validation/phase-6.md), [../validation/phase-6-audit.md](../validation/phase-6-audit.md), [../validation/phase-6-final-closure.md](../validation/phase-6-final-closure.md), [../validation/phase-6-independent-rigorous-audit.md](../validation/phase-6-independent-rigorous-audit.md).

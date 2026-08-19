@@ -53,8 +53,10 @@ private slots:
         file.close();
 
         SessionPersistence persistence(path);
-        const SessionPersistenceDocument loaded = persistence.load();
+        QString error;
+        const SessionPersistenceDocument loaded = persistence.load(&error);
         QVERIFY(loaded.sessions.isEmpty());
+        QVERIFY(!error.isEmpty());
     }
 
     void skipsDuplicateDeviceIds()

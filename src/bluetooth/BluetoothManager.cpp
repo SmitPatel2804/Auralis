@@ -74,6 +74,13 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     reconnect_ = new ReconnectPolicy(this);
     agent_ = new BlueZAgent(client_, defaultAgentCapability(), this);
     lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, this);
+    connect(
+        reconnect_,
+        &ReconnectPolicy::reconnectExhausted,
+        this,
+        [this](const QString& devicePath, int attempts, const QString& reason) {
+            emit managedReconnectExhausted(devicePath, attempts, reason);
+        });
     statusText_ = defaultMessage(BluetoothError::BlueZUnavailable);
 }
 
@@ -90,6 +97,11 @@ QObject* BluetoothManager::uiObject()
 DeviceRegistry* BluetoothManager::deviceRegistry() const noexcept
 {
     return registry_;
+}
+
+ReconnectPolicy* BluetoothManager::reconnectPolicy() const noexcept
+{
+    return reconnect_;
 }
 
 void BluetoothManager::connectClientSignals()
@@ -537,6 +549,10 @@ void BluetoothManager::reconnectDevice(const QString& deviceId)
 void BluetoothManager::requestManagedReconnect(const QString& deviceId)
 {
     if (reconnect_ == nullptr || deviceId.trimmed().isEmpty()) {
+        return;
+    }
+    if (reconnect_->isScheduled(deviceId) || reconnect_->isReconnectInProgress(deviceId)) {
+        qCDebug(auralisBluetooth) << "ManagedReconnectAlreadyScheduled" << deviceId;
         return;
     }
     reconnect_->scheduleReconnect(deviceId);

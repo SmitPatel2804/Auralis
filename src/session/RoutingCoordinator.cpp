@@ -6,6 +6,7 @@
 #include <auralis/audio/AudioSource.h>
 #include <auralis/bluetooth/BlueZTypes.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
+#include <auralis/core/LoggingCategories.h>
 
 namespace auralis::session {
 namespace {
@@ -60,6 +61,16 @@ void RoutingCoordinator::reconcile(
         return;
     }
     if (mode == ReconcileMode::SuppressCreate) {
+        for (SessionDevice& device : session.devices) {
+            if (device.runtime.routeId.isEmpty() || router_ == nullptr) {
+                continue;
+            }
+            router_->deactivateRoute(device.runtime.routeId);
+            router_->removeRoute(device.runtime.routeId);
+            sessionRouteOwners_.remove(device.runtime.routeId);
+            device.runtime.routeId.clear();
+            device.runtime.routeActive = false;
+        }
         refreshRuntime(session);
         return;
     }
@@ -138,6 +149,10 @@ void RoutingCoordinator::reconcile(
             device.runtime.lastError = {};
             router_->activateRoute(routeId);
         } else if (!device.runtime.routeActive) {
+            if (!device.runtime.autoRestoreAllowed && session.state != SessionState::Starting) {
+                qCInfo(auralisSession) << "RouteRecoverySuppressedByPolicy" << session.id << device.deviceId;
+                continue;
+            }
             if (const std::optional<auralis::audio::AudioRoute> route = router_->routeById(device.runtime.routeId)) {
                 if (!routeActivationPending(route->state)) {
                     router_->activateRoute(device.runtime.routeId);

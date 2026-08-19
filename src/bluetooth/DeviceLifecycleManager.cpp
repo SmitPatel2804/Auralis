@@ -40,10 +40,17 @@ DeviceLifecycleManager::DeviceLifecycleManager(
         connect(reconnect_, &ReconnectPolicy::reconnectDue, this, [this](const QString& devicePath, int attempt, int) {
             registry_->setReconnectAttempt(devicePath, attempt);
             if (!beginOperation(devicePath, DeviceOperation::Reconnecting)) {
+                reconnect_->completeReconnectAttempt(devicePath);
                 return;
             }
             qCInfo(auralisBluetooth) << "AutoReconnectRequested" << devicePath << "attempt=" << attempt;
             client_->connectDevice(devicePath);
+        });
+        connect(reconnect_, &ReconnectPolicy::reconnectExhausted, this, [this](const QString& devicePath, int attempts, const QString& reason) {
+            qCInfo(auralisBluetooth) << "ManagedReconnectExhausted" << devicePath << "attempts=" << attempts << reason;
+            if (registry_ != nullptr) {
+                registry_->setReconnectAttempt(devicePath, attempts);
+            }
         });
     }
 }
@@ -473,6 +480,10 @@ void DeviceLifecycleManager::handleUnexpectedDisconnect(const QString& objectPat
     if (device.userDisconnectRequested || !device.autoReconnectEnabled || reconnect_ == nullptr) {
         return;
     }
+    if (reconnect_->isScheduled(objectPath) || reconnect_->isReconnectInProgress(objectPath)) {
+        qCDebug(auralisBluetooth) << "ManagedReconnectAlreadyScheduled" << objectPath;
+        return;
+    }
     qCInfo(auralisBluetooth) << "ReconnectScheduled" << objectPath << "attempt=" << reconnect_->attempt(objectPath) + 1;
     reconnect_->scheduleReconnect(objectPath);
 }
@@ -488,7 +499,8 @@ void DeviceLifecycleManager::reevaluateReconnectCandidates()
         if (!device.paired || device.connected || !device.autoReconnectEnabled || device.userDisconnectRequested) {
             continue;
         }
-        if (device.operation != DeviceOperation::Idle || reconnect_->isScheduled(device.objectPath)) {
+        if (device.operation != DeviceOperation::Idle || reconnect_->isScheduled(device.objectPath)
+            || reconnect_->isReconnectInProgress(device.objectPath)) {
             continue;
         }
         qCInfo(auralisBluetooth) << "ReconnectResumed" << device.objectPath
@@ -595,6 +607,7 @@ void DeviceLifecycleManager::handleConnectFinished(
             return;
         }
         if (op.operation == DeviceOperation::Reconnecting && reconnect_ != nullptr) {
+            reconnect_->completeReconnectAttempt(devicePath);
             if (mapped.retryable) {
                 qCWarning(auralisBluetooth) << "ReconnectFailedRetryable" << devicePath << errorName << errorMessage;
                 finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
