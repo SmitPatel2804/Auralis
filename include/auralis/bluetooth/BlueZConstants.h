@@ -27,6 +27,7 @@ inline constexpr QStringView kMethodDisconnect = u"Disconnect";
 inline constexpr QStringView kMethodRemoveDevice = u"RemoveDevice";
 inline constexpr QStringView kMethodSet = u"Set";
 inline constexpr QStringView kMethodRegisterAgent = u"RegisterAgent";
+inline constexpr QStringView kMethodRequestDefaultAgent = u"RequestDefaultAgent";
 inline constexpr QStringView kMethodUnregisterAgent = u"UnregisterAgent";
 inline constexpr QStringView kSignalInterfacesAdded = u"InterfacesAdded";
 inline constexpr QStringView kSignalInterfacesRemoved = u"InterfacesRemoved";

@@ -6,6 +6,7 @@
 #include <auralis/bluetooth/BluetoothDbusError.h>
 #include <auralis/bluetooth/DeviceOperation.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
+#include <auralis/bluetooth/DiscoveryManager.h>
 #include <auralis/bluetooth/IBlueZClient.h>
 #include <auralis/bluetooth/ReconnectPolicy.h>
 
@@ -19,6 +20,7 @@ DeviceLifecycleManager::DeviceLifecycleManager(
     AdapterManager* adapters,
     BlueZAgent* agent,
     ReconnectPolicy* reconnect,
+    DiscoveryManager* discovery,
     QObject* parent)
     : QObject(parent)
     , client_(client)
@@ -26,6 +28,7 @@ DeviceLifecycleManager::DeviceLifecycleManager(
     , adapters_(adapters)
     , agent_(agent)
     , reconnect_(reconnect)
+    , discovery_(discovery)
 {
     if (client_ == nullptr) {
         return;
@@ -65,6 +68,7 @@ void DeviceLifecycleManager::shutdown()
     if (reconnect_ != nullptr) {
         reconnect_->cancelAll();
     }
+    syncDiscoveryHold();
 }
 
 void DeviceLifecycleManager::onBlueZAvailabilityChanged(bool available)
@@ -114,6 +118,7 @@ void DeviceLifecycleManager::onDeviceRemoved(const QString& objectPath)
     if (reconnect_ != nullptr) {
         reconnect_->cancelReconnect(objectPath);
     }
+    syncDiscoveryHold();
 }
 
 void DeviceLifecycleManager::onDevicePropertiesChanged(
@@ -366,6 +371,13 @@ void DeviceLifecycleManager::abortPendingOperation(
             client_->disconnectDevice(objectPath);
         }
     }
+    if (activeOp == DeviceOperation::Pairing && client_ != nullptr && client_->isBlueZAvailable()) {
+        if (agent_ != nullptr) {
+            agent_->invalidateRequestsForDevice(objectPath, reason);
+        }
+        qCWarning(auralisBluetooth) << "PairAborted" << objectPath << reason;
+        client_->cancelPairing(objectPath);
+    }
 
     pending_.remove(objectPath);
     if (device != nullptr) {
@@ -375,6 +387,7 @@ void DeviceLifecycleManager::abortPendingOperation(
         }
     }
     emit deviceOperationChanged(objectPath);
+    syncDiscoveryHold();
 }
 
 bool DeviceLifecycleManager::beginOperation(const QString& objectPath, DeviceOperation operation)
@@ -391,6 +404,7 @@ bool DeviceLifecycleManager::beginOperation(const QString& objectPath, DeviceOpe
     registry_->clearLastError(objectPath);
     startOperationTimeout(objectPath, operation);
     emit deviceOperationChanged(objectPath);
+    syncDiscoveryHold();
     return true;
 }
 
@@ -421,6 +435,7 @@ bool DeviceLifecycleManager::transitionOperation(
     registry_->clearLastError(objectPath);
     startOperationTimeout(objectPath, to);
     emit deviceOperationChanged(objectPath);
+    syncDiscoveryHold();
     return true;
 }
 
@@ -444,6 +459,7 @@ void DeviceLifecycleManager::finishOperation(
     }
     registry_->clearOperation(objectPath);
     emit deviceOperationChanged(objectPath);
+    syncDiscoveryHold();
 }
 
 void DeviceLifecycleManager::clearPending(const QString& objectPath)
@@ -567,6 +583,29 @@ void DeviceLifecycleManager::clearUserDisconnectSuppression(const QString& objec
     setUserDisconnectRequested(objectPath, false);
 }
 
+bool DeviceLifecycleManager::shouldHoldDiscovery() const
+{
+    for (auto it = pending_.cbegin(); it != pending_.cend(); ++it) {
+        switch (it->operation) {
+        case DeviceOperation::Pairing:
+        case DeviceOperation::CancellingPairing:
+        case DeviceOperation::Connecting:
+        case DeviceOperation::Reconnecting:
+            return true;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+void DeviceLifecycleManager::syncDiscoveryHold()
+{
+    if (discovery_ != nullptr) {
+        discovery_->setDeviceOperationHold(shouldHoldDiscovery());
+    }
+}
+
 void DeviceLifecycleManager::handlePairFinished(
     const QString& devicePath,
     bool succeeded,
@@ -579,9 +618,15 @@ void DeviceLifecycleManager::handlePairFinished(
     }
     if (!succeeded) {
         const auto mapped = mapDbusError(errorName, errorMessage);
+        if (mapped.category == BluetoothError::InProgress) {
+            qCInfo(auralisBluetooth) << "PairInProgress" << devicePath;
+            return;
+        }
+        qCWarning(auralisBluetooth) << "PairFailed" << devicePath << errorName << errorMessage;
         finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
         return;
     }
+    qCInfo(auralisBluetooth) << "PairMethodSucceeded" << devicePath;
     PendingOp waiting = op;
     waiting.waitingProperty = true;
     pending_.insert(devicePath, waiting);
@@ -622,12 +667,15 @@ void DeviceLifecycleManager::handleConnectFinished(
     if (!succeeded) {
         const auto mapped = mapDbusError(errorName, errorMessage);
         if (mapped.category == BluetoothError::AlreadyConnected) {
+            qCInfo(auralisBluetooth) << "ConnectAlreadyConnected" << devicePath;
             finishOperation(devicePath, op.generation, true, BluetoothError::None, {}, {});
             return;
         }
         if (mapped.category == BluetoothError::InProgress) {
+            qCInfo(auralisBluetooth) << "ConnectInProgress" << devicePath;
             return;
         }
+        qCWarning(auralisBluetooth) << "ConnectFailed" << devicePath << errorName << errorMessage;
         if (op.operation == DeviceOperation::Reconnecting && reconnect_ != nullptr) {
             reconnect_->completeReconnectAttempt(devicePath);
             if (mapped.retryable) {
@@ -644,6 +692,7 @@ void DeviceLifecycleManager::handleConnectFinished(
         finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
         return;
     }
+    qCInfo(auralisBluetooth) << "ConnectMethodSucceeded" << devicePath;
     PendingOp waiting = op;
     waiting.waitingProperty = true;
     pending_.insert(devicePath, waiting);
@@ -694,9 +743,11 @@ void DeviceLifecycleManager::handleTrustFinished(
     }
     if (!succeeded) {
         const auto mapped = mapDbusError(errorName, errorMessage);
+        qCWarning(auralisBluetooth) << "TrustFailed" << devicePath << errorName << errorMessage;
         finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
         return;
     }
+    qCInfo(auralisBluetooth) << (trusted ? "TrustMethodSucceeded" : "UntrustMethodSucceeded") << devicePath;
     PendingOp waiting = op;
     waiting.waitingProperty = true;
     waiting.expectedTrusted = trusted;
@@ -720,9 +771,11 @@ void DeviceLifecycleManager::handleRemoveFinished(
     }
     if (!succeeded && registry_->findByObjectPath(devicePath) != nullptr) {
         const auto mapped = mapDbusError(errorName, errorMessage);
+        qCWarning(auralisBluetooth) << "ForgetFailed" << devicePath << errorName << errorMessage;
         finishOperation(devicePath, op.generation, false, mapped.category, errorName, errorMessage);
         return;
     }
+    qCInfo(auralisBluetooth) << "ForgetSucceeded" << devicePath;
     clearPending(devicePath);
     emit deviceOperationChanged(devicePath);
 }

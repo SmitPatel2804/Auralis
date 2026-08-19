@@ -16,6 +16,7 @@ namespace auralis::bluetooth {
 class AdapterManager;
 class BlueZAgent;
 class DeviceRegistry;
+class DiscoveryManager;
 class IBlueZClient;
 class ReconnectPolicy;
 
@@ -29,6 +30,7 @@ public:
         AdapterManager* adapters,
         BlueZAgent* agent,
         ReconnectPolicy* reconnect,
+        DiscoveryManager* discovery = nullptr,
         QObject* parent = nullptr);
 
     void shutdown();
@@ -84,6 +86,8 @@ private:
     void removeReconnectMetadata(const BluetoothDeviceData& device);
     void setUserDisconnectRequested(const QString& objectPath, bool requested);
     void clearUserDisconnectSuppression(const QString& objectPath);
+    void syncDiscoveryHold();
+    bool shouldHoldDiscovery() const;
 
     void handlePairFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
     void handleCancelPairingFinished(const QString& devicePath, bool succeeded, const QString& errorName, const QString& errorMessage);
@@ -98,6 +102,7 @@ private:
     AdapterManager* adapters_ = nullptr;
     BlueZAgent* agent_ = nullptr;
     ReconnectPolicy* reconnect_ = nullptr;
+    DiscoveryManager* discovery_ = nullptr;
     QHash<QString, PendingOp> pending_;
     QHash<QString, quint64> generations_;
     QHash<QString, DeviceReconnectMetadata> reconnectMetadata_;

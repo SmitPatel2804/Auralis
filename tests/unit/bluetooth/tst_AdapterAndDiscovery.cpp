@@ -180,6 +180,36 @@ private slots:
         QVERIFY(discovery.canStartScan());
         QVERIFY(!discovery.lastErrorMessage().isEmpty());
     }
+
+    void deviceOperationHoldPausesScanWithoutClearingIntent()
+    {
+        FakeBlueZClient client;
+        client.setAutoCompleteStart(false);
+        client.setAutoCompleteStop(false);
+        AdapterManager adapters;
+        adapters.upsertAdapter(poweredHci0());
+        DiscoveryManager discovery(&client, &adapters);
+        discovery.onBlueZAvailabilityChanged(true);
+
+        discovery.startScan();
+        QCOMPARE(client.startRequests(), 1);
+        discovery.handleStartFinished(QStringLiteral("/org/bluez/hci0"), true, {}, {});
+        QVERIFY(discovery.ownsDiscovery());
+        QVERIFY(discovery.desiredScanning());
+
+        discovery.setDeviceOperationHold(true);
+        QCOMPARE(client.stopRequests(), 1);
+        QVERIFY(discovery.desiredScanning());
+        discovery.handleStopFinished(QStringLiteral("/org/bluez/hci0"), true, {}, {});
+        QVERIFY(!discovery.ownsDiscovery());
+        QVERIFY(discovery.desiredScanning());
+
+        discovery.setDeviceOperationHold(false);
+        QCOMPARE(client.startRequests(), 2);
+        discovery.handleStartFinished(QStringLiteral("/org/bluez/hci0"), true, {}, {});
+        QVERIFY(discovery.ownsDiscovery());
+        QVERIFY(discovery.desiredScanning());
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAdapterAndDiscovery)

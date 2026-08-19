@@ -69,6 +69,7 @@ private slots:
             QSKIP("System D-Bus Agent1 export is unavailable in this test environment");
         }
         QCOMPARE(client.registerAgentRequests(), 1);
+        QCOMPARE(client.requestDefaultAgentRequests(), 1);
         QCOMPARE(client.lastRegisterAgentCapability(), QStringLiteral("DisplayYesNo"));
         QCOMPARE(agent.capability(), AgentCapability::DisplayYesNo);
     }

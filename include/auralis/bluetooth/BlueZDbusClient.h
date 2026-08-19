@@ -37,6 +37,7 @@ public:
     void removeDevice(const QString& adapterPath, const QString& devicePath) override;
 
     void registerAgent(const QString& agentPath, const QString& capability) override;
+    void requestDefaultAgent(const QString& agentPath) override;
     void unregisterAgent(const QString& agentPath) override;
     bool isAgentRegistered() const noexcept override;
 

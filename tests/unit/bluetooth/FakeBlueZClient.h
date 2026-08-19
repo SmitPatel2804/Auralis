@@ -146,6 +146,13 @@ public:
         emit registerAgentFinished(true, {}, {});
     }
 
+    void requestDefaultAgent(const QString& agentPath) override
+    {
+        ++requestDefaultAgentRequests_;
+        lastRequestDefaultAgentPath_ = agentPath;
+        emit requestDefaultAgentFinished(true, {}, {});
+    }
+
     void unregisterAgent(const QString& agentPath) override
     {
         Q_UNUSED(agentPath);
@@ -201,6 +208,7 @@ public:
     int disconnectRequests() const { return disconnectRequests_; }
     int removeRequests() const { return removeRequests_; }
     int registerAgentRequests() const { return registerAgentRequests_; }
+    int requestDefaultAgentRequests() const { return requestDefaultAgentRequests_; }
     QString lastRegisterAgentPath() const { return lastRegisterAgentPath_; }
     QString lastRegisterAgentCapability() const { return lastRegisterAgentCapability_; }
     QString lastPairPath() const { return lastPairPath_; }
@@ -420,6 +428,7 @@ private:
     int trustRequests_ = 0;
     int removeRequests_ = 0;
     int registerAgentRequests_ = 0;
+    int requestDefaultAgentRequests_ = 0;
     QString lastStartPath_;
     QString lastStopPath_;
     QString lastPairPath_;
@@ -429,6 +438,7 @@ private:
     QString lastRemoveDevicePath_;
     QString lastRegisterAgentPath_;
     QString lastRegisterAgentCapability_;
+    QString lastRequestDefaultAgentPath_;
     QString pendingStartPath_;
     QString pendingStopPath_;
 };

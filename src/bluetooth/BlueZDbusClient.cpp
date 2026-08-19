@@ -25,6 +25,19 @@ Q_DECLARE_METATYPE(BlueZManagedObjectMap)
 namespace auralis::bluetooth {
 namespace {
 
+constexpr int kPairMethodTimeoutMs = 120000;
+constexpr int kConnectMethodTimeoutMs = 60000;
+constexpr int kStandardMethodTimeoutMs = 30000;
+
+QDBusPendingCallWatcher* watchCall(
+    const QDBusConnection& connection,
+    const QDBusMessage& message,
+    int timeoutMs,
+    QObject* parent)
+{
+    return new QDBusPendingCallWatcher(connection.asyncCall(message, timeoutMs), parent);
+}
+
 using InterfacePropertyMap = QMap<QString, QVariantMap>;
 using ManagedObjectMap = QMap<QDBusObjectPath, InterfacePropertyMap>;
 
@@ -450,7 +463,7 @@ void BlueZDbusClient::requestSnapshot()
         bluez::kRootPath.toString(),
         bluez::kObjectManagerInterface.toString(),
         bluez::kMethodGetManagedObjects.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, &BlueZDbusClient::onGetManagedObjectsFinished);
 }
 
@@ -488,7 +501,7 @@ void BlueZDbusClient::startDiscovery(const QString& adapterPath)
         adapterPath,
         bluez::kAdapterInterface.toString(),
         bluez::kMethodStartDiscovery.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -516,7 +529,7 @@ void BlueZDbusClient::stopDiscovery(const QString& adapterPath)
         adapterPath,
         bluez::kAdapterInterface.toString(),
         bluez::kMethodStopDiscovery.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -570,7 +583,7 @@ void BlueZDbusClient::pairDevice(const QString& devicePath)
     }
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodPair.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kPairMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -586,7 +599,7 @@ void BlueZDbusClient::cancelPairing(const QString& devicePath)
     }
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodCancelPairing.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -602,7 +615,7 @@ void BlueZDbusClient::connectDevice(const QString& devicePath)
     }
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodConnect.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kConnectMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -618,7 +631,7 @@ void BlueZDbusClient::disconnectDevice(const QString& devicePath)
     }
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodDisconnect.toString());
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -638,7 +651,7 @@ void BlueZDbusClient::setDeviceTrusted(const QString& devicePath, bool trusted)
         bluez::kPropertiesInterface.toString(),
         bluez::kMethodSet.toString());
     message << bluez::kDeviceInterface.toString() << bluez::kPropTrusted.toString() << QVariant::fromValue(QDBusVariant(trusted));
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, trusted](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -658,7 +671,7 @@ void BlueZDbusClient::removeDevice(const QString& adapterPath, const QString& de
         bluez::kAdapterInterface.toString(),
         bluez::kMethodRemoveDevice.toString());
     message << QVariant::fromValue(QDBusObjectPath(devicePath));
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, devicePath](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
@@ -678,12 +691,35 @@ void BlueZDbusClient::registerAgent(const QString& agentPath, const QString& cap
         bluez::kAgentManagerInterface.toString(),
         bluez::kMethodRegisterAgent.toString());
     message << QVariant::fromValue(QDBusObjectPath(agentPath)) << capability;
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
         agentRegistered_ = !reply.isError();
         emit registerAgentFinished(!reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
+    });
+}
+
+void BlueZDbusClient::requestDefaultAgent(const QString& agentPath)
+{
+    if (!connection_.isConnected()) {
+        emit requestDefaultAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        bluez::kService.toString(),
+        bluez::kAgentManagerPath.toString(),
+        bluez::kAgentManagerInterface.toString(),
+        bluez::kMethodRequestDefaultAgent.toString());
+    message << QVariant::fromValue(QDBusObjectPath(agentPath));
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+        const QDBusPendingReply<> reply = *call;
+        call->deleteLater();
+        emit requestDefaultAgentFinished(
+            !reply.isError(),
+            reply.isError() ? reply.error().name() : QString(),
+            reply.isError() ? reply.error().message() : QString());
     });
 }
 
@@ -700,7 +736,7 @@ void BlueZDbusClient::unregisterAgent(const QString& agentPath)
         bluez::kAgentManagerInterface.toString(),
         bluez::kMethodUnregisterAgent.toString());
     message << QVariant::fromValue(QDBusObjectPath(agentPath));
-    auto* watcher = new QDBusPendingCallWatcher(connection_.asyncCall(message), this);
+    auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();

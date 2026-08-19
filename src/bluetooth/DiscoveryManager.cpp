@@ -236,6 +236,14 @@ void DiscoveryManager::reconcileDesiredState()
         return;
     }
 
+    if (deviceOperationHold_) {
+        if (ownsDiscovery_) {
+            qCInfo(auralisBluetooth) << "DiscoveryPausedForDeviceOperation" << operationAdapterPath_;
+            beginStop();
+        }
+        return;
+    }
+
     if (desiredScanning_ && !ownsDiscovery_ && prerequisitesValid()) {
         beginStart();
         qCInfo(auralisBluetooth) << "DiscoveryStateReconciled" << toString(state_)
@@ -358,17 +366,17 @@ void DiscoveryManager::onAdapterDiscoveringPropertyChanged(bool discovering)
     if (shuttingDown_) {
         return;
     }
-    if (discovering) {
-        if (ownsDiscovery_) {
-            confirmedAdapterDiscovering_ = true;
-        }
-        return;
-    }
-    if (!ownsDiscovery_) {
+    if (!discovering) {
         confirmedAdapterDiscovering_ = false;
+        if (!ownsDiscovery_ || pendingOperation_ == PendingOperation::Stop || deviceOperationHold_) {
+            return;
+        }
+        applyUnexpectedDiscoveryStop();
         return;
     }
-    applyUnexpectedDiscoveryStop();
+    if (ownsDiscovery_) {
+        confirmedAdapterDiscovering_ = true;
+    }
 }
 
 void DiscoveryManager::startScan()
@@ -397,6 +405,15 @@ void DiscoveryManager::stopScan()
         return;
     }
     setDesiredScanning(false);
+    reconcileDesiredState();
+}
+
+void DiscoveryManager::setDeviceOperationHold(bool hold)
+{
+    if (deviceOperationHold_ == hold) {
+        return;
+    }
+    deviceOperationHold_ = hold;
     reconcileDesiredState();
 }
 

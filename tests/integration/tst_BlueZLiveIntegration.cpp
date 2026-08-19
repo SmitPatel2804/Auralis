@@ -10,6 +10,8 @@
 #include <QSignalSpy>
 #include <QtTest>
 
+#include <functional>
+
 using auralis::bluetooth::BluetoothDeviceListModel;
 using auralis::bluetooth::BluetoothManager;
 
@@ -73,6 +75,197 @@ private:
         return rowsInsertedSpy.count() > inserted || dataChangedSpy.count() > changed;
     }
 
+    static QStringList expectedAddresses()
+    {
+        QStringList list;
+        const QString multi = qEnvironmentVariable("AURALIS_EXPECT_DEVICE_ADDRESSES").trimmed();
+        if (!multi.isEmpty()) {
+            const auto parts = multi.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+            for (const QString& part : parts) {
+                const QString normalized = part.trimmed().toUpper();
+                if (!normalized.isEmpty() && !list.contains(normalized)) {
+                    list.append(normalized);
+                }
+            }
+        }
+        const QString single = qEnvironmentVariable("AURALIS_EXPECT_DEVICE_ADDRESS").trimmed().toUpper();
+        if (!single.isEmpty() && !list.contains(single)) {
+            list.prepend(single);
+        }
+        return list;
+    }
+
+    static QString objectPathForAddress(QAbstractItemModel* model, const QString& address)
+    {
+        const QString expected = address.trimmed().toUpper();
+        for (int row = 0; row < model->rowCount(); ++row) {
+            const QString actual =
+                model->data(model->index(row, 0), BluetoothDeviceListModel::AddressRole).toString().trimmed().toUpper();
+            if (actual == expected) {
+                return model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString();
+            }
+        }
+        return {};
+    }
+
+    static QString deviceDiagnostic(QAbstractItemModel* model, const QString& objectPath)
+    {
+        return QStringLiteral("paired=%1 trusted=%2 connected=%3 operation=%4 error=%5")
+            .arg(roleValue(model, objectPath, BluetoothDeviceListModel::PairedRole).toBool() ? "true" : "false",
+                 roleValue(model, objectPath, BluetoothDeviceListModel::TrustedRole).toBool() ? "true" : "false",
+                 roleValue(model, objectPath, BluetoothDeviceListModel::ConnectedRole).toBool() ? "true" : "false",
+                 roleValue(model, objectPath, BluetoothDeviceListModel::OperationTextRole).toString(),
+                 roleValue(model, objectPath, BluetoothDeviceListModel::LastErrorMessageRole).toString());
+    }
+
+    static void autoAcceptPairingPrompt(BluetoothManager& manager)
+    {
+        QObject* pending = manager.pendingPairingRequest();
+        if (pending == nullptr || pending->property("needsInput").toBool()) {
+            return;
+        }
+        const QString requestId = pending->property("requestId").toString();
+        if (requestId.isEmpty()) {
+            return;
+        }
+        qInfo("LiveTest auto-accepting pairing request %s (%s)",
+              qPrintable(requestId),
+              qPrintable(pending->property("message").toString()));
+        manager.acceptPairingRequest(requestId);
+    }
+
+    static bool waitUntil(
+        const std::function<bool()>& predicate,
+        int timeoutMs,
+        BluetoothManager* manager = nullptr)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < timeoutMs) {
+            if (manager != nullptr) {
+                autoAcceptPairingPrompt(*manager);
+            }
+            if (predicate()) {
+                return true;
+            }
+            QTest::qWait(50);
+        }
+        if (manager != nullptr) {
+            autoAcceptPairingPrompt(*manager);
+        }
+        return predicate();
+    }
+
+    static bool runLifecycleForDevice(BluetoothManager& manager, QAbstractItemModel* model, const QString& address)
+    {
+        QString objectPath;
+        if (!waitUntil(
+                [&]() {
+                    objectPath = objectPathForAddress(model, address);
+                    return !objectPath.isEmpty();
+                },
+                20000,
+                &manager)) {
+            qWarning("Expected device address %s was not observed", qPrintable(address));
+            return false;
+        }
+        if (!manager.agentRegistered()) {
+            qWarning("Agent was not registered before lifecycle operations");
+            return false;
+        }
+        qInfo("LiveTest lifecycle start %s path=%s %s",
+              qPrintable(address),
+              qPrintable(objectPath),
+              qPrintable(deviceDiagnostic(model, objectPath)));
+
+        if (!roleValue(model, objectPath, BluetoothDeviceListModel::PairedRole).toBool()) {
+            manager.pairDevice(objectPath);
+            if (!waitUntil(
+                    [&]() {
+                        return roleValue(model, objectPath, BluetoothDeviceListModel::PairedRole).toBool();
+                    },
+                    120000,
+                    &manager)) {
+                qWarning("Pair failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+                return false;
+            }
+        }
+
+        if (!roleValue(model, objectPath, BluetoothDeviceListModel::TrustedRole).toBool()) {
+            manager.trustDevice(objectPath);
+            if (!waitUntil(
+                    [&]() {
+                        return roleValue(model, objectPath, BluetoothDeviceListModel::TrustedRole).toBool();
+                    },
+                    15000,
+                    &manager)) {
+                qWarning("Trust failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+                return false;
+            }
+        }
+
+        manager.connectDevice(objectPath);
+        if (!waitUntil(
+                [&]() {
+                    return roleValue(model, objectPath, BluetoothDeviceListModel::ConnectedRole).toBool();
+                },
+                60000,
+                &manager)) {
+            qWarning("Connect failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+            return false;
+        }
+
+        manager.disconnectDevice(objectPath);
+        if (!waitUntil(
+                [&]() {
+                    return !roleValue(model, objectPath, BluetoothDeviceListModel::ConnectedRole).toBool();
+                },
+                15000,
+                &manager)) {
+            qWarning("Disconnect failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+            return false;
+        }
+
+        manager.reconnectDevice(objectPath);
+        if (!waitUntil(
+                [&]() {
+                    return roleValue(model, objectPath, BluetoothDeviceListModel::ConnectedRole).toBool();
+                },
+                60000,
+                &manager)) {
+            qWarning("Reconnect failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+            return false;
+        }
+
+        manager.disconnectDevice(objectPath);
+        if (!waitUntil(
+                [&]() {
+                    return !roleValue(model, objectPath, BluetoothDeviceListModel::ConnectedRole).toBool();
+                },
+                15000,
+                &manager)) {
+            qWarning("Final disconnect failed for %s: %s", qPrintable(address), qPrintable(deviceDiagnostic(model, objectPath)));
+            return false;
+        }
+
+        if (qEnvironmentVariableIntValue("AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS") == 1) {
+            manager.forgetDevice(objectPath);
+            if (!waitUntil(
+                    [&]() {
+                        return !objectPaths(model).contains(objectPath);
+                    },
+                    15000,
+                    &manager)) {
+                qWarning("Forget failed for %s", qPrintable(address));
+                return false;
+            }
+        } else {
+            qInfo("SKIPPED: destructive Bluetooth operations not enabled for %s", qPrintable(address));
+        }
+        qInfo("LiveTest lifecycle pass %s", qPrintable(address));
+        return true;
+    }
+
 private slots:
     void liveBlueZRoundTrip()
     {
@@ -132,68 +325,53 @@ private slots:
             "Put a nearby Classic/BLE device into discoverable/advertising mode "
             "and rerun with AURALIS_RUN_BLUETOOTH_INTEGRATION=1.");
 
-        const QString expectedAddress = qEnvironmentVariable("AURALIS_EXPECT_DEVICE_ADDRESS").trimmed();
-        QString expectedObjectPath;
-        if (!expectedAddress.isEmpty()) {
-            QTRY_VERIFY_WITH_TIMEOUT(modelContainsAddress(model, expectedAddress), 15000);
+        const QStringList addresses = expectedAddresses();
+        QStringList connectedTogether;
+        for (const QString& address : addresses) {
             QVERIFY2(
-                modelContainsAddress(model, expectedAddress),
-                qPrintable(QStringLiteral("Expected device address %1 was not observed").arg(expectedAddress)));
+                waitUntil([&]() { return modelContainsAddress(model, address); }, 20000, &manager),
+                qPrintable(QStringLiteral("Expected device address %1 was not observed").arg(address)));
+            QVERIFY2(
+                runLifecycleForDevice(manager, model, address),
+                qPrintable(QStringLiteral("Lifecycle failed for %1").arg(address)));
+        }
 
-            for (int row = 0; row < model->rowCount(); ++row) {
-                const QString address =
-                    model->data(model->index(row, 0), BluetoothDeviceListModel::AddressRole).toString().trimmed().toUpper();
-                if (address == expectedAddress.trimmed().toUpper()) {
-                    expectedObjectPath =
-                        model->data(model->index(row, 0), BluetoothDeviceListModel::ObjectPathRole).toString();
-                    break;
+        if (addresses.size() >= 2 && qEnvironmentVariableIntValue("AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS") != 1) {
+            QStringList paths;
+            for (const QString& address : addresses) {
+                const QString path = objectPathForAddress(model, address);
+                QVERIFY2(!path.isEmpty(), qPrintable(QStringLiteral("Missing path for dual-connect %1").arg(address)));
+                paths.append(path);
+                manager.connectDevice(path);
+                const bool connected = waitUntil(
+                    [&]() {
+                        return roleValue(model, path, BluetoothDeviceListModel::ConnectedRole).toBool();
+                    },
+                    60000,
+                    &manager);
+                if (!connected) {
+                    QWARN(qPrintable(QStringLiteral("Dual-connect could not connect %1: %2")
+                                         .arg(address, deviceDiagnostic(model, path))));
+                    continue;
                 }
+                connectedTogether.append(address);
             }
-            QVERIFY2(!expectedObjectPath.isEmpty(), "Expected device address was seen but object path was missing");
-            QVERIFY2(manager.agentRegistered(), "Agent was not registered before lifecycle operations");
-
-            bool paired = roleValue(model, expectedObjectPath, BluetoothDeviceListModel::PairedRole).toBool();
-            if (!paired) {
-                manager.pairDevice(expectedObjectPath);
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    roleValue(model, expectedObjectPath, BluetoothDeviceListModel::PairedRole).toBool(),
-                    30000);
+            qInfo("LiveTest simultaneous connected count=%d/%d",
+                  static_cast<int>(connectedTogether.size()),
+                  static_cast<int>(addresses.size()));
+            if (connectedTogether.size() < addresses.size()) {
+                QWARN("Controller did not keep every audio device connected at once (common A2DP adapter limit)");
             }
-
-            if (!roleValue(model, expectedObjectPath, BluetoothDeviceListModel::TrustedRole).toBool()) {
-                manager.trustDevice(expectedObjectPath);
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    roleValue(model, expectedObjectPath, BluetoothDeviceListModel::TrustedRole).toBool(),
-                    15000);
-            }
-
-            manager.connectDevice(expectedObjectPath);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
-                30000);
-
-            manager.disconnectDevice(expectedObjectPath);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                !roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
-                15000);
-
-            manager.reconnectDevice(expectedObjectPath);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
-                30000);
-
-            manager.disconnectDevice(expectedObjectPath);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                !roleValue(model, expectedObjectPath, BluetoothDeviceListModel::ConnectedRole).toBool(),
-                15000);
-
-            if (qEnvironmentVariableIntValue("AURALIS_ALLOW_DESTRUCTIVE_BLUETOOTH_TESTS") == 1) {
-                manager.forgetDevice(expectedObjectPath);
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    !objectPaths(model).contains(expectedObjectPath),
-                    15000);
-            } else {
-                qInfo("SKIPPED: destructive Bluetooth operations not enabled");
+            for (const QString& path : paths) {
+                if (roleValue(model, path, BluetoothDeviceListModel::ConnectedRole).toBool()) {
+                    manager.disconnectDevice(path);
+                    waitUntil(
+                        [&]() {
+                            return !roleValue(model, path, BluetoothDeviceListModel::ConnectedRole).toBool();
+                        },
+                        15000,
+                        &manager);
+                }
             }
         }
 

@@ -31,6 +31,7 @@ public:
     virtual void removeDevice(const QString& adapterPath, const QString& devicePath) = 0;
 
     virtual void registerAgent(const QString& agentPath, const QString& capability) = 0;
+    virtual void requestDefaultAgent(const QString& agentPath) = 0;
     virtual void unregisterAgent(const QString& agentPath) = 0;
     virtual bool isAgentRegistered() const noexcept = 0;
 
@@ -89,6 +90,10 @@ signals:
         const QString& errorName,
         const QString& errorMessage);
     void registerAgentFinished(
+        bool succeeded,
+        const QString& errorName,
+        const QString& errorMessage);
+    void requestDefaultAgentFinished(
         bool succeeded,
         const QString& errorName,
         const QString& errorMessage);

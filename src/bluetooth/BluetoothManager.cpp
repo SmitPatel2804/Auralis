@@ -73,7 +73,7 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     model_ = new BluetoothDeviceListModel(registry_, this);
     reconnect_ = new ReconnectPolicy(this);
     agent_ = new BlueZAgent(client_, defaultAgentCapability(), this);
-    lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, this);
+    lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, discovery_, this);
     connect(
         reconnect_,
         &ReconnectPolicy::reconnectExhausted,

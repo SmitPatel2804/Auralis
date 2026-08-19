@@ -35,6 +35,13 @@ BlueZAgent::BlueZAgent(IBlueZClient* client, AgentCapability capability, QObject
     if (client_ != nullptr) {
         connect(client_, &IBlueZClient::blueZAvailableChanged, this, &BlueZAgent::onBlueZAvailableChanged);
         connect(client_, &IBlueZClient::registerAgentFinished, this, &BlueZAgent::onRegisterAgentFinished);
+        connect(client_, &IBlueZClient::requestDefaultAgentFinished, this, [](bool succeeded, const QString& errorName, const QString& errorMessage) {
+            if (succeeded) {
+                qCInfo(auralisBluetooth) << "AgentRequestDefaultSucceeded" << bluez::kAuralisAgentPath;
+                return;
+            }
+            qCWarning(auralisBluetooth) << "AgentRequestDefaultFailed" << errorName << errorMessage;
+        });
     }
 }
 
@@ -139,6 +146,9 @@ void BlueZAgent::onRegisterAgentFinished(bool succeeded, const QString& errorNam
     qCInfo(auralisBluetooth) << "AgentRegistered" << bluez::kAuralisAgentPath
                              << "capability=" << toBlueZCapability(capability_);
     emit registeredChanged(true);
+    if (client_ != nullptr) {
+        client_->requestDefaultAgent(bluez::kAuralisAgentPath.toString());
+    }
 }
 
 QDBusMessage BlueZAgent::delayedMessage(const QDBusMessage& message) const

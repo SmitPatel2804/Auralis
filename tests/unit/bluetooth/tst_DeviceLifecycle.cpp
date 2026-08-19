@@ -4,6 +4,7 @@
 #include <auralis/bluetooth/DeviceLifecycleManager.h>
 #include <auralis/bluetooth/DeviceOperation.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
+#include <auralis/bluetooth/DiscoveryManager.h>
 #include <auralis/bluetooth/ReconnectPolicy.h>
 
 #include "FakeBlueZClient.h"
@@ -19,6 +20,8 @@ using auralis::bluetooth::BluetoothDeviceData;
 using auralis::bluetooth::DeviceLifecycleManager;
 using auralis::bluetooth::DeviceOperation;
 using auralis::bluetooth::DeviceRegistry;
+using auralis::bluetooth::DiscoveryManager;
+using auralis::bluetooth::DiscoveryState;
 using auralis::bluetooth::ReconnectPolicy;
 using auralis::bluetooth::ReconnectPolicyConfig;
 using auralis::bluetooth::parseDevice;
@@ -251,6 +254,66 @@ private slots:
         const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
         QVERIFY(device != nullptr);
         QVERIFY(device->operation == DeviceOperation::Connecting);
+    }
+
+    void inProgressPairDoesNotFailImmediately()
+    {
+        Harness h;
+        h.seedAdapter();
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        h.registry.upsertDevice(makeDevice(path));
+        h.client.setAutoCompleteDeviceOps(false);
+
+        h.lifecycle.pairDevice(path);
+        emit h.client.pairDeviceFinished(
+            path,
+            false,
+            QStringLiteral("org.bluez.Error.InProgress"),
+            QStringLiteral("In progress"));
+        const BluetoothDeviceData* device = h.registry.findByObjectPath(path);
+        QVERIFY(device != nullptr);
+        QVERIFY(device->operation == DeviceOperation::Pairing);
+        QVERIFY(device->lastErrorMessage.isEmpty());
+    }
+
+    void pairingPausesOwnedDiscovery()
+    {
+        FakeBlueZClient client;
+        client.setAutoCompleteStart(false);
+        client.setAutoCompleteStop(false);
+        client.setAutoCompleteDeviceOps(false);
+        DeviceRegistry registry;
+        AdapterManager adapters;
+        BlueZAgent agent{&client};
+        ReconnectPolicy reconnect;
+        DiscoveryManager discovery(&client, &adapters);
+        DeviceLifecycleManager lifecycle(&client, &registry, &adapters, &agent, &reconnect, &discovery);
+
+        AdapterData adapter;
+        adapter.objectPath = QStringLiteral("/org/bluez/hci0");
+        adapter.address = QStringLiteral("00:11:22:33:44:55");
+        adapter.name = QStringLiteral("hci0");
+        adapter.powered = true;
+        adapter.available = true;
+        adapters.upsertAdapter(adapter);
+        discovery.onBlueZAvailabilityChanged(true);
+        discovery.startScan();
+        discovery.handleStartFinished(QStringLiteral("/org/bluez/hci0"), true, {}, {});
+        QVERIFY(discovery.ownsDiscovery());
+
+        const QString path = QStringLiteral("/org/bluez/hci0/dev_AA");
+        registry.upsertDevice(makeDevice(path));
+        lifecycle.pairDevice(path);
+        QCOMPARE(client.stopRequests(), 1);
+        QVERIFY(discovery.desiredScanning());
+        discovery.handleStopFinished(QStringLiteral("/org/bluez/hci0"), true, {}, {});
+        QVERIFY(!discovery.ownsDiscovery());
+
+        client.completePairSuccess(path);
+        registry.applyPropertyChanges(path, {{QStringLiteral("Paired"), true}}, {});
+        lifecycle.onDevicePropertiesChanged(path, {{QStringLiteral("Paired"), true}}, {});
+        QCOMPARE(client.startRequests(), 2);
+        QVERIFY(discovery.state() == DiscoveryState::Starting);
     }
 
     void userDisconnectSuppressesAutoReconnect()

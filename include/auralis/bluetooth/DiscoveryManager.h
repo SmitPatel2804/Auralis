@@ -29,6 +29,7 @@ public:
 
     void startScan();
     void stopScan();
+    void setDeviceOperationHold(bool hold);
     void shutdown();
     void onBlueZAvailabilityChanged(bool available);
     void onSelectedAdapterChanged();
@@ -87,6 +88,7 @@ private:
     bool confirmedAdapterDiscovering_ = false;
     bool shuttingDown_ = false;
     bool lastBlueZAvailable_ = false;
+    bool deviceOperationHold_ = false;
     PendingOperation pendingOperation_ = PendingOperation::None;
     BluetoothError lastError_ = BluetoothError::None;
     QString lastErrorMessage_;
