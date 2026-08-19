@@ -97,6 +97,7 @@ struct SessionHealthSnapshot {
     int enabledCount = 0;
     int routeActiveCount = 0;
     int recoveringCount = 0;
+    int pendingCount = 0;
     bool terminalFailure = false;
 };
 

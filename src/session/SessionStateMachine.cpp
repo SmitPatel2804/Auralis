@@ -19,17 +19,17 @@ SessionState SessionStateMachine::recompute(
     }
 
     if (intent == SessionIntent::Starting || current == SessionState::Starting) {
-        if (health.terminalFailure && health.routeActiveCount == 0) {
-            return SessionState::Failed;
-        }
         if (health.enabledCount > 0 && health.routeActiveCount >= health.enabledCount && health.sourceAvailable) {
             return SessionState::Active;
         }
         if (health.routeActiveCount > 0) {
             return health.recoveringCount > 0 ? SessionState::Recovering : SessionState::Degraded;
         }
-        if (health.recoveringCount > 0) {
-            return SessionState::Recovering;
+        if (health.pendingCount > 0 || health.recoveringCount > 0) {
+            return SessionState::Starting;
+        }
+        if (health.terminalFailure && health.routeActiveCount == 0) {
+            return SessionState::Failed;
         }
         return SessionState::Starting;
     }

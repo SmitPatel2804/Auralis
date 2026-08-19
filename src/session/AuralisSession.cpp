@@ -16,13 +16,19 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
         }
         if (device.runtime.routeActive) {
             ++health.routeActiveCount;
+        } else if (device.runtime.routeRequested || !device.runtime.routeId.isEmpty()) {
+            ++health.pendingCount;
         }
     }
     if (health.enabledCount == 0) {
         health.terminalFailure = true;
+    } else if (session.state == SessionState::Starting) {
+        health.terminalFailure = !health.sourceAvailable && health.routeActiveCount == 0
+            && health.recoveringCount == 0 && health.pendingCount == 0;
     } else if (!health.sourceAvailable) {
-        health.terminalFailure = health.routeActiveCount == 0 && health.recoveringCount == 0;
-    } else if (health.routeActiveCount == 0 && health.recoveringCount == 0) {
+        health.terminalFailure = health.routeActiveCount == 0 && health.recoveringCount == 0
+            && health.pendingCount == 0;
+    } else if (health.routeActiveCount == 0 && health.recoveringCount == 0 && health.pendingCount == 0) {
         health.terminalFailure = true;
     }
     return health;

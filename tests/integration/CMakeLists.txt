@@ -57,6 +57,10 @@ target_link_libraries(tst_SessionLiveIntegration PRIVATE auralis-session auralis
 auralis_add_test(tst_Phase7HardwareLive tst_Phase7HardwareLive.cpp)
 target_link_libraries(tst_Phase7HardwareLive PRIVATE auralis-session auralis-audio auralis-bluetooth)
 
+add_executable(auralis-play-both play_both_live.cpp)
+target_link_libraries(auralis-play-both PRIVATE auralis-session auralis-audio auralis-bluetooth Qt6::Core)
+auralis_apply_warnings(auralis-play-both)
+
 auralis_add_test(tst_SessionManagedReconnectIntegration tst_SessionManagedReconnectIntegration.cpp)
 target_link_libraries(tst_SessionManagedReconnectIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)
 target_include_directories(tst_SessionManagedReconnectIntegration PRIVATE

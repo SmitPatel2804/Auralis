@@ -654,6 +654,9 @@ SessionCommandResult SessionManager::retrySession(const QString& sessionId)
         device.runtime.recovering = false;
     }
     session->error = {};
+    if (session->state == SessionState::Degraded) {
+        session->state = SessionState::Failed;
+    }
     return activateSession(sessionId);
 }
 
@@ -825,7 +828,7 @@ SessionCommandResult SessionManager::restoreLastSession()
         if (!session.restoreIntent || !session.lastUsedAt.isValid()) {
             continue;
         }
-        if (!candidateId.isEmpty() && session.lastUsedAt <= latest) {
+        if (!candidateId.isEmpty() && session.lastUsedAt < latest) {
             continue;
         }
         candidateId = session.id;
@@ -836,7 +839,7 @@ SessionCommandResult SessionManager::restoreLastSession()
             if (!session.lastUsedAt.isValid()) {
                 continue;
             }
-            if (!candidateId.isEmpty() && session.lastUsedAt <= latest) {
+            if (!candidateId.isEmpty() && session.lastUsedAt < latest) {
                 continue;
             }
             candidateId = session.id;
@@ -1223,7 +1226,9 @@ void SessionManager::recomputeSession(AuralisSession& session)
         }
         if (newState == SessionState::Failed) {
             if (session.error.category != SessionError::RecoveryExhausted) {
-                session.error = {SessionError::SourceUnavailable, QStringLiteral("Session failed")};
+                if (session.error.category == SessionError::None) {
+                    session.error = {SessionError::RouteActivationFailed, QStringLiteral("Session failed")};
+                }
                 emit sessionError(session.id, session.error.category, session.error.detail);
             }
         }

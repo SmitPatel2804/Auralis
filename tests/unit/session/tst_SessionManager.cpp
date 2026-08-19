@@ -127,6 +127,28 @@ private slots:
         QCOMPARE(h.router.ownedLinkCount(), 0);
     }
 
+    void activateStaysStartingUntilLinksBind()
+    {
+        ActiveHarness h;
+        h.backend.delayBind = true;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("Pending"));
+        h.manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        h.manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio"));
+        QVERIFY(h.manager.activateSession(id) == SessionCommandResult::Accepted);
+        QVERIFY(h.manager.sessionById(id)->state == SessionState::Starting);
+        QVERIFY(h.manager.sessionById(id)->state != SessionState::Failed);
+
+        quint32 nextId = 900;
+        for (quint64 token : h.backend.createdTokens) {
+            h.backend.completeBind(token, nextId++);
+        }
+        h.router.handleGraphChanged();
+        QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+        h.manager.deactivateSession(id);
+    }
+
     void oneUnavailableMemberStartsDegraded()
     {
         ActiveHarness h;

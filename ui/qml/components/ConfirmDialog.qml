@@ -11,13 +11,16 @@ Dialog {
     title: qsTr("Confirm")
     property string message: ""
     property string confirmText: qsTr("Confirm")
+    readonly property int dialogWidth: 420
     signal confirmed()
 
+    width: dialogWidth
     standardButtons: Dialog.NoButton
 
     contentItem: Label {
+        width: root.dialogWidth - root.leftPadding - root.rightPadding
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         text: root.message
-        wrapMode: Text.WordWrap
         color: Theme.text
     }
 

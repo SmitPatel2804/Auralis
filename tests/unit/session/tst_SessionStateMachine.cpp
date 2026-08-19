@@ -1,3 +1,4 @@
+#include <auralis/session/AuralisSession.h>
 #include <auralis/session/SessionStateMachine.h>
 
 #include <QtTest>
@@ -49,6 +50,28 @@ private slots:
         QVERIFY(
             SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
             == SessionState::Failed);
+    }
+
+    void startingStaysStartingWhileRoutesPending()
+    {
+        SessionHealthSnapshot health;
+        health.sourceAvailable = true;
+        health.enabledCount = 2;
+        health.pendingCount = 2;
+        health.terminalFailure = false;
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
+            == SessionState::Starting);
+    }
+
+    void startingWithoutPendingDoesNotFailUnlessTerminal()
+    {
+        SessionHealthSnapshot health;
+        health.sourceAvailable = true;
+        health.enabledCount = 1;
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
+            == SessionState::Starting);
     }
 
     void activeBecomesDegradedWhenMemberLost()
@@ -103,6 +126,38 @@ private slots:
         QVERIFY(
             SessionStateMachine::recompute(SessionState::Failed, SessionIntent::Starting, health)
             == SessionState::Starting);
+    }
+
+    void startHealthIsNotTerminalWhileRoutePending()
+    {
+        auralis::session::AuralisSession session;
+        session.state = SessionState::Starting;
+        session.sourceId = QStringLiteral("src:1");
+        auralis::session::SessionDevice device;
+        device.enabled = true;
+        device.runtime.routeRequested = true;
+        session.devices.push_back(device);
+        const auralis::session::SessionHealthSnapshot health =
+            auralis::session::healthSnapshotFromSession(session, true);
+        QVERIFY(!health.terminalFailure);
+        QCOMPARE(health.pendingCount, 1);
+        QCOMPARE(health.routeActiveCount, 0);
+    }
+
+    void startHealthIsTerminalWhenSourceMissing()
+    {
+        auralis::session::AuralisSession session;
+        session.state = SessionState::Starting;
+        session.sourceId = QStringLiteral("src:missing");
+        auralis::session::SessionDevice device;
+        device.enabled = true;
+        session.devices.push_back(device);
+        const auralis::session::SessionHealthSnapshot health =
+            auralis::session::healthSnapshotFromSession(session, false);
+        QVERIFY(health.terminalFailure);
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
+            == SessionState::Failed);
     }
 };
 
