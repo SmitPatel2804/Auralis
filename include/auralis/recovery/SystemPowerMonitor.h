@@ -20,11 +20,15 @@ public:
     bool suspended() const noexcept;
     bool isSubscribed() const noexcept;
 
-    /// Retry logind subscription after system bus becomes available.
+    /// Invalidate logind subscription when system D-Bus disappears at runtime.
+    void notifySystemBusUnavailable();
+    /// Retry / recreate logind subscription after system bus becomes available.
     void notifySystemBusAvailable();
 
     void setSubscribeRetryIntervalMsForTesting(int ms);
     void attemptSubscribeForTesting();
+    /// Test seam: mark subscribed without touching host logind.
+    void injectSubscribedForTesting(bool subscribed);
 
 public slots:
     /// Test seam / logind callback: inject prepare-for-sleep without blocking.
@@ -36,6 +40,7 @@ signals:
 
 private:
     bool trySubscribeLogind();
+    void invalidateLogindSubscription();
     void setSuspended(bool value);
     void startSubscribeRetryTimer();
     void stopSubscribeRetryTimer();
@@ -44,6 +49,7 @@ private:
     bool initialized_ = false;
     bool suspended_ = false;
     bool subscribed_ = false;
+    bool busAvailable_ = true;
     int subscribeRetryIntervalMs_ = 2000;
 };
 

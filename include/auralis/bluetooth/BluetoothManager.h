@@ -13,6 +13,7 @@ namespace auralis::bluetooth {
 
 class AdapterManager;
 class BlueZAgent;
+class BluetoothButtonControlManager;
 class BluetoothDeviceListModel;
 class DeviceLifecycleManager;
 class DeviceRegistry;
@@ -90,6 +91,8 @@ public:
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
     Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
+    Q_INVOKABLE void setDeviceButtonPolicy(const QString& deviceId, bool disallow);
+    Q_INVOKABLE QString deviceButtonPolicyText(const QString& deviceId) const;
     int connectedDeviceCount() const;
     Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
     Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
@@ -132,6 +135,8 @@ private:
     void handleSystemBusStateChanged(bool connected);
     void updateStatusText();
     void refreshDisplayedError();
+    void syncButtonPolicyForAddress(const QString& address, bool connected);
+    void syncButtonPoliciesFromRegistry();
     QVariantMap deviceProperties(const QVariantMap& interfaces) const;
     QVariantMap adapterProperties(const QVariantMap& interfaces) const;
 
@@ -140,6 +145,7 @@ private:
     DiscoveryManager* discovery_ = nullptr;
     DeviceRegistry* registry_ = nullptr;
     BluetoothDeviceListModel* model_ = nullptr;
+    BluetoothButtonControlManager* buttonControls_ = nullptr;
     DeviceLifecycleManager* lifecycle_ = nullptr;
     BlueZAgent* agent_ = nullptr;
     ReconnectPolicy* reconnect_ = nullptr;

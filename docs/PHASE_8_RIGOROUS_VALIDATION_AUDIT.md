@@ -73,3 +73,7 @@ Hardware BlueZ/PipeWire/suspend-on-laptop validation was not executed as PASS ev
 ## Post-closure note — multi-device fan-out
 
 Shared-source N-destination routing no longer destroys sibling links (input-only conflict clearing). Software gate remains PASS; live multi-headset confirmation remains HARDWARE PENDING.
+
+## Enforcement + button policy
+
+Software blockers from the Enforcement prompt (power-monitor bus loss, BlueZ generation fencing, dependency-gated reconcile, harness/stress/isolation) are implemented with regression tests. Per-device button ALLOW/DISALLOW ships as Backend B (evdev) with honest Unsupported when no address-matched input node exists (`docs/BLUETOOTH_BUTTON_EVENT_PATH.md`). Live Play/Pause suppression on a connected headset remains HARDWARE PENDING.

@@ -127,10 +127,14 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
                 [power](bool connected) {
                     if (connected) {
                         power->notifySystemBusAvailable();
+                    } else {
+                        power->notifySystemBusUnavailable();
                     }
                 });
             if (bluetooth->systemBusConnected()) {
                 power->notifySystemBusAvailable();
+            } else {
+                power->notifySystemBusUnavailable();
             }
         }
         QObject::connect(

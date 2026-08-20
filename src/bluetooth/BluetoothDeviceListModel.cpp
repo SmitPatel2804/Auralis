@@ -1,5 +1,6 @@
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
 
+#include <auralis/bluetooth/BluetoothButtonControlManager.h>
 #include <auralis/bluetooth/BlueZTypes.h>
 #include <auralis/bluetooth/DeviceOperation.h>
 
@@ -27,6 +28,32 @@ BluetoothDeviceListModel::BluetoothDeviceListModel(DeviceRegistry* registry, QOb
         this,
         &BluetoothDeviceListModel::onDeviceAboutToBeRemoved);
     connect(registry_, &DeviceRegistry::deviceRemoved, this, &BluetoothDeviceListModel::onDeviceRemoved);
+}
+
+void BluetoothDeviceListModel::setButtonControlManager(BluetoothButtonControlManager* manager)
+{
+    if (buttonControls_ == manager) {
+        return;
+    }
+    if (buttonControls_ != nullptr) {
+        disconnect(buttonControls_, nullptr, this, nullptr);
+    }
+    buttonControls_ = manager;
+    if (buttonControls_ != nullptr) {
+        connect(
+            buttonControls_,
+            &BluetoothButtonControlManager::policyChanged,
+            this,
+            &BluetoothDeviceListModel::onButtonPolicyChanged);
+        connect(
+            buttonControls_,
+            &BluetoothButtonControlManager::effectiveStateChanged,
+            this,
+            &BluetoothDeviceListModel::onButtonPolicyChanged);
+    }
+    if (rowCount() > 0) {
+        emit dataChanged(index(0), index(rowCount() - 1));
+    }
 }
 
 int BluetoothDeviceListModel::rowCount(const QModelIndex& parent) const
@@ -115,6 +142,24 @@ QVariant BluetoothDeviceListModel::data(const QModelIndex& index, int role) cons
         return canReconnect(device);
     case CanCancelOperationRole:
         return canCancelOperation(device);
+    case ButtonPolicyRole:
+        return buttonControls_ != nullptr
+            ? static_cast<int>(buttonControls_->policyForAddress(device.address))
+            : static_cast<int>(DeviceButtonPolicy::Allow);
+    case ButtonPolicyTextRole:
+        return buttonControls_ != nullptr
+            ? deviceButtonPolicyText(buttonControls_->policyForAddress(device.address))
+            : deviceButtonPolicyText(DeviceButtonPolicy::Allow);
+    case CanControlButtonsRole:
+        return buttonControls_ != nullptr && buttonControls_->canControlButtonsForAddress(device.address);
+    case ButtonEffectiveStateRole:
+        return buttonControls_ != nullptr
+            ? static_cast<int>(buttonControls_->effectiveStateForAddress(device.address))
+            : static_cast<int>(DeviceButtonEffectiveState::Allowed);
+    case ButtonEffectiveStatusRole:
+        return buttonControls_ != nullptr
+            ? buttonControls_->effectiveStatusTextForAddress(device.address)
+            : deviceButtonEffectiveStateText(DeviceButtonEffectiveState::Allowed);
     default:
         return {};
     }
@@ -158,6 +203,11 @@ QHash<int, QByteArray> BluetoothDeviceListModel::roleNames() const
         {CanForgetRole, "canForget"},
         {CanReconnectRole, "canReconnect"},
         {CanCancelOperationRole, "canCancelOperation"},
+        {ButtonPolicyRole, "buttonPolicy"},
+        {ButtonPolicyTextRole, "buttonPolicyText"},
+        {CanControlButtonsRole, "canControlButtons"},
+        {ButtonEffectiveStateRole, "buttonEffectiveState"},
+        {ButtonEffectiveStatusRole, "buttonEffectiveStatus"},
     };
 }
 
@@ -192,6 +242,27 @@ void BluetoothDeviceListModel::onDeviceAboutToBeRemoved(int index, const QString
 void BluetoothDeviceListModel::onDeviceRemoved(int, const QString&)
 {
     endRemoveRows();
+}
+
+void BluetoothDeviceListModel::onButtonPolicyChanged(const QString& address)
+{
+    if (registry_ == nullptr || address.isEmpty()) {
+        return;
+    }
+    for (int row = 0; row < registry_->count(); ++row) {
+        if (!BluetoothButtonControlManager::addressesMatch(registry_->at(row).address, address)) {
+            continue;
+        }
+        const QModelIndex modelIndex = index(row);
+        emit dataChanged(
+            modelIndex,
+            modelIndex,
+            {ButtonPolicyRole,
+             ButtonPolicyTextRole,
+             CanControlButtonsRole,
+             ButtonEffectiveStateRole,
+             ButtonEffectiveStatusRole});
+    }
 }
 
 } // namespace auralis::bluetooth

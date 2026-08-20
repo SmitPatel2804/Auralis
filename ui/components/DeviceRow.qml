@@ -29,6 +29,9 @@ Column {
     property bool canCancelOperation: false
     property var uuids: []
     property string audioStatus: ""
+    property string buttonPolicyText: "ALLOW"
+    property bool canControlButtons: false
+    property string buttonEffectiveStatus: ""
 
     signal pairRequested()
     signal cancelPairingRequested()
@@ -40,6 +43,7 @@ Column {
     signal forgetRequested()
     signal reconnectRequested()
     signal showServicesRequested()
+    signal buttonPolicyToggled(bool disallow)
 
     spacing: 6
 
@@ -87,6 +91,30 @@ Column {
         text: "Audio: " + root.audioStatus
         font.pixelSize: 12
         color: root.audioStatus === "Available" ? Theme.success : Theme.accent
+    }
+
+    RowLayout {
+        width: parent.width
+        spacing: 8
+        Text {
+            text: qsTr("Device buttons: %1").arg(root.buttonPolicyText)
+            font.pixelSize: 12
+            color: Theme.textMuted
+            Layout.fillWidth: true
+        }
+        Button {
+            text: root.buttonPolicyText === "DISALLOW" ? qsTr("Allow") : qsTr("Disallow")
+            onClicked: root.buttonPolicyToggled(root.buttonPolicyText !== "DISALLOW")
+        }
+    }
+
+    Text {
+        visible: root.buttonPolicyText === "DISALLOW" && root.buttonEffectiveStatus.length > 0
+        text: root.buttonEffectiveStatus
+        font.pixelSize: 11
+        color: Theme.textMuted
+        wrapMode: Text.WordWrap
+        width: parent.width
     }
 
     Text {

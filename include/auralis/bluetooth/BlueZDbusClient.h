@@ -51,10 +51,21 @@ public:
     void pollSystemBusHealthForTesting();
     /// Deliver a GetManagedObjects completion for a captured attach generation.
     void injectSnapshotFinishedForTesting(quint64 generation, const QVariantMap& objects, bool error = false);
+    void injectPairDeviceFinishedForTesting(
+        quint64 generation,
+        const QString& devicePath,
+        bool ok,
+        const QString& errorName = {},
+        const QString& errorMessage = {});
+    void injectInterfacesAddedForTesting(
+        quint64 generation,
+        const QString& objectPath,
+        const QVariantMap& interfaces);
     void setBlueZAvailableForTesting(bool available);
     int busAttachGenerationForTesting() const noexcept;
     bool busHealthTimerActiveForTesting() const noexcept;
     bool snapshotInFlightForTesting() const noexcept;
+    bool isolateFromHostBusForTesting() const noexcept;
 
 private slots:
     void onBlueZRegistered(const QString& serviceName);
@@ -71,6 +82,8 @@ private slots:
 
 private:
     bool probeSystemBusConnected() const;
+    bool isolateFromHostBus() const noexcept;
+    bool acceptGeneration(quint64 generation) const noexcept;
     void subscribeToSignals();
     void unsubscribeFromSignals();
     void setBlueZAvailable(bool available);
@@ -96,6 +109,7 @@ private:
     bool pendingSnapshotRefresh_ = false;
     quint64 busAttachGeneration_ = 0;
     quint64 snapshotInFlightGeneration_ = 0;
+    quint64 signalSubscriptionGeneration_ = 0;
     std::optional<bool> systemBusConnectedOverride_;
 };
 

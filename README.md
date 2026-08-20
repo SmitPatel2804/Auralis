@@ -63,7 +63,7 @@ If no display server is available:
 QT_QPA_PLATFORM=offscreen ./build/apps/desktop/auralis-desktop
 ```
 
-In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, and per-device **Pair / Trust / Connect / Disconnect / Reconnect / Forget** actions. Pairing prompts appear when BlueZ invokes the exported Agent1.
+In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, and per-device **Pair / Trust / Connect / Disconnect / Reconnect / Forget** actions. Pairing prompts appear when BlueZ invokes the exported Agent1. Each device row also has **Device buttons: ALLOW | DISALLOW** (default ALLOW). DISALLOW suppresses that device’s consumer-control/media keys via an exclusive evdev grab when Linux exposes an input node matched to the Bluetooth address; otherwise the UI reports that button control is unsupported on the transport. Audio (A2DP) and routing are unaffected. See `docs/BLUETOOTH_BUTTON_EVENT_PATH.md`. If `/dev/input` open fails, grant session access with a udev `uaccess` rule rather than running as root.
 
 The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 

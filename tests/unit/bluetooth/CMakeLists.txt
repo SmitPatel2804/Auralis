@@ -31,3 +31,6 @@ target_link_libraries(tst_ReconnectPolicy PRIVATE auralis-bluetooth)
 
 auralis_add_test(tst_BlueZDbusClientBusRecovery tst_BlueZDbusClientBusRecovery.cpp)
 target_link_libraries(tst_BlueZDbusClientBusRecovery PRIVATE auralis-bluetooth)
+
+auralis_add_test(tst_BluetoothButtonControlManager tst_BluetoothButtonControlManager.cpp)
+target_link_libraries(tst_BluetoothButtonControlManager PRIVATE auralis-bluetooth)

@@ -135,6 +135,9 @@ Item {
                         required property bool canReconnect
                         required property bool canCancelOperation
                         required property var uuids
+                        required property string buttonPolicyText
+                        required property bool canControlButtons
+                        required property string buttonEffectiveStatus
 
                         readonly property string audioStatus: audio && root.audioGraphRevision >= 0
                             ? audio.audioStatusForDevice(objectPath) : ""
@@ -179,6 +182,9 @@ Item {
                             canCancelOperation: wrap.canCancelOperation
                             uuids: wrap.uuids
                             audioStatus: wrap.audioStatus
+                            buttonPolicyText: wrap.buttonPolicyText
+                            canControlButtons: wrap.canControlButtons
+                            buttonEffectiveStatus: wrap.buttonEffectiveStatus
 
                             onPairRequested: root.bluetooth.pairDevice(wrap.objectPath)
                             onCancelPairingRequested: root.bluetooth.cancelPairing(wrap.objectPath)
@@ -188,6 +194,9 @@ Item {
                             onConnectRequested: root.bluetooth.connectDevice(wrap.objectPath)
                             onDisconnectRequested: root.bluetooth.disconnectDevice(wrap.objectPath)
                             onReconnectRequested: root.bluetooth.reconnectDevice(wrap.objectPath)
+                            onButtonPolicyToggled: function(disallow) {
+                                root.bluetooth.setDeviceButtonPolicy(wrap.objectPath, disallow)
+                            }
                             onForgetRequested: {
                                 forgetDialog.devicePath = wrap.objectPath
                                 forgetDialog.deviceName = wrap.displayName
@@ -282,6 +291,15 @@ Item {
                                 visible: !!audio
                                 label: qsTr("Audio")
                                 value: audio ? audio.audioStatusForDevice(root.selectedPath) : ""
+                            }
+                            KeyValueRow {
+                                label: qsTr("Device buttons")
+                                value: details.buttonPolicy || qsTr("ALLOW")
+                            }
+                            KeyValueRow {
+                                visible: details.buttonPolicy === "DISALLOW"
+                                label: qsTr("Button control")
+                                value: details.buttonEffectiveStatus || qsTr("Unknown")
                             }
                             Label { text: qsTr("Services"); color: Theme.text; font.bold: true }
                             Repeater {

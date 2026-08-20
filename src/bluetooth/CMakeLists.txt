@@ -3,6 +3,7 @@ add_library(auralis-bluetooth
     BlueZAgent.cpp
     BlueZAgentAdaptor.cpp
     BluetoothDeviceListModel.cpp
+    BluetoothButtonControlManager.cpp
     BluetoothDbusError.cpp
     BluetoothError.cpp
     BluetoothManager.cpp
@@ -21,6 +22,8 @@ add_library(auralis-bluetooth
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgent.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgentAdaptor.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothDeviceListModel.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothButtonControlManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceButtonPolicy.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZDbusClient.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceLifecycleManager.h"

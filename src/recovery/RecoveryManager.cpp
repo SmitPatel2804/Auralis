@@ -408,7 +408,9 @@ void RecoveryManager::runReconcile()
     status_.overall = RecoveryState::Reconciling;
     emitStatus();
 
-    if (hooks_.refreshActiveSession) {
+    const bool dependenciesReady = systemBusConnected_ && blueZAvailable_ && pipeWireConnected_
+        && pipeWireGraphReady_;
+    if (dependenciesReady && hooks_.refreshActiveSession) {
         hooks_.refreshActiveSession();
     }
 

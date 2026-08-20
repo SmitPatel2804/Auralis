@@ -8,6 +8,8 @@
 
 namespace auralis::bluetooth {
 
+class BluetoothButtonControlManager;
+
 class BluetoothDeviceListModel final : public QAbstractListModel {
     Q_OBJECT
 
@@ -47,10 +49,16 @@ public:
         CanDisconnectRole,
         CanForgetRole,
         CanReconnectRole,
-        CanCancelOperationRole
+        CanCancelOperationRole,
+        ButtonPolicyRole,
+        ButtonPolicyTextRole,
+        CanControlButtonsRole,
+        ButtonEffectiveStateRole,
+        ButtonEffectiveStatusRole
     };
 
     explicit BluetoothDeviceListModel(DeviceRegistry* registry, QObject* parent = nullptr);
+    void setButtonControlManager(BluetoothButtonControlManager* manager);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
@@ -62,8 +70,10 @@ private:
     void onDeviceUpdated(int index, const QList<int>& roles);
     void onDeviceAboutToBeRemoved(int index, const QString& objectPath);
     void onDeviceRemoved(int index, const QString& objectPath);
+    void onButtonPolicyChanged(const QString& address);
 
     DeviceRegistry* registry_ = nullptr;
+    BluetoothButtonControlManager* buttonControls_ = nullptr;
 };
 
 } // namespace auralis::bluetooth

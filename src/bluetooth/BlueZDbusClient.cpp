@@ -336,6 +336,22 @@ bool BlueZDbusClient::probeSystemBusConnected() const
     return QDBusConnection::systemBus().isConnected();
 }
 
+bool BlueZDbusClient::isolateFromHostBus() const noexcept
+{
+    // Override mode must never create live watchers/subscriptions against host BlueZ.
+    return systemBusConnectedOverride_.has_value();
+}
+
+bool BlueZDbusClient::acceptGeneration(quint64 generation) const noexcept
+{
+    return initialized_ && generation == busAttachGeneration_;
+}
+
+bool BlueZDbusClient::isolateFromHostBusForTesting() const noexcept
+{
+    return isolateFromHostBus();
+}
+
 void BlueZDbusClient::detachSystemBusInfrastructure()
 {
     snapshotInFlight_ = false;
@@ -350,26 +366,18 @@ void BlueZDbusClient::detachSystemBusInfrastructure()
 
 bool BlueZDbusClient::attachSystemBusInfrastructure()
 {
-    connection_ = QDBusConnection::systemBus();
-    if (!probeSystemBusConnected() && !systemBusConnectedOverride_.has_value()) {
-        if (!connection_.isConnected()) {
-            return false;
-        }
-    }
     if (systemBusConnectedOverride_.has_value() && !*systemBusConnectedOverride_) {
-        return false;
-    }
-    if (!systemBusConnectedOverride_.has_value() && !connection_.isConnected()) {
         return false;
     }
 
     ++busAttachGeneration_;
     detachSystemBusInfrastructure();
 
-    // When probing via override without a live bus, still advance generation/state machine.
-    if (systemBusConnectedOverride_.has_value() && *systemBusConnectedOverride_
-        && !QDBusConnection::systemBus().isConnected()) {
-        return true;
+    if (isolateFromHostBus()) {
+        // Isolated FSM advance only — no host QDBusServiceWatcher / BlueZ subscriptions.
+        // Still advance the signal epoch so generation fencing can be tested without host I/O.
+        signalSubscriptionGeneration_ = busAttachGeneration_;
+        return *systemBusConnectedOverride_;
     }
 
     connection_ = QDBusConnection::systemBus();
@@ -453,6 +461,30 @@ void BlueZDbusClient::injectSnapshotFinishedForTesting(quint64 generation, const
         error ? QStringLiteral("injected") : QString());
 }
 
+void BlueZDbusClient::injectPairDeviceFinishedForTesting(
+    quint64 generation,
+    const QString& devicePath,
+    bool ok,
+    const QString& errorName,
+    const QString& errorMessage)
+{
+    if (!acceptGeneration(generation)) {
+        return;
+    }
+    emit pairDeviceFinished(devicePath, ok, errorName, errorMessage);
+}
+
+void BlueZDbusClient::injectInterfacesAddedForTesting(
+    quint64 generation,
+    const QString& objectPath,
+    const QVariantMap& interfaces)
+{
+    if (!acceptGeneration(generation) || generation != signalSubscriptionGeneration_) {
+        return;
+    }
+    emit interfacesAdded(objectPath, interfaces);
+}
+
 void BlueZDbusClient::setBlueZAvailableForTesting(bool available)
 {
     setBlueZAvailable(available);
@@ -475,7 +507,7 @@ bool BlueZDbusClient::snapshotInFlightForTesting() const noexcept
 
 void BlueZDbusClient::subscribeToSignals()
 {
-    if (signalsSubscribed_ || !connection_.isConnected()) {
+    if (signalsSubscribed_ || isolateFromHostBus() || !connection_.isConnected()) {
         return;
     }
 
@@ -510,12 +542,18 @@ void BlueZDbusClient::subscribeToSignals()
         qCWarning(auralisBluetooth) << "Failed to subscribe to PropertiesChanged";
     }
     signalsSubscribed_ = true;
+    signalSubscriptionGeneration_ = busAttachGeneration_;
 }
 
 void BlueZDbusClient::unsubscribeFromSignals()
 {
-    if (!signalsSubscribed_ || !connection_.isConnected()) {
+    if (!signalsSubscribed_) {
+        signalSubscriptionGeneration_ = 0;
+        return;
+    }
+    if (!connection_.isConnected()) {
         signalsSubscribed_ = false;
+        signalSubscriptionGeneration_ = 0;
         return;
     }
 
@@ -541,6 +579,7 @@ void BlueZDbusClient::unsubscribeFromSignals()
         this,
         SLOT(onPropertiesChanged(QString,QVariantMap,QStringList,QDBusMessage)));
     signalsSubscribed_ = false;
+    signalSubscriptionGeneration_ = 0;
 }
 
 bool BlueZDbusClient::initialize()
@@ -633,8 +672,8 @@ void BlueZDbusClient::issueSnapshotCall()
     snapshotInFlightGeneration_ = busAttachGeneration_;
     pendingSnapshotRefresh_ = false;
 
-    // Override-only environments exercise coalesce/generation without a live GetManagedObjects.
-    if (systemBusConnectedOverride_.has_value() && !QDBusConnection::systemBus().isConnected()) {
+    // Isolated / override environments exercise coalesce/generation without live GetManagedObjects.
+    if (isolateFromHostBus()) {
         qCInfo(auralisBluetooth) << "BlueZSnapshotRequested generation=" << snapshotInFlightGeneration_;
         return;
     }
@@ -657,11 +696,13 @@ void BlueZDbusClient::finishSnapshot(
     const QString& name,
     const QString& message)
 {
-    if (!initialized_ || generation != busAttachGeneration_) {
+    if (!acceptGeneration(generation)) {
         return;
     }
 
-    snapshotInFlight_ = false;
+    if (snapshotInFlight_ && generation == snapshotInFlightGeneration_) {
+        snapshotInFlight_ = false;
+    }
     if (error) {
         qCWarning(auralisBluetooth) << "BlueZSnapshotFailed" << name << message;
         emit snapshotFailed(name, message);
@@ -670,7 +711,7 @@ void BlueZDbusClient::finishSnapshot(
         emit snapshotReceived(objects);
     }
 
-    if (pendingSnapshotRefresh_ && initialized_ && blueZAvailable_ && generation == busAttachGeneration_) {
+    if (pendingSnapshotRefresh_ && acceptGeneration(generation) && blueZAvailable_) {
         pendingSnapshotRefresh_ = false;
         issueSnapshotCall();
     }
@@ -680,8 +721,11 @@ void BlueZDbusClient::onGetManagedObjectsFinished(QDBusPendingCallWatcher* watch
 {
     watcher->deleteLater();
     const quint64 generation = watcher->property("busAttachGeneration").toULongLong();
-    if (!initialized_ || generation != busAttachGeneration_) {
-        snapshotInFlight_ = false;
+    if (!acceptGeneration(generation)) {
+        // Do not clear a newer in-flight snapshot's bookkeeping.
+        if (snapshotInFlight_ && generation == snapshotInFlightGeneration_) {
+            snapshotInFlight_ = false;
+        }
         return;
     }
 
@@ -700,7 +744,7 @@ void BlueZDbusClient::onGetManagedObjectsFinished(QDBusPendingCallWatcher* watch
 
 void BlueZDbusClient::startDiscovery(const QString& adapterPath)
 {
-    if (!connection_.isConnected() || adapterPath.isEmpty()) {
+    if (!connection_.isConnected() || adapterPath.isEmpty() || isolateFromHostBus()) {
         emit startDiscoveryFinished(
             adapterPath,
             false,
@@ -709,15 +753,19 @@ void BlueZDbusClient::startDiscovery(const QString& adapterPath)
         return;
     }
 
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         adapterPath,
         bluez::kAdapterInterface.toString(),
         bluez::kMethodStartDiscovery.toString());
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         if (reply.isError()) {
             emit startDiscoveryFinished(adapterPath, false, reply.error().name(), reply.error().message());
             return;
@@ -728,7 +776,7 @@ void BlueZDbusClient::startDiscovery(const QString& adapterPath)
 
 void BlueZDbusClient::stopDiscovery(const QString& adapterPath)
 {
-    if (!connection_.isConnected() || adapterPath.isEmpty()) {
+    if (!connection_.isConnected() || adapterPath.isEmpty() || isolateFromHostBus()) {
         emit stopDiscoveryFinished(
             adapterPath,
             false,
@@ -737,15 +785,19 @@ void BlueZDbusClient::stopDiscovery(const QString& adapterPath)
         return;
     }
 
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         adapterPath,
         bluez::kAdapterInterface.toString(),
         bluez::kMethodStopDiscovery.toString());
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         if (reply.isError()) {
             emit stopDiscoveryFinished(adapterPath, false, reply.error().name(), reply.error().message());
             return;
@@ -756,6 +808,9 @@ void BlueZDbusClient::stopDiscovery(const QString& adapterPath)
 
 void BlueZDbusClient::onInterfacesAdded(const QDBusObjectPath& objectPath, const QDBusMessage& message)
 {
+    if (!acceptGeneration(signalSubscriptionGeneration_) || !signalsSubscribed_) {
+        return;
+    }
     if (message.arguments().size() < 2) {
         qCWarning(auralisBluetooth) << "MalformedDbusPayload" << "signal=InterfacesAdded"
                                     << "path=" << objectPath.path();
@@ -772,6 +827,9 @@ void BlueZDbusClient::onInterfacesAdded(const QDBusObjectPath& objectPath, const
 
 void BlueZDbusClient::onInterfacesRemoved(const QDBusObjectPath& objectPath, const QStringList& interfaces)
 {
+    if (!acceptGeneration(signalSubscriptionGeneration_) || !signalsSubscribed_) {
+        return;
+    }
     emit interfacesRemoved(objectPath.path(), interfaces);
 }
 
@@ -781,6 +839,9 @@ void BlueZDbusClient::onPropertiesChanged(
     const QStringList& invalidated,
     const QDBusMessage& message)
 {
+    if (!acceptGeneration(signalSubscriptionGeneration_) || !signalsSubscribed_) {
+        return;
+    }
     if (interfaceName != bluez::kAdapterInterface.toString()
         && interfaceName != bluez::kDeviceInterface.toString()) {
         return;
@@ -790,74 +851,91 @@ void BlueZDbusClient::onPropertiesChanged(
 
 void BlueZDbusClient::pairDevice(const QString& devicePath)
 {
-    if (!connection_.isConnected() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit pairDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodPair.toString());
     auto* watcher = watchCall(connection_, message, kPairMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit pairDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::cancelPairing(const QString& devicePath)
 {
-    if (!connection_.isConnected() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit cancelPairingFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodCancelPairing.toString());
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit cancelPairingFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::connectDevice(const QString& devicePath)
 {
-    if (!connection_.isConnected() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit connectDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodConnect.toString());
     auto* watcher = watchCall(connection_, message, kConnectMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit connectDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::disconnectDevice(const QString& devicePath)
 {
-    if (!connection_.isConnected() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit disconnectDeviceFinished(devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(), devicePath, bluez::kDeviceInterface.toString(), bluez::kMethodDisconnect.toString());
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit disconnectDeviceFinished(devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::setDeviceTrusted(const QString& devicePath, bool trusted)
 {
-    if (!connection_.isConnected() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit setDeviceTrustedFinished(devicePath, trusted, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         devicePath,
@@ -865,19 +943,23 @@ void BlueZDbusClient::setDeviceTrusted(const QString& devicePath, bool trusted)
         bluez::kMethodSet.toString());
     message << bluez::kDeviceInterface.toString() << bluez::kPropTrusted.toString() << QVariant::fromValue(QDBusVariant(trusted));
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, trusted](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, devicePath, trusted, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit setDeviceTrustedFinished(devicePath, trusted, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::removeDevice(const QString& adapterPath, const QString& devicePath)
 {
-    if (!connection_.isConnected() || adapterPath.isEmpty() || devicePath.isEmpty()) {
+    if (!connection_.isConnected() || adapterPath.isEmpty() || devicePath.isEmpty() || isolateFromHostBus()) {
         emit removeDeviceFinished(adapterPath, devicePath, false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         adapterPath,
@@ -885,19 +967,23 @@ void BlueZDbusClient::removeDevice(const QString& adapterPath, const QString& de
         bluez::kMethodRemoveDevice.toString());
     message << QVariant::fromValue(QDBusObjectPath(devicePath));
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, devicePath](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, adapterPath, devicePath, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit removeDeviceFinished(adapterPath, devicePath, !reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
 }
 
 void BlueZDbusClient::registerAgent(const QString& agentPath, const QString& capability)
 {
-    if (!connection_.isConnected()) {
+    if (!connection_.isConnected() || isolateFromHostBus()) {
         emit registerAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         bluez::kAgentManagerPath.toString(),
@@ -905,9 +991,12 @@ void BlueZDbusClient::registerAgent(const QString& agentPath, const QString& cap
         bluez::kMethodRegisterAgent.toString());
     message << QVariant::fromValue(QDBusObjectPath(agentPath)) << capability;
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         agentRegistered_ = !reply.isError();
         emit registerAgentFinished(!reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });
@@ -915,10 +1004,11 @@ void BlueZDbusClient::registerAgent(const QString& agentPath, const QString& cap
 
 void BlueZDbusClient::requestDefaultAgent(const QString& agentPath)
 {
-    if (!connection_.isConnected()) {
+    if (!connection_.isConnected() || isolateFromHostBus()) {
         emit requestDefaultAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         bluez::kAgentManagerPath.toString(),
@@ -926,9 +1016,12 @@ void BlueZDbusClient::requestDefaultAgent(const QString& agentPath)
         bluez::kMethodRequestDefaultAgent.toString());
     message << QVariant::fromValue(QDBusObjectPath(agentPath));
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         emit requestDefaultAgentFinished(
             !reply.isError(),
             reply.isError() ? reply.error().name() : QString(),
@@ -938,11 +1031,12 @@ void BlueZDbusClient::requestDefaultAgent(const QString& agentPath)
 
 void BlueZDbusClient::unregisterAgent(const QString& agentPath)
 {
-    if (!connection_.isConnected()) {
+    if (!connection_.isConnected() || isolateFromHostBus()) {
         agentRegistered_ = false;
         emit unregisterAgentFinished(false, QStringLiteral("org.freedesktop.DBus.Error.Disconnected"), {});
         return;
     }
+    const quint64 generation = busAttachGeneration_;
     QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         bluez::kAgentManagerPath.toString(),
@@ -950,9 +1044,12 @@ void BlueZDbusClient::unregisterAgent(const QString& agentPath)
         bluez::kMethodUnregisterAgent.toString());
     message << QVariant::fromValue(QDBusObjectPath(agentPath));
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* call) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, generation](QDBusPendingCallWatcher* call) {
         const QDBusPendingReply<> reply = *call;
         call->deleteLater();
+        if (!acceptGeneration(generation)) {
+            return;
+        }
         agentRegistered_ = false;
         emit unregisterAgentFinished(!reply.isError(), reply.isError() ? reply.error().name() : QString(), reply.isError() ? reply.error().message() : QString());
     });

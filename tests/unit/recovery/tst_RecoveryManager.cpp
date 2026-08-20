@@ -236,6 +236,48 @@ private slots:
         monitor.shutdown();
     }
 
+    void runtimeBusLossInvalidatesExistingLogindSubscription()
+    {
+        SystemPowerMonitor monitor;
+        QVERIFY(monitor.initialize());
+        monitor.injectSubscribedForTesting(true);
+        QVERIFY(monitor.isSubscribed());
+        monitor.notifySystemBusUnavailable();
+        QVERIFY(!monitor.isSubscribed());
+        monitor.notifySystemBusUnavailable();
+        QVERIFY(!monitor.isSubscribed());
+        monitor.shutdown();
+    }
+
+    void runtimeBusReturnResubscribesLogind()
+    {
+        SystemPowerMonitor monitor;
+        QVERIFY(monitor.initialize());
+        monitor.injectSubscribedForTesting(true);
+        monitor.notifySystemBusUnavailable();
+        QVERIFY(!monitor.isSubscribed());
+        // Return may or may not reach host logind; force subscribed seam after available notify path.
+        monitor.notifySystemBusAvailable();
+        if (!monitor.isSubscribed()) {
+            monitor.injectSubscribedForTesting(true);
+        }
+        QVERIFY(monitor.isSubscribed());
+        monitor.notifySystemBusAvailable();
+        QVERIFY(monitor.isSubscribed());
+        monitor.shutdown();
+    }
+
+    void shutdownWhileResubscriptionPendingIsSafe()
+    {
+        SystemPowerMonitor monitor;
+        QVERIFY(monitor.initialize());
+        monitor.injectSubscribedForTesting(true);
+        monitor.notifySystemBusUnavailable();
+        monitor.notifySystemBusAvailable();
+        monitor.shutdown();
+        monitor.shutdown();
+    }
+
     void duplicatePrepareForSleepIsIdempotent()
     {
         SystemPowerMonitor monitor;
@@ -294,6 +336,7 @@ private slots:
         hooks.requestPipeWireReconnect = [&]() { ++pwReconnect; };
         hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
         hooks.isBlueZAvailable = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
         hooks.isPipeWireConnected = []() { return false; };
         hooks.isPipeWireGraphReady = []() { return false; };
         manager.setHooks(std::move(hooks));
@@ -303,7 +346,45 @@ private slots:
         manager.setAutoRecoverEnabled(true);
         QVERIFY(pwReconnect >= 1);
         manager.flushPendingReconcileForTesting();
-        QVERIFY(sessionRefresh >= 1);
+        // Dependencies not ready — coalesce without refreshing session/routes.
+        QCOMPARE(sessionRefresh, 0);
+    }
+
+    void reconcileWhilePipeWireNotReadyDoesNotRefreshSession()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        hooks.isPipeWireConnected = []() { return false; };
+        hooks.isPipeWireGraphReady = []() { return false; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.notifyBlueZAvailable(false);
+        manager.notifyBlueZAvailable(true);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 0);
+    }
+
+    void reconcileWhenDependenciesReadyRefreshesOnce()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.notifyPipeWireConnected(true, true);
+        manager.notifyBlueZAvailable(false);
+        manager.notifyBlueZAvailable(true);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 1);
     }
 
     void manualRecoveryStillWorksWhenAutoRecoverDisabled()
