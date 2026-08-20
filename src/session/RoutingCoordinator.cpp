@@ -207,7 +207,7 @@ bool RoutingCoordinator::memberConnected(const QString& deviceId) const
     }
     const QString normalized = deviceId.trimmed().toUpper();
     for (const auralis::bluetooth::BluetoothDeviceData& device : devices_->devices()) {
-        if (device.address.trimmed().toUpper() == normalized) {
+        if (device.address.trimmed().toUpper() == normalized || device.objectPath.toUpper() == normalized) {
             return device.connected;
         }
     }

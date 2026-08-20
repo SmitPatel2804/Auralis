@@ -61,6 +61,61 @@ bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
     return predicate();
 }
 
+bool bluetoothSinksHaveInputPorts()
+{
+    QProcess probe;
+    probe.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral(
+        "import json,subprocess,sys\n"
+        "need={'88:08:94:9D:B4:22','EE:D0:0D:A4:1D:DA'}\n"
+        "objs=json.loads(subprocess.check_output(['pw-dump'],text=True))\n"
+        "ok=set()\n"
+        "for o in objs:\n"
+        " info=o.get('info') or {}\n"
+        " p=info.get('props') or {}\n"
+        " addr=(p.get('api.bluez5.address') or '').upper()\n"
+        " if addr in need and int(info.get('n-input-ports') or info.get('n_input_ports') or 0)>=1:\n"
+        "  ok.add(addr)\n"
+        "sys.exit(0 if ok==need else 1)\n")});
+    if (!probe.waitForFinished(8000)) {
+        probe.kill();
+        return false;
+    }
+    return probe.exitCode() == 0;
+}
+
+void printLatencySnapshot()
+{
+    std::fprintf(stderr,
+                 "Latency snapshot (graph clock.quantum=1024 @ 48kHz = 21.3ms; AAC A2DP advertised ~189ms):\n");
+    QProcess dump;
+    dump.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral(
+        "import json,subprocess\n"
+        "objs=json.loads(subprocess.check_output(['pw-dump'],text=True))\n"
+        "for o in objs:\n"
+        " info=o.get('info') or {}\n"
+        " p=info.get('props') or {}\n"
+        " name=p.get('node.name','')\n"
+        " if 'pw-play' not in name and 'bluez_output' not in name:\n"
+        "  continue\n"
+        " ns=None\n"
+        " lat=info.get('params',{}).get('Latency')\n"
+        " if isinstance(lat,list):\n"
+        "  for e in lat:\n"
+        "   if e.get('direction')=='Input' and e.get('minNs'): ns=e.get('minNs')\n"
+        " print(f\"  {name} node.latency={p.get('node.latency')} codec={p.get('api.bluez5.codec')} "
+        "advertised_in_ms={(ns/1e6) if ns else None}\")\n")});
+    if (!dump.waitForFinished(8000)) {
+        dump.kill();
+        std::fprintf(stderr, "  (pw-dump snapshot timed out)\n");
+        return;
+    }
+    std::fprintf(stderr, "%s", dump.readAllStandardOutput().constData());
+    const QByteArray err = dump.readAllStandardError();
+    if (!err.isEmpty()) {
+        std::fprintf(stderr, "%s", err.constData());
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -133,12 +188,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (!waitUntil([]() { return bluetoothSinksHaveInputPorts(); }, 20000)) {
+        std::fprintf(stderr, "Bluetooth sinks mapped but A2DP input ports were not ready\n");
+        return 1;
+    }
+
     QProcess player;
     player.setProcessChannelMode(QProcess::ForwardedErrorChannel);
     player.start(
         QStringLiteral("bash"),
         {QStringLiteral("-lc"),
-         QStringLiteral("for i in 1 2 3 4 5; do pw-play --target 0 --volume 1.0 '%1'; done").arg(kSound)});
+         QStringLiteral("for i in 1 2 3 4 5; do pw-play --target 0 --latency 21ms --volume 1.0 '%1'; done").arg(kSound)});
     if (!player.waitForStarted(3000)) {
         std::fprintf(stderr, "Failed to start pw-play\n");
         return 1;
@@ -218,6 +278,15 @@ int main(int argc, char** argv)
 
     std::fprintf(stderr, "Playing freedesktop alarm on BOTH headsets for ~10s. Listen now.\n");
     std::fflush(stderr);
+
+    QElapsedTimer playTimer;
+    playTimer.start();
+    while (playTimer.elapsed() < 1500) {
+        QCoreApplication::processEvents();
+        QThread::msleep(40);
+    }
+    printLatencySnapshot();
+
     player.waitForFinished(12000);
     sessions.deactivateSession(sessionId);
     if (player.state() != QProcess::NotRunning) {

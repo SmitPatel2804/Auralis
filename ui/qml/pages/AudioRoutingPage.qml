@@ -99,8 +99,8 @@ Flickable {
                     Label { text: qsTr("%1 destinations").arg(destinationCount); color: Theme.textMuted }
                     Label { visible: errorText.length > 0; text: errorText; color: Theme.danger; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
-                        Button { text: qsTr("Activate"); enabled: editable; onClicked: router.activateRoute(routeId) }
-                        Button { text: qsTr("Deactivate"); enabled: editable; onClicked: router.deactivateRoute(routeId) }
+                        Button { text: qsTr("Activate"); enabled: editable; onClicked: root.router.activateRoute(routeId) }
+                        Button { text: qsTr("Deactivate"); enabled: editable; onClicked: root.router.deactivateRoute(routeId) }
                     }
                 }
             }

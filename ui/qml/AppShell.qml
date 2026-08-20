@@ -89,12 +89,12 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: AppCore.currentPage
-                DashboardPage {}
-                DevicesPage {}
-                SessionsPage {}
-                AudioRoutingPage {}
-                DiagnosticsPage {}
-                SettingsPage {}
+                DashboardPage { objectName: "pageDashboard" }
+                DevicesPage { objectName: "pageDevices" }
+                SessionsPage { objectName: "pageSessions" }
+                AudioRoutingPage { objectName: "pageAudioRouting" }
+                DiagnosticsPage { objectName: "pageDiagnostics" }
+                SettingsPage { objectName: "pageSettings" }
             }
         }
     }

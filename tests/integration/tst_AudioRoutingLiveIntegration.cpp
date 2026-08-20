@@ -73,6 +73,8 @@ public:
             "auralis-routing-test",
             PW_KEY_NODE_DESCRIPTION,
             "Auralis routing integration tone",
+            PW_KEY_NODE_LATENCY,
+            "1024/48000",
             nullptr);
         stream_ = pw_stream_new(core_, "auralis-routing-test", props);
         if (stream_ == nullptr) {

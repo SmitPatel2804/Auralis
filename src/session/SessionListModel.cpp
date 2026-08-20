@@ -14,11 +14,16 @@ QString deviceDisplayName(SessionManager* manager, const QString& deviceId)
     if (registry == nullptr) {
         return deviceId;
     }
-    const auralis::bluetooth::BluetoothDeviceData* device = registry->findByObjectPath(deviceId);
-    if (device == nullptr) {
-        return deviceId;
+    if (const auralis::bluetooth::BluetoothDeviceData* device = registry->findByObjectPath(deviceId)) {
+        return device->displayName();
     }
-    return device->displayName();
+    const QString normalized = deviceId.trimmed().toUpper();
+    for (const auralis::bluetooth::BluetoothDeviceData& device : registry->devices()) {
+        if (device.address.trimmed().toUpper() == normalized) {
+            return device.displayName();
+        }
+    }
+    return deviceId;
 }
 
 } // namespace
@@ -68,6 +73,14 @@ int SessionListModel::rowCount(const QModelIndex& parent) const
         return 0;
     }
     return ids_.size();
+}
+
+QString SessionListModel::sessionIdAt(int row) const
+{
+    if (row < 0 || row >= ids_.size()) {
+        return {};
+    }
+    return ids_.at(row);
 }
 
 QVariant SessionListModel::data(const QModelIndex& index, int role) const
@@ -236,6 +249,11 @@ void SessionMemberListModel::setSessionId(const QString& sessionId)
     emit sessionIdChanged();
 }
 
+int SessionMemberListModel::count() const
+{
+    return members_.size();
+}
+
 int SessionMemberListModel::rowCount(const QModelIndex& parent) const
 {
     if (parent.isValid()) {
@@ -298,6 +316,7 @@ QHash<int, QByteArray> SessionMemberListModel::roleNames() const
 
 void SessionMemberListModel::reload()
 {
+    const int previous = members_.size();
     beginResetModel();
     members_.clear();
     if (manager_ != nullptr && !sessionId_.isEmpty()) {
@@ -307,6 +326,9 @@ void SessionMemberListModel::reload()
         }
     }
     endResetModel();
+    if (previous != members_.size()) {
+        emit countChanged();
+    }
 }
 
 void SessionMemberListModel::onUpdated(const QString& sessionId)

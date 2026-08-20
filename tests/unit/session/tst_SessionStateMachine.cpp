@@ -96,6 +96,34 @@ private slots:
             == SessionState::Active);
     }
 
+    void recoveringWithNoRoutesFailsWhenNothingRecovering()
+    {
+        SessionHealthSnapshot health;
+        health.sourceAvailable = true;
+        health.enabledCount = 2;
+        health.pendingCount = 2;
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Recovering, SessionIntent::Recovering, health)
+            == SessionState::Failed);
+    }
+
+    void leftoverRouteIdIsNotPendingHealth()
+    {
+        auralis::session::AuralisSession session;
+        session.state = SessionState::Recovering;
+        session.sourceId = QStringLiteral("src:1");
+        auralis::session::SessionDevice device;
+        device.enabled = true;
+        device.runtime.routeId = QStringLiteral("stale");
+        device.runtime.routeRequested = false;
+        device.runtime.routeActive = false;
+        session.devices.push_back(device);
+        const auralis::session::SessionHealthSnapshot health =
+            auralis::session::healthSnapshotFromSession(session, true);
+        QCOMPARE(health.pendingCount, 0);
+        QVERIFY(health.terminalFailure);
+    }
+
     void stoppingBecomesIdleWhenRoutesGone()
     {
         SessionHealthSnapshot health;

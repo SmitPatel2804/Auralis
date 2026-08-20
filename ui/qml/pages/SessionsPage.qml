@@ -9,7 +9,13 @@ Item {
     readonly property var bluetooth: AppCore.bluetooth
     readonly property var router: AppCore.audio ? AppCore.audio.router : null
     readonly property var selected: sessions ? sessions.selectedSession : null
-    property string selectedId: sessions ? sessions.currentSessionId : ""
+    property string selectedId: ""
+    readonly property int memberCount: sessions && sessions.sessionMembers ? sessions.sessionMembers.count : 0
+    readonly property bool canActivate: selected && selected.exists
+        && selected.sourceId.length > 0 && root.memberCount > 0
+    readonly property bool canRetry: selected && selected.exists
+        && (selected.stateLabel === "Failed" || selected.stateLabel === "Degraded")
+    readonly property bool canDeactivate: selected && selected.exists && selected.stateLabel !== "Inactive"
 
     onSelectedIdChanged: {
         if (selected)
@@ -22,6 +28,16 @@ Item {
         if (result !== 0)
             AppCore.notifications.postError(qsTr("Session"), sessions.commandResultText(result))
         return result === 0
+    }
+
+    function ensureSelection() {
+        if (root.selectedId.length > 0 || !sessions || !sessions.sessionList)
+            return
+        if (sessions.sessionList.rowCount() <= 0)
+            return
+        const first = sessions.sessionList.sessionIdAt(0)
+        if (first && String(first).length > 0)
+            root.selectedId = String(first)
     }
 
     ColumnLayout {
@@ -62,7 +78,10 @@ Item {
             Button {
                 text: qsTr("Restore last session")
                 Accessible.name: qsTr("Restore last session")
-                onClicked: report(sessions.restoreLastSession())
+                onClicked: {
+                    if (root.report(sessions.restoreLastSession()))
+                        root.selectedId = sessions.currentSessionId
+                }
             }
             Item { Layout.fillWidth: true }
         }
@@ -78,7 +97,10 @@ Item {
                     anchors.fill: parent
                     clip: true
                     model: sessions ? sessions.sessionList : null
+                    onCountChanged: root.ensureSelection()
+                    Component.onCompleted: root.ensureSelection()
                     delegate: ItemDelegate {
+                        required property int index
                         required property string sessionId
                         required property string name
                         required property string stateLabel
@@ -90,6 +112,10 @@ Item {
                         text: name
                         highlighted: root.selectedId === sessionId
                         onClicked: root.selectedId = sessionId
+                        Component.onCompleted: {
+                            if (index === 0)
+                                root.ensureSelection()
+                        }
                         contentItem: Column {
                             spacing: 2
                             Label { text: name; color: Theme.text; elide: Text.ElideRight; width: parent.width }
@@ -126,26 +152,38 @@ Item {
                         valueRole: "sourceId"
                         currentIndex: selected ? indexOfValue(selected.sourceId) : -1
                         displayText: currentIndex >= 0 ? currentText : qsTr("Select source")
-                        onActivated: report(sessions.setSource(root.selectedId, currentValue))
+                        onActivated: root.report(sessions.setSource(root.selectedId, currentValue))
                     }
                     RowLayout {
-                        Button { text: qsTr("Activate"); onClicked: report(sessions.activateSession(root.selectedId)) }
-                        Button { text: qsTr("Deactivate"); onClicked: report(sessions.deactivateSession(root.selectedId)) }
-                        Button { text: qsTr("Retry"); onClicked: report(sessions.retrySession(root.selectedId)) }
+                        Button {
+                            text: qsTr("Activate")
+                            enabled: root.canActivate
+                            onClicked: root.report(sessions.activateSession(root.selectedId))
+                        }
+                        Button {
+                            text: qsTr("Deactivate")
+                            enabled: root.canDeactivate
+                            onClicked: root.report(sessions.deactivateSession(root.selectedId))
+                        }
+                        Button {
+                            text: qsTr("Retry")
+                            enabled: root.canRetry
+                            onClicked: root.report(sessions.retrySession(root.selectedId))
+                        }
                     }
                     VolumeControl {
                         label: qsTr("Group volume")
                         value: selected ? selected.groupVolume : 1
                         muted: selected ? selected.muted : false
-                        onVolumeCommitted: function(v) { report(sessions.setGroupVolume(root.selectedId, v)) }
-                        onMuteToggled: function(m) { report(sessions.setSessionMuted(root.selectedId, m)) }
+                        onVolumeCommitted: function(v) { root.report(sessions.setGroupVolume(root.selectedId, v)) }
+                        onMuteToggled: function(m) { root.report(sessions.setSessionMuted(root.selectedId, m)) }
                     }
                     ComboBox {
                         id: policyCombo
                         Layout.fillWidth: true
                         model: [ "ReconnectAndRestore", "RestoreRoutesOnly", "None" ]
                         currentIndex: selected ? model.indexOf(selected.recoveryPolicy) : 0
-                        onActivated: report(sessions.setRecoveryPolicy(root.selectedId, currentText))
+                        onActivated: root.report(sessions.setRecoveryPolicy(root.selectedId, currentText))
                     }
 
                     Label { text: qsTr("Members"); color: Theme.text; font.bold: true }
@@ -166,9 +204,9 @@ Item {
                             StatusBadge { label: connected ? qsTr("Connected") : qsTr("Disconnected"); kind: connected ? "connected" : "warning" }
                             Slider {
                                 from: 0; to: 1; value: volume
-                                onPressedChanged: if (!pressed) report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
+                                onPressedChanged: if (!pressed) root.report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
                             }
-                            Button { text: qsTr("Remove"); onClicked: report(sessions.removeDevice(root.selectedId, deviceId)) }
+                            Button { text: qsTr("Remove"); onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId)) }
                         }
                     }
                     ComboBox {
@@ -176,10 +214,15 @@ Item {
                         Layout.fillWidth: true
                         model: bluetooth ? bluetooth.devices : null
                         textRole: "displayName"
-                        valueRole: "objectPath"
+                        valueRole: "address"
                         displayText: qsTr("Add device")
                         onActivated: {
-                            report(sessions.addDevice(root.selectedId, currentValue))
+                            const address = currentValue
+                            if (address === undefined || address === null || String(address).length === 0) {
+                                AppCore.notifications.postError(qsTr("Session"), qsTr("Select a device with a Bluetooth address"))
+                            } else {
+                                root.report(sessions.addDevice(root.selectedId, String(address)))
+                            }
                             currentIndex = -1
                         }
                     }
@@ -221,7 +264,7 @@ Item {
         anchors.centerIn: Overlay.overlay
         TextField { id: renameName; placeholderText: qsTr("New name") }
         onAccepted: {
-            report(sessions.renameSession(root.selectedId, renameName.text))
+            root.report(sessions.renameSession(root.selectedId, renameName.text))
             renameName.text = ""
         }
     }
@@ -232,7 +275,7 @@ Item {
         message: qsTr("Delete the selected session?")
         confirmText: qsTr("Delete")
         onConfirmed: {
-            if (report(sessions.deleteSession(root.selectedId)))
+            if (root.report(sessions.deleteSession(root.selectedId)))
                 root.selectedId = ""
         }
     }

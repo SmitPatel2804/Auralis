@@ -162,6 +162,7 @@ private:
     void installReconnectSuppressions(const AuralisSession& session);
     void removeReconnectSuppressions(const AuralisSession& session);
     void clearStaleMemberErrors(AuralisSession& session);
+    QString canonicalMemberDeviceId(const QString& deviceId) const;
     QString devicePathForAddress(const QString& address) const;
     SessionCommandResult validateVolume(double value) const;
     void setupUiModels();

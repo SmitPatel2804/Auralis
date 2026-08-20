@@ -29,6 +29,7 @@ class BluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(bool canStartScan READ canStartScan NOTIFY scanningChanged)
     Q_PROPERTY(bool canStopScan READ canStopScan NOTIFY scanningChanged)
     Q_PROPERTY(int deviceCount READ deviceCount NOTIFY deviceCountChanged)
+    Q_PROPERTY(int connectedDeviceCount READ connectedDeviceCount NOTIFY connectedDeviceCountChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorTextChanged)
     Q_PROPERTY(QString adapterName READ adapterName NOTIFY adapterChanged)
@@ -89,7 +90,7 @@ public:
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
     Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
-    Q_INVOKABLE int connectedDeviceCount() const;
+    int connectedDeviceCount() const;
     Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
     Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
 
@@ -102,6 +103,7 @@ signals:
     void adapterChanged();
     void scanningChanged();
     void deviceCountChanged();
+    void connectedDeviceCountChanged();
     void statusTextChanged();
     void errorTextChanged();
     void pendingPairingRequestChanged();

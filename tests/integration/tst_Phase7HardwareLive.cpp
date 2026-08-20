@@ -83,6 +83,8 @@ public:
             kAppName,
             PW_KEY_NODE_NAME,
             "auralis-phase7-hw",
+            PW_KEY_NODE_LATENCY,
+            "1024/48000",
             nullptr);
         stream_ = pw_stream_new(core_, "auralis-phase7-hw", props);
         if (stream_ == nullptr) {

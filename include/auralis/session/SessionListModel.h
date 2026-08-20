@@ -43,6 +43,7 @@ public:
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
+    Q_INVOKABLE QString sessionIdAt(int row) const;
 
     void reload();
 
@@ -59,6 +60,7 @@ private:
 class SessionMemberListModel final : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString sessionId READ sessionId WRITE setSessionId NOTIFY sessionIdChanged)
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
     enum Role {
@@ -79,6 +81,7 @@ public:
 
     QString sessionId() const;
     void setSessionId(const QString& sessionId);
+    int count() const;
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
@@ -88,6 +91,7 @@ public:
 
 signals:
     void sessionIdChanged();
+    void countChanged();
 
 private:
     void onUpdated(const QString& sessionId);

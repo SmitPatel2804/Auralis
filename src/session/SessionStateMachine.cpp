@@ -44,10 +44,7 @@ SessionState SessionStateMachine::recompute(
         if (health.routeActiveCount > 0) {
             return SessionState::Degraded;
         }
-        if (health.terminalFailure) {
-            return SessionState::Failed;
-        }
-        return SessionState::Degraded;
+        return SessionState::Failed;
     }
 
     if (current == SessionState::Failed) {

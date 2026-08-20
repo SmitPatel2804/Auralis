@@ -10,6 +10,7 @@
 #include <auralis/audio/VolumeController.h>
 
 #include <QAbstractItemModel>
+#include <QDateTime>
 #include <QHash>
 #include <QObject>
 #include <QPair>
@@ -142,6 +143,7 @@ private:
     QVector<AudioSource> sources_;
     QVector<AudioRoute> routes_;
     QHash<QString, quint64> generations_;
+    QHash<QString, qint64> lastActivateAttemptMs_;
     QHash<QString, QTimer*> activationTimers_;
     int activationTimeoutMs_ = 5000;
     PipeWireConnectionState connectionState_ = PipeWireConnectionState::Stopped;

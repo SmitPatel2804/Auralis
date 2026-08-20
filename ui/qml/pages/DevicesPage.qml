@@ -15,6 +15,7 @@ Item {
         if (!bluetooth || !selectedAvailable)
             return ({})
         bluetooth.deviceCount
+        bluetooth.connectedDeviceCount
         return bluetooth.deviceDetails(selectedPath)
     }
 
@@ -108,6 +109,7 @@ Item {
                     model: bluetooth ? bluetooth.devices : null
                     delegate: Item {
                         id: wrap
+                        objectName: "deviceWrap"
                         required property string objectPath
                         required property string displayName
                         required property string address
@@ -144,9 +146,11 @@ Item {
                         width: ListView.view.width
                         height: matchesQuery && matchesFilter ? row.implicitHeight : 0
                         visible: height > 0
+                        clip: true
 
                         DeviceRow {
                             id: row
+                            objectName: "deviceRow"
                             width: parent.width
                             objectPath: wrap.objectPath
                             displayName: wrap.displayName
@@ -173,36 +177,47 @@ Item {
                             uuids: wrap.uuids
                             audioStatus: wrap.audioStatus
 
-                            onPairRequested: bluetooth.pairDevice(wrap.objectPath)
-                            onCancelPairingRequested: bluetooth.cancelPairing(wrap.objectPath)
-                            onCancelOperationRequested: bluetooth.cancelDeviceOperation(wrap.objectPath)
-                            onTrustRequested: bluetooth.trustDevice(wrap.objectPath)
-                            onUntrustRequested: bluetooth.untrustDevice(wrap.objectPath)
-                            onConnectRequested: bluetooth.connectDevice(wrap.objectPath)
-                            onDisconnectRequested: bluetooth.disconnectDevice(wrap.objectPath)
-                            onReconnectRequested: bluetooth.reconnectDevice(wrap.objectPath)
+                            onPairRequested: root.bluetooth.pairDevice(wrap.objectPath)
+                            onCancelPairingRequested: root.bluetooth.cancelPairing(wrap.objectPath)
+                            onCancelOperationRequested: root.bluetooth.cancelDeviceOperation(wrap.objectPath)
+                            onTrustRequested: root.bluetooth.trustDevice(wrap.objectPath)
+                            onUntrustRequested: root.bluetooth.untrustDevice(wrap.objectPath)
+                            onConnectRequested: root.bluetooth.connectDevice(wrap.objectPath)
+                            onDisconnectRequested: root.bluetooth.disconnectDevice(wrap.objectPath)
+                            onReconnectRequested: root.bluetooth.reconnectDevice(wrap.objectPath)
                             onForgetRequested: {
                                 forgetDialog.devicePath = wrap.objectPath
                                 forgetDialog.deviceName = wrap.displayName
                                 forgetDialog.open()
                             }
                             onShowServicesRequested: root.selectedPath = wrap.objectPath
-                            MouseArea {
-                                anchors.fill: parent
-                                z: -1
-                                onClicked: root.selectedPath = wrap.objectPath
-                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            z: -1
+                            onClicked: root.selectedPath = wrap.objectPath
                         }
                     }
 
                     EmptyState {
                         visible: deviceList.count === 0
+                            || (root.filter === "connected" && bluetooth && bluetooth.connectedDeviceCount === 0)
                         anchors.centerIn: parent
-                        title: bluetooth && !bluetooth.available ? qsTr("Bluetooth unavailable")
-                             : (bluetooth && bluetooth.scanning ? qsTr("Scanning…") : qsTr("No devices yet"))
-                        message: bluetooth && bluetooth.scanning
-                                 ? qsTr("Nearby devices will appear here.")
-                                 : qsTr("Start a scan to discover nearby Bluetooth devices.")
+                        title: {
+                            if (bluetooth && !bluetooth.available)
+                                return qsTr("Bluetooth unavailable")
+                            if (root.filter === "connected" && deviceList.count > 0)
+                                return qsTr("No connected devices")
+                            return bluetooth && bluetooth.scanning ? qsTr("Scanning…") : qsTr("No devices yet")
+                        }
+                        message: {
+                            if (root.filter === "connected" && deviceList.count > 0)
+                                return qsTr("Paired devices appear under All or Known. Connect them from the device row.")
+                            return bluetooth && bluetooth.scanning
+                                ? qsTr("Nearby devices will appear here.")
+                                : qsTr("Start a scan to discover nearby Bluetooth devices.")
+                        }
                     }
                 }
             }
@@ -273,7 +288,7 @@ Item {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WrapAnywhere
                                     color: Theme.textMuted
-                                    text: bluetooth.serviceFriendlyName(modelData) + " · " + modelData
+                                    text: root.bluetooth.serviceFriendlyName(modelData) + " · " + modelData
                                 }
                             }
                             Label {

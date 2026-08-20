@@ -44,6 +44,21 @@ private slots:
         QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceListModel::RssiRole).toInt(), 0);
     }
 
+    void connectedRoleUpdatesWhenDeviceConnects()
+    {
+        DeviceRegistry registry;
+        BluetoothDeviceListModel model(&registry);
+        auto data = device(QStringLiteral("/a"), QStringLiteral("AA:BB:CC:DD:EE:01"), QStringLiteral("Buds"));
+        data.connected = false;
+        registry.upsertDevice(data);
+        QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceListModel::ConnectedRole).toBool(), false);
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        registry.applyPropertyChanges(QStringLiteral("/a"), {{QStringLiteral("Connected"), true}}, {});
+        QCoreApplication::processEvents();
+        QVERIFY(changed.count() >= 1);
+        QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceListModel::ConnectedRole).toBool(), true);
+    }
+
     void displayNameFallback()
     {
         DeviceRegistry registry;

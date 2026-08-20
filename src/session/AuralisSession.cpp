@@ -16,7 +16,7 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
         }
         if (device.runtime.routeActive) {
             ++health.routeActiveCount;
-        } else if (device.runtime.routeRequested || !device.runtime.routeId.isEmpty()) {
+        } else if (device.runtime.routeRequested) {
             ++health.pendingCount;
         }
     }

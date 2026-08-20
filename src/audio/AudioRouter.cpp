@@ -294,6 +294,12 @@ void AudioRouter::activateRoute(const QString& routeId)
     if (route->state == RouteState::Active || route->state == RouteState::Activating) {
         return;
     }
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (route->state == RouteState::Failed
+        && nowMs - lastActivateAttemptMs_.value(routeId, 0) < 250) {
+        return;
+    }
+    lastActivateAttemptMs_.insert(routeId, nowMs);
     if (connectionState_ != PipeWireConnectionState::Connected || !initialSyncComplete_) {
         setError(*route, RouteError::PipeWireDisconnected, QStringLiteral("PipeWire is not connected"));
         setState(*route, RouteState::Failed);

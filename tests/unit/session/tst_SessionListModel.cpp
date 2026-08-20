@@ -38,6 +38,28 @@ private slots:
         QCOMPARE(model->rowCount(), 0);
         QVERIFY(removed.count() >= 1);
     }
+
+    void memberCountNotifiesWhenDeviceAdded()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::session::SessionManager manager(nullptr, nullptr, dir.filePath(QStringLiteral("s.json")));
+        QVERIFY(manager.initialize());
+        const QString id = manager.createSession(QStringLiteral("Members"));
+        QVERIFY(!id.isEmpty());
+
+        auto* members = qobject_cast<auralis::session::SessionMemberListModel*>(manager.sessionMembers());
+        QVERIFY(members != nullptr);
+        members->setSessionId(id);
+        QCOMPARE(members->count(), 0);
+
+        QSignalSpy countSpy(members, &auralis::session::SessionMemberListModel::countChanged);
+        QVERIFY(manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:FF"))
+                == auralis::session::SessionCommandResult::Accepted);
+        QCOMPARE(members->count(), 1);
+        QVERIFY(countSpy.count() >= 1);
+        QCOMPARE(qobject_cast<auralis::session::SessionListModel*>(manager.sessionList())->sessionIdAt(0), id);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionListModel)

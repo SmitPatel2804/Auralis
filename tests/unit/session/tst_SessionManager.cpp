@@ -107,6 +107,31 @@ private slots:
         const QString id = manager.createSession(QStringLiteral("Test"));
         QVERIFY(manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01")) == SessionCommandResult::Accepted);
         QVERIFY(manager.addDevice(id, QStringLiteral("aa:bb:cc:dd:ee:01")) == SessionCommandResult::DuplicateMember);
+        QVERIFY(manager.addDevice(id, QStringLiteral("not-a-bluetooth-address")) == SessionCommandResult::MemberNotFound);
+    }
+
+    void activateAndRetryGuardsMatchGuiToasts()
+    {
+        QTemporaryDir dir;
+        SessionManager manager(nullptr, nullptr, dir.filePath(QStringLiteral("sessions.json")));
+        manager.initialize();
+        const QString id = manager.createSession(QStringLiteral("yt"));
+        QVERIFY(manager.activateSession(id) == SessionCommandResult::NoSourceConfigured);
+        QVERIFY(manager.setSource(id, QStringLiteral("src-x")) == SessionCommandResult::Accepted);
+        QVERIFY(manager.activateSession(id) == SessionCommandResult::NoMembersConfigured);
+        QVERIFY(manager.retrySession(id) == SessionCommandResult::InvalidState);
+    }
+
+    void addDeviceCanonicalizesBlueZObjectPath()
+    {
+        ActiveHarness h;
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString id = h.manager.createSession(QStringLiteral("GuiPath"));
+        QVERIFY(h.manager.addDevice(id, QStringLiteral("/org/bluez/hci0/dev_AABBCCDDEE01"))
+                == SessionCommandResult::Accepted);
+        QCOMPARE(h.manager.sessionById(id)->devices.front().deviceId, QStringLiteral("AA:BB:CC:DD:EE:01"));
+        QVERIFY(h.manager.addDevice(id, QStringLiteral("/ORG/BLUEZ/HCI0/DEV_AABBCCDDEE01"))
+                == SessionCommandResult::DuplicateMember);
     }
 
     void twoDeviceActivation()

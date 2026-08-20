@@ -221,7 +221,13 @@ void BluetoothManager::connectClientSignals()
         refreshDisplayedError();
         updateStatusText();
     });
-    connect(registry_, &DeviceRegistry::countChanged, this, &BluetoothManager::deviceCountChanged);
+    connect(registry_, &DeviceRegistry::countChanged, this, [this]() {
+        emit deviceCountChanged();
+        emit connectedDeviceCountChanged();
+    });
+    connect(registry_, &DeviceRegistry::deviceUpdated, this, [this]() {
+        emit connectedDeviceCountChanged();
+    });
     if (agent_ != nullptr) {
         connect(agent_, &BlueZAgent::pendingRequestChanged, this, [this]() {
             if (agent_ != nullptr && registry_ != nullptr) {

@@ -33,7 +33,10 @@ Flickable {
             KeyValueRow { label: qsTr("Adapter"); value: bluetooth && bluetooth.adapterPowered ? qsTr("Powered") : qsTr("Unavailable") }
             KeyValueRow { label: qsTr("Discovery"); value: bluetooth && bluetooth.scanning ? qsTr("Scanning") : qsTr("Idle") }
             KeyValueRow { label: qsTr("PipeWire"); value: audio && audio.connected ? qsTr("Connected") : AppCore.pipeWireStatus }
-            KeyValueRow { label: qsTr("Connected devices"); value: bluetooth ? String(bluetooth.connectedDeviceCount()) : "0" }
+            KeyValueRow {
+                label: qsTr("Connected devices")
+                value: bluetooth ? String(bluetooth.connectedDeviceCount) : "0"
+            }
             RowLayout {
                 Button {
                     text: bluetooth && bluetooth.scanning ? qsTr("Stop Scan") : qsTr("Scan for devices")
@@ -71,7 +74,7 @@ Flickable {
                 value: {
                     if (!sessions)
                         return "0"
-                    return qsTr("%1 expected").arg(sessions.currentMembers ? sessions.currentMembers.rowCount() : 0)
+                    return qsTr("%1 expected").arg(sessions.currentMembers ? sessions.currentMembers.count : 0)
                 }
             }
             VolumeControl {
@@ -85,17 +88,17 @@ Flickable {
                 Button {
                     text: qsTr("Activate")
                     enabled: sessions && sessions.sessionStateText === "Idle"
-                    onClicked: report(sessions.activateSession(sessions.currentSessionId))
+                    onClicked: root.report(sessions.activateSession(sessions.currentSessionId))
                 }
                 Button {
                     text: qsTr("Deactivate")
                     enabled: sessions && sessions.currentSessionId.length > 0 && sessions.sessionStateText !== "Idle"
-                    onClicked: report(sessions.deactivateSession(sessions.currentSessionId))
+                    onClicked: root.report(sessions.deactivateSession(sessions.currentSessionId))
                 }
                 Button {
                     text: qsTr("Retry")
                     visible: sessions && (sessions.sessionStateText === "Failed" || sessions.sessionStateText === "Degraded")
-                    onClicked: report(sessions.retrySession(sessions.currentSessionId))
+                    onClicked: root.report(sessions.retrySession(sessions.currentSessionId))
                 }
             }
         }

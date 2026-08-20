@@ -26,14 +26,38 @@ Working tree at audit start included modified/untracked Phase 7 correction files
 ## 2. Executive Verdict
 
 ```text
-PHASE 7 VALIDATION VERDICT: FAILED
+PHASE 7 VALIDATION VERDICT: PASS (retest 2026-08-19T17:24:16Z)
 ```
 
-Previously reported defects A–H (selected-session isolation, source/mute NOTIFY, route ownership, device details/UUIDs, duplicate, restore, diagnostics clipboard wiring, leftover `#444/#666/#777` theme colors, live file-logging toggle) are **present in source and covered by passing automated tests**. A clean `rm -rf build && cmake && ninja && ctest` is **41/41 PASS**.
+Historical FAIL in this document (first live + ConfirmDialog loops + session Starting→Failed race) is **superseded** by the retest below. Keep §§16–21 as the original evidence trail; do not treat those FAIL lines as current.
 
-The Phase 7 **QML warning gate fails**: launching `./build/apps/desktop/auralis-desktop` under `QT_QPA_PLATFORM=offscreen` loads the root (`QML root loaded`) but emits repeated **binding-loop** warnings on `ConfirmDialog.implicitWidth` from Devices, Sessions, and Settings pages (Fusion `Dialog.qml`). Confirmed again at 2026-08-19T22:02:09 local during the hardware retest.
+### 2.1 Retest 2026-08-19T17:24Z (rigorous gates + latency)
 
-Forget+repair retest (both in pairing mode): devices were **removed from BlueZ**, then **re-paired through Auralis** (`PairRequested` / trust / connect). BlueZ lifecycle **PASS**, simultaneous connect **2/2**. After the new bond, **both** A2DP sinks mapped. Additive **Manual** routes **PASS** on each (short 440 Hz test tone — this is the Rockerz beep). **Session activate still FAIL**: `Starting` → `Failed` with one member and with two members; with two mapped devices, **two** Session routes later logged `RouteActive` (2 links each) and were ignored. Interactive GUI walkthrough remains **NOT RUN**.
+```text
+HEAD at retest:            ce968fb (working tree still dirty: session/audio/QML/live harness)
+CTest (env live flags unset): 42/42 PASS in 9.39s
+QML offscreen:             QML root loaded; no ConfirmDialog implicitWidth binding loops
+BlueZ live (no forget):    PASS (destructive forget skipped)
+PipeWire map Smokin' Buds: PASS
+PipeWire map Rockerz:      PASS
+Manual additive route each: PASS (1024/48000 test-tone node.latency)
+Session membership live:   PASS
+Phase 7 hardware 4/4:      PASS (single + two-device activate; isolation)
+Dual audible play:         PASS (freedesktop alarm on both; Session Active, both routeActive=1)
+GUI keyboard walkthrough:  NOT RUN
+```
+
+Latency (pw-dump while both A2DP AAC sinks were receiving `pw-play --latency 21ms`):
+
+```text
+PipeWire default.clock.quantum = 1024 @ 48000  →  21.3 ms graph period
+pw-play node.latency           = 1008/48000    →  21.0 ms  (was 4800/48000 = 100 ms)
+A2DP AAC Input minNs           = 188999999     →  189 ms advertised (both headsets)
+```
+
+The extra software buffer on `pw-play` was cut to match the graph quantum. **AAC A2DP ~189 ms is the BlueZ/codec floor on this host**; Auralis does not implement Phase 7+ latency-compensation DSP. Switching to SBC would trade quality for a possibly smaller transport buffer and was not done.
+
+First dual-play attempt after BlueZ live disconnected A2DP ports: `NoCompatiblePorts` + `routeStateChanged(Failed)` → synchronous `activateRoute` recursion → SIGSEGV. Mitigations now in tree: ignore Failed in `handleRouteStateChanged`, 250 ms Failed re-activate throttle in `AudioRouter`, wait for `n-input-ports` before routing. Retest after those changes: dual play exit 0.
 
 ## 3. Clean Build
 
@@ -53,8 +77,8 @@ Warnings:  qsizetype→int conversions in NotificationController, DiagnosticsLog
 
 ```text
 Command: ctest --test-dir build --output-on-failure
-Total:   41
-Passed:  41
+Total:   42 (retest 2026-08-19T17:24:16Z); originally 41 at first audit
+Passed:  42
 Failed:  0
 Skipped/Not Run (CTest status): 0 reported as skipped
 ```
@@ -341,7 +365,7 @@ Impact:       Multi-device (and single-device) session activate unusable on this
 ## 23. Phase 7 Exit Gate
 
 ```text
-PHASE 7 EXIT GATE: FAILED
+PHASE 7 EXIT GATE: PASS (retest 2026-08-19T17:24:16Z)
 ```
 
-Failed because (1) the QML warning gate still observes ConfirmDialog `implicitWidth` binding loops at startup, and (2) live session activate on real BlueZ/PipeWire hardware races `Starting` → `Failed` while the Session-owned route is still activating. A–H isolation tests were **not** re-opened. Bluetooth connect/reconnect and Manual PipeWire routing to Rockerz **PASS**. Smokin' Buds A2DP did not appear in PipeWire (`br-connection-key-missing`). Interactive GUI keyboard/resize walkthrough remains **NOT RUN**.
+Original FAIL in this section (ConfirmDialog loops + session Starting→Failed) was reproduced, then fixed, then retested. Current gate: CTest 42/42, offscreen QML loads without `implicitWidth` binding loops, live BlueZ/PipeWire/manual routes/session activate/Phase 7 hardware 4/4 PASS, dual-headset audible play Active on both members. Interactive GUI walkthrough remains **NOT RUN**. End-to-end latency is dominated by AAC A2DP (~189 ms advertised), not by the 21 ms `pw-play`/graph quantum.

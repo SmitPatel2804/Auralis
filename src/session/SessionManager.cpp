@@ -6,6 +6,7 @@
 #include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/audio/PipeWireManager.h>
+#include <auralis/bluetooth/BlueZTypes.h>
 #include <auralis/bluetooth/BluetoothManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/core/LoggingCategories.h>
@@ -407,7 +408,7 @@ SessionCommandResult SessionManager::addDevice(const QString& sessionId, const Q
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
     }
-    const QString normalized = deviceId.trimmed().toUpper();
+    const QString normalized = canonicalMemberDeviceId(deviceId);
     if (normalized.isEmpty()) {
         return SessionCommandResult::MemberNotFound;
     }
@@ -945,6 +946,9 @@ void SessionManager::handleRouteStateChanged(const QString& routeId, auralis::au
     case auralis::audio::RouteState::Ready:
     case auralis::audio::RouteState::Activating:
     case auralis::audio::RouteState::Deactivating:
+    case auralis::audio::RouteState::Failed:
+        // Failed is terminal for this attempt. Reconcile from it would call activateRoute
+        // synchronously and recurse until SIGSEGV. Graph/device updates retry later.
         return;
     default:
         break;
@@ -1550,6 +1554,31 @@ void SessionManager::clearStaleMemberErrors(AuralisSession& session)
     if (session.state == SessionState::Active && session.error.hasError()) {
         session.error = {};
     }
+}
+
+QString SessionManager::canonicalMemberDeviceId(const QString& deviceId) const
+{
+    const QString trimmed = deviceId.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+    if (deviceRegistry_ != nullptr) {
+        if (const auto* byPath = deviceRegistry_->findByObjectPath(trimmed)) {
+            if (!byPath->address.trimmed().isEmpty()) {
+                return byPath->address.trimmed().toUpper();
+            }
+        }
+        const QString upperPath = trimmed.toUpper();
+        for (const auralis::bluetooth::BluetoothDeviceData& device : deviceRegistry_->devices()) {
+            if (device.objectPath.toUpper() == upperPath && !device.address.trimmed().isEmpty()) {
+                return device.address.trimmed().toUpper();
+            }
+        }
+    }
+    if (const auto normalized = auralis::bluetooth::normalizeBluetoothAddress(trimmed)) {
+        return *normalized;
+    }
+    return {};
 }
 
 QString SessionManager::devicePathForAddress(const QString& address) const

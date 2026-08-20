@@ -105,6 +105,30 @@ private slots:
         QCOMPARE(manager.statusText(), QStringLiteral("Ready to scan"));
     }
 
+    void connectedDeviceCountTracksBlueZConnectedAndNotifies()
+    {
+        auto* client = new FakeBlueZClient;
+        addPoweredAdapter(client);
+        client->setDevice(kDevicePath, classicDevice());
+
+        BluetoothManager manager(client);
+        QVERIFY(manager.initialize());
+        QCOMPARE(manager.connectedDeviceCount(), 0);
+
+        QSignalSpy spy(&manager, &BluetoothManager::connectedDeviceCountChanged);
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), true}}, {});
+        QTRY_VERIFY(spy.count() >= 1);
+        QCOMPARE(manager.connectedDeviceCount(), 1);
+        QCOMPARE(
+            manager.deviceDetails(kDevicePath).value(QStringLiteral("connected")).toBool(),
+            true);
+
+        spy.clear();
+        client->updateDevice(kDevicePath, {{QStringLiteral("Connected"), false}}, {});
+        QTRY_VERIFY(spy.count() >= 1);
+        QCOMPARE(manager.connectedDeviceCount(), 0);
+    }
+
     void startScanUsesClient()
     {
         auto* client = new FakeBlueZClient;
