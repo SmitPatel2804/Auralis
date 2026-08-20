@@ -70,5 +70,14 @@ target_include_directories(tst_SessionManagedReconnectIntegration PRIVATE
 
 auralis_add_test(tst_ServiceRecoveryIntegration tst_ServiceRecoveryIntegration.cpp)
 target_link_libraries(tst_ServiceRecoveryIntegration PRIVATE auralis-recovery auralis-core)
-set_tests_properties(tst_ServiceRecoveryIntegration PROPERTIES LABELS "stress")
+set_tests_properties(tst_ServiceRecoveryIntegration PROPERTIES LABELS "integration;recovery")
+
+auralis_add_test(tst_Phase8RecoveryHarness tst_Phase8RecoveryHarness.cpp)
+target_link_libraries(tst_Phase8RecoveryHarness PRIVATE auralis-recovery auralis-core auralis-bluetooth auralis-audio)
+target_include_directories(tst_Phase8RecoveryHarness PRIVATE "${CMAKE_SOURCE_DIR}/tests/unit/bluetooth")
+set_tests_properties(tst_Phase8RecoveryHarness PROPERTIES LABELS "integration;recovery")
+
+auralis_add_test(tst_Phase8Stress tst_Phase8Stress.cpp)
+target_link_libraries(tst_Phase8Stress PRIVATE auralis-recovery auralis-core auralis-bluetooth auralis-audio auralis-session)
+set_tests_properties(tst_Phase8Stress PROPERTIES LABELS "stress;recovery")
 

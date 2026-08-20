@@ -55,6 +55,7 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
     auto* pipeWire = qobject_cast<auralis::audio::PipeWireManager*>(core.audio());
     auto* sessions = qobject_cast<auralis::session::SessionManager*>(core.sessions());
     auto* configuration = qobject_cast<auralis::core::ConfigurationManager*>(core.configuration());
+    auto* power = core.powerMonitor();
 
     if (pipeWire != nullptr && configuration != nullptr) {
         pipeWire->setAutoReconnectEnabled(configuration->autoRecoverServices());
@@ -118,6 +119,20 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
             &auralis::bluetooth::BluetoothManager::systemBusConnectedChanged,
             recovery,
             &auralis::recovery::RecoveryManager::notifySystemBusConnected);
+        if (power != nullptr) {
+            QObject::connect(
+                bluetooth,
+                &auralis::bluetooth::BluetoothManager::systemBusConnectedChanged,
+                power,
+                [power](bool connected) {
+                    if (connected) {
+                        power->notifySystemBusAvailable();
+                    }
+                });
+            if (bluetooth->systemBusConnected()) {
+                power->notifySystemBusAvailable();
+            }
+        }
         QObject::connect(
             bluetooth,
             &auralis::bluetooth::BluetoothManager::adapterChanged,

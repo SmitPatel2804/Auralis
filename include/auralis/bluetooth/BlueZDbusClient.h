@@ -9,6 +9,8 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include <optional>
+
 class QDBusPendingCallWatcher;
 class QDBusServiceWatcher;
 
@@ -44,7 +46,15 @@ public:
 
     /// Test seam: inject system-bus connectivity without stopping host dbus.
     void injectSystemBusConnectedForTesting(bool connected);
+    /// Override bus probe used by the health timer (exercises production FSM without host dbus).
+    void setSystemBusConnectedOverrideForTesting(std::optional<bool> connected);
+    void pollSystemBusHealthForTesting();
+    /// Deliver a GetManagedObjects completion for a captured attach generation.
+    void injectSnapshotFinishedForTesting(quint64 generation, const QVariantMap& objects, bool error = false);
+    void setBlueZAvailableForTesting(bool available);
     int busAttachGenerationForTesting() const noexcept;
+    bool busHealthTimerActiveForTesting() const noexcept;
+    bool snapshotInFlightForTesting() const noexcept;
 
 private slots:
     void onBlueZRegistered(const QString& serviceName);
@@ -60,14 +70,19 @@ private slots:
     void pollSystemBusHealth();
 
 private:
+    bool probeSystemBusConnected() const;
     void subscribeToSignals();
     void unsubscribeFromSignals();
     void setBlueZAvailable(bool available);
     void setSystemBusConnected(bool connected);
-    void tearDownBusInfrastructure();
+    void detachSystemBusInfrastructure();
     bool attachSystemBusInfrastructure();
+    void handleSystemBusLost();
+    void attemptSystemBusReattach();
     void startBusHealthTimer();
     void stopBusHealthTimer();
+    void finishSnapshot(quint64 generation, const QVariantMap& objects, bool error, const QString& name, const QString& message);
+    void issueSnapshotCall();
 
     QDBusConnection connection_;
     QDBusServiceWatcher* serviceWatcher_ = nullptr;
@@ -77,7 +92,11 @@ private:
     bool blueZAvailable_ = false;
     bool signalsSubscribed_ = false;
     bool agentRegistered_ = false;
+    bool snapshotInFlight_ = false;
+    bool pendingSnapshotRefresh_ = false;
     quint64 busAttachGeneration_ = 0;
+    quint64 snapshotInFlightGeneration_ = 0;
+    std::optional<bool> systemBusConnectedOverride_;
 };
 
 } // namespace auralis::bluetooth

@@ -148,6 +148,92 @@ private slots:
         QCOMPARE(manager.reconnectAttempt(), 0);
         QVERIFY(manager.status() == ServiceStatus::Uninitialized);
     }
+
+    void initialSyncTimeoutTriggersNextRetry()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(5);
+        manager.setInitialSyncTimeoutMsForTesting(5);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("down"));
+        const int before = manager.reconnectAttempt();
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.initialSyncTimeoutPendingForTesting());
+        manager.fireInitialSyncTimeoutForTesting();
+        QVERIFY(manager.reconnectAttempt() > before);
+        QVERIFY(!manager.initialSyncComplete());
+    }
+
+    void graphNeverReadyEventuallyExhausts()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(2);
+        manager.setInitialSyncTimeoutMsForTesting(5);
+        QSignalSpy exhausted(&manager, &PipeWireManager::reconnectExhausted);
+
+        manager.simulateReconnectFailureForTesting(QStringLiteral("a"));
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.fireInitialSyncTimeoutForTesting();
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.fireInitialSyncTimeoutForTesting();
+        QCOMPARE(exhausted.count(), 1);
+    }
+
+    void initialSyncDoneCancelsTimeout()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setInitialSyncTimeoutMsForTesting(50);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.initialSyncTimeoutPendingForTesting());
+        manager.injectClientEventForTesting(syncDoneEvent());
+        QVERIFY(!manager.initialSyncTimeoutPendingForTesting());
+        QCOMPARE(manager.reconnectAttempt(), 0);
+    }
+
+    void shutdownCancelsInitialSyncTimeout()
+    {
+        PipeWireManager manager;
+        manager.initialize();
+        manager.setAutoReconnectEnabled(true);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.initialSyncTimeoutPendingForTesting());
+        manager.shutdown();
+        QVERIFY(!manager.initialSyncTimeoutPendingForTesting());
+    }
+
+    void disableAutoReconnectCancelsInitialSyncTimeout()
+    {
+        PipeWireManager manager;
+        manager.initialize();
+        manager.setAutoReconnectEnabled(true);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.initialSyncTimeoutPendingForTesting());
+        manager.setAutoReconnectEnabled(false);
+        QVERIFY(!manager.initialSyncTimeoutPendingForTesting());
+    }
+
+    void lateInitialSyncAfterTimeoutIsIgnored()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(5);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        const int attempts = manager.reconnectAttempt();
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.fireInitialSyncTimeoutForTesting();
+        manager.injectClientEventForTesting(syncDoneEvent());
+        QVERIFY(!manager.initialSyncComplete());
+        QVERIFY(manager.reconnectAttempt() >= attempts);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPipeWireManager)

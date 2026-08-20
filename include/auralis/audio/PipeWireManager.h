@@ -77,10 +77,13 @@ public:
     int maxReconnectAttempts() const noexcept;
     void setMaxReconnectAttemptsForTesting(int maxAttempts);
     void setReconnectInitialDelayMsForTesting(int delayMs);
+    void setInitialSyncTimeoutMsForTesting(int timeoutMs);
     /// Inject PipeWire client events without a live daemon (unit tests).
     void injectClientEventForTesting(const PipeWireClientEvent& event);
     /// Count a failed reconnect attempt without waiting on the retry timer.
     void simulateReconnectFailureForTesting(const QString& reason = QStringLiteral("test"));
+    void fireInitialSyncTimeoutForTesting();
+    bool initialSyncTimeoutPendingForTesting() const noexcept;
 
 signals:
     void statusChanged();
@@ -105,6 +108,9 @@ private:
     void scheduleAutoReconnect(const QString& reason);
     void performReconnect();
     bool startConnection(quint64 generation);
+    void startInitialSyncTimeout();
+    void stopInitialSyncTimeout();
+    void onInitialSyncTimeout();
 
     bluetooth::DeviceRegistry* bluetoothRegistry_ = nullptr;
     std::unique_ptr<PipeWireObjectStore> store_;
@@ -122,6 +128,7 @@ private:
     bool bluetoothWired_ = false;
     QTimer graphRefreshTimer_;
     QTimer reconnectTimer_;
+    QTimer initialSyncTimeoutTimer_;
     bool autoReconnectEnabled_ = true;
     bool shuttingDown_ = false;
     bool reconnectInProgress_ = false;
@@ -130,6 +137,7 @@ private:
     int maxReconnectAttempts_ = 8;
     int reconnectInitialDelayMs_ = 500;
     int reconnectMaxDelayMs_ = 30000;
+    int initialSyncTimeoutMs_ = 8000;
 };
 
 } // namespace auralis::audio

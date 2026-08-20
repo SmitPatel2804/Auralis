@@ -88,8 +88,11 @@ QString userFacingStatus(const RecoveryStatus& status)
     }
     if (status.overall == RecoveryState::Recovering || status.overall == RecoveryState::Waiting) {
         if (status.pipeWire == RecoveryState::Recovering) {
-            return QStringLiteral("Reconnecting audio service (attempt %1)")
-                .arg(status.pipeWireAttempts);
+            if (status.pipeWireAttempts > 0) {
+                return QStringLiteral("Reconnecting audio service (attempt %1)")
+                    .arg(status.pipeWireAttempts);
+            }
+            return QStringLiteral("Preparing to reconnect audio service");
         }
         if (status.bluetooth == RecoveryState::Recovering || status.bluetooth == RecoveryState::Waiting) {
             return QStringLiteral("Waiting for Bluetooth service");

@@ -45,6 +45,9 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
 
     reconnectTimer_.setSingleShot(true);
     connect(&reconnectTimer_, &QTimer::timeout, this, &PipeWireManager::performReconnect);
+
+    initialSyncTimeoutTimer_.setSingleShot(true);
+    connect(&initialSyncTimeoutTimer_, &QTimer::timeout, this, &PipeWireManager::onInitialSyncTimeout);
 }
 
 PipeWireManager::~PipeWireManager()
@@ -229,6 +232,7 @@ void PipeWireManager::setAutoReconnectEnabled(bool enabled)
     autoReconnectEnabled_ = enabled;
     if (!enabled) {
         reconnectTimer_.stop();
+        stopInitialSyncTimeout();
     }
 }
 
@@ -256,6 +260,62 @@ void PipeWireManager::setReconnectInitialDelayMsForTesting(int delayMs)
 {
     reconnectInitialDelayMs_ = std::max(1, delayMs);
     reconnectMaxDelayMs_ = std::max(reconnectInitialDelayMs_, reconnectMaxDelayMs_);
+}
+
+void PipeWireManager::setInitialSyncTimeoutMsForTesting(int timeoutMs)
+{
+    initialSyncTimeoutMs_ = std::max(1, timeoutMs);
+}
+
+void PipeWireManager::fireInitialSyncTimeoutForTesting()
+{
+    onInitialSyncTimeout();
+}
+
+bool PipeWireManager::initialSyncTimeoutPendingForTesting() const noexcept
+{
+    return initialSyncTimeoutTimer_.isActive();
+}
+
+void PipeWireManager::startInitialSyncTimeout()
+{
+    if (shuttingDown_ || initialSyncComplete_) {
+        return;
+    }
+    initialSyncTimeoutTimer_.start(initialSyncTimeoutMs_);
+}
+
+void PipeWireManager::stopInitialSyncTimeout()
+{
+    initialSyncTimeoutTimer_.stop();
+}
+
+void PipeWireManager::onInitialSyncTimeout()
+{
+    if (shuttingDown_ || initialSyncComplete_) {
+        return;
+    }
+    if (connectionState_ != PipeWireConnectionState::Connected) {
+        return;
+    }
+    qCWarning(auralisAudio) << "PipeWire initial graph sync timed out";
+    stopInitialSyncTimeout();
+    reconnectInProgress_ = false;
+    initialSyncComplete_ = false;
+    if (router_ != nullptr) {
+        router_->handleConnectionState(PipeWireConnectionState::Error, false);
+    }
+    connection_->stop();
+    if (QCoreApplication::instance() != nullptr) {
+        QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+    }
+    endpoints_->clear();
+    store_->clear();
+    status_ = auralis::core::ServiceStatus::Error;
+    setConnectionState(PipeWireConnectionState::Error, QStringLiteral("PipeWire initial graph sync timed out"));
+    emit statusChanged();
+    bumpGraph();
+    scheduleAutoReconnect(QStringLiteral("PipeWire initial graph sync timed out"));
 }
 
 void PipeWireManager::injectClientEventForTesting(const PipeWireClientEvent& event)
@@ -359,6 +419,7 @@ void PipeWireManager::shutdown()
     shuttingDown_ = true;
     qCInfo(auralisAudio) << "PipeWire Stopping";
     reconnectTimer_.stop();
+    stopInitialSyncTimeout();
     graphRefreshTimer_.stop();
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
@@ -399,8 +460,12 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
                 router_->handleConnectionState(event.state, initialSyncComplete_);
             }
             // Do not reset reconnectAttempt_ until InitialSyncDone (usable graph).
+            if (!initialSyncComplete_) {
+                startInitialSyncTimeout();
+            }
         } else if (event.state == PipeWireConnectionState::Error
                    || event.state == PipeWireConnectionState::Stopped) {
+            stopInitialSyncTimeout();
             status_ = auralis::core::ServiceStatus::Error;
             if (router_ != nullptr) {
                 router_->handleConnectionState(event.state, false);
@@ -439,14 +504,16 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         }
         break;
     case PipeWireClientEvent::Type::InitialSyncDone:
+        if (connectionState_ != PipeWireConnectionState::Connected) {
+            break;
+        }
+        stopInitialSyncTimeout();
         initialSyncComplete_ = true;
         graphRefreshTimer_.stop();
         refreshGraph();
-        if (connectionState_ == PipeWireConnectionState::Connected) {
-            reconnectAttempt_ = 0;
-            reconnectExhaustedEmitted_ = false;
-            reconnectTimer_.stop();
-        }
+        reconnectAttempt_ = 0;
+        reconnectExhaustedEmitted_ = false;
+        reconnectTimer_.stop();
         if (router_ != nullptr) {
             router_->handleConnectionState(connectionState_, true);
         }

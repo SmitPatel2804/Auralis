@@ -318,7 +318,7 @@ void BlueZDbusClient::setSystemBusConnected(bool connected)
 
 void BlueZDbusClient::startBusHealthTimer()
 {
-    if (!busHealthTimer_.isActive()) {
+    if (initialized_ && !busHealthTimer_.isActive()) {
         busHealthTimer_.start();
     }
 }
@@ -328,8 +328,18 @@ void BlueZDbusClient::stopBusHealthTimer()
     busHealthTimer_.stop();
 }
 
-void BlueZDbusClient::tearDownBusInfrastructure()
+bool BlueZDbusClient::probeSystemBusConnected() const
 {
+    if (systemBusConnectedOverride_.has_value()) {
+        return *systemBusConnectedOverride_;
+    }
+    return QDBusConnection::systemBus().isConnected();
+}
+
+void BlueZDbusClient::detachSystemBusInfrastructure()
+{
+    snapshotInFlight_ = false;
+    pendingSnapshotRefresh_ = false;
     unsubscribeFromSignals();
     if (serviceWatcher_ != nullptr) {
         serviceWatcher_->deleteLater();
@@ -341,12 +351,31 @@ void BlueZDbusClient::tearDownBusInfrastructure()
 bool BlueZDbusClient::attachSystemBusInfrastructure()
 {
     connection_ = QDBusConnection::systemBus();
-    if (!connection_.isConnected()) {
+    if (!probeSystemBusConnected() && !systemBusConnectedOverride_.has_value()) {
+        if (!connection_.isConnected()) {
+            return false;
+        }
+    }
+    if (systemBusConnectedOverride_.has_value() && !*systemBusConnectedOverride_) {
+        return false;
+    }
+    if (!systemBusConnectedOverride_.has_value() && !connection_.isConnected()) {
         return false;
     }
 
     ++busAttachGeneration_;
-    tearDownBusInfrastructure();
+    detachSystemBusInfrastructure();
+
+    // When probing via override without a live bus, still advance generation/state machine.
+    if (systemBusConnectedOverride_.has_value() && *systemBusConnectedOverride_
+        && !QDBusConnection::systemBus().isConnected()) {
+        return true;
+    }
+
+    connection_ = QDBusConnection::systemBus();
+    if (!connection_.isConnected()) {
+        return false;
+    }
 
     serviceWatcher_ = new QDBusServiceWatcher(
         bluez::kService.toString(),
@@ -368,54 +397,80 @@ bool BlueZDbusClient::attachSystemBusInfrastructure()
     return true;
 }
 
+void BlueZDbusClient::handleSystemBusLost()
+{
+    qCWarning(auralisBluetooth) << "SystemBusLost";
+    detachSystemBusInfrastructure();
+    setSystemBusConnected(false);
+}
+
+void BlueZDbusClient::attemptSystemBusReattach()
+{
+    qCInfo(auralisBluetooth) << "SystemBusReconnected";
+    if (attachSystemBusInfrastructure()) {
+        setSystemBusConnected(true);
+    }
+}
+
 void BlueZDbusClient::pollSystemBusHealth()
 {
     if (!initialized_) {
         return;
     }
-    const bool connected = QDBusConnection::systemBus().isConnected();
+    const bool connected = probeSystemBusConnected();
     if (connected && !systemBusConnected_) {
-        qCInfo(auralisBluetooth) << "SystemBusReconnected";
-        if (attachSystemBusInfrastructure()) {
-            setSystemBusConnected(true);
-            stopBusHealthTimer();
-        }
+        attemptSystemBusReattach();
         return;
     }
     if (!connected && systemBusConnected_) {
-        qCWarning(auralisBluetooth) << "SystemBusLost";
-        tearDownBusInfrastructure();
-        setSystemBusConnected(false);
-        startBusHealthTimer();
+        handleSystemBusLost();
     }
 }
 
 void BlueZDbusClient::injectSystemBusConnectedForTesting(bool connected)
 {
-    if (!initialized_) {
-        return;
-    }
-    if (connected) {
-        if (systemBusConnected_) {
-            return;
-        }
-        // Testing seam: mark connected and bump attach generation without requiring a live bus.
-        ++busAttachGeneration_;
-        setSystemBusConnected(true);
-        stopBusHealthTimer();
-        return;
-    }
-    if (!systemBusConnected_) {
-        return;
-    }
-    tearDownBusInfrastructure();
-    setSystemBusConnected(false);
-    startBusHealthTimer();
+    setSystemBusConnectedOverrideForTesting(connected);
+    pollSystemBusHealth();
+}
+
+void BlueZDbusClient::setSystemBusConnectedOverrideForTesting(std::optional<bool> connected)
+{
+    systemBusConnectedOverride_ = connected;
+}
+
+void BlueZDbusClient::pollSystemBusHealthForTesting()
+{
+    pollSystemBusHealth();
+}
+
+void BlueZDbusClient::injectSnapshotFinishedForTesting(quint64 generation, const QVariantMap& objects, bool error)
+{
+    finishSnapshot(
+        generation,
+        objects,
+        error,
+        error ? QStringLiteral("org.auralis.Test.SnapshotError") : QString(),
+        error ? QStringLiteral("injected") : QString());
+}
+
+void BlueZDbusClient::setBlueZAvailableForTesting(bool available)
+{
+    setBlueZAvailable(available);
 }
 
 int BlueZDbusClient::busAttachGenerationForTesting() const noexcept
 {
     return static_cast<int>(busAttachGeneration_);
+}
+
+bool BlueZDbusClient::busHealthTimerActiveForTesting() const noexcept
+{
+    return busHealthTimer_.isActive();
+}
+
+bool BlueZDbusClient::snapshotInFlightForTesting() const noexcept
+{
+    return snapshotInFlight_;
 }
 
 void BlueZDbusClient::subscribeToSignals()
@@ -496,11 +551,13 @@ bool BlueZDbusClient::initialize()
 
     initialized_ = true;
     connection_ = QDBusConnection::systemBus();
-    if (!connection_.isConnected()) {
+    // Always-on health monitor while initialized (detect UP→DOWN at runtime).
+    startBusHealthTimer();
+
+    if (!probeSystemBusConnected()) {
         qCWarning(auralisBluetooth) << "SystemBusUnavailable";
         setSystemBusConnected(false);
         setBlueZAvailable(false);
-        startBusHealthTimer();
         return true;
     }
 
@@ -508,11 +565,9 @@ bool BlueZDbusClient::initialize()
     if (!attachSystemBusInfrastructure()) {
         setSystemBusConnected(false);
         setBlueZAvailable(false);
-        startBusHealthTimer();
         return true;
     }
     setSystemBusConnected(true);
-    stopBusHealthTimer();
     return true;
 }
 
@@ -522,8 +577,10 @@ void BlueZDbusClient::shutdown()
         return;
     }
     stopBusHealthTimer();
-    tearDownBusInfrastructure();
+    ++busAttachGeneration_;
+    detachSystemBusInfrastructure();
     setSystemBusConnected(false);
+    systemBusConnectedOverride_.reset();
     initialized_ = false;
 }
 
@@ -552,27 +609,85 @@ void BlueZDbusClient::onBlueZUnregistered(const QString&)
 
 void BlueZDbusClient::requestSnapshot()
 {
-    if (!connection_.isConnected() || !blueZAvailable_) {
+    if (!initialized_ || !blueZAvailable_) {
+        return;
+    }
+    if (systemBusConnectedOverride_.has_value()) {
+        if (!*systemBusConnectedOverride_) {
+            return;
+        }
+    } else if (!connection_.isConnected()) {
         return;
     }
 
-    qCInfo(auralisBluetooth) << "BlueZSnapshotRequested";
+    if (snapshotInFlight_) {
+        pendingSnapshotRefresh_ = true;
+        return;
+    }
+    issueSnapshotCall();
+}
+
+void BlueZDbusClient::issueSnapshotCall()
+{
+    snapshotInFlight_ = true;
+    snapshotInFlightGeneration_ = busAttachGeneration_;
+    pendingSnapshotRefresh_ = false;
+
+    // Override-only environments exercise coalesce/generation without a live GetManagedObjects.
+    if (systemBusConnectedOverride_.has_value() && !QDBusConnection::systemBus().isConnected()) {
+        qCInfo(auralisBluetooth) << "BlueZSnapshotRequested generation=" << snapshotInFlightGeneration_;
+        return;
+    }
+
+    qCInfo(auralisBluetooth) << "BlueZSnapshotRequested generation=" << snapshotInFlightGeneration_;
     const QDBusMessage message = QDBusMessage::createMethodCall(
         bluez::kService.toString(),
         bluez::kRootPath.toString(),
         bluez::kObjectManagerInterface.toString(),
         bluez::kMethodGetManagedObjects.toString());
     auto* watcher = watchCall(connection_, message, kStandardMethodTimeoutMs, this);
+    watcher->setProperty("busAttachGeneration", QVariant::fromValue(snapshotInFlightGeneration_));
     connect(watcher, &QDBusPendingCallWatcher::finished, this, &BlueZDbusClient::onGetManagedObjectsFinished);
+}
+
+void BlueZDbusClient::finishSnapshot(
+    quint64 generation,
+    const QVariantMap& objects,
+    bool error,
+    const QString& name,
+    const QString& message)
+{
+    if (!initialized_ || generation != busAttachGeneration_) {
+        return;
+    }
+
+    snapshotInFlight_ = false;
+    if (error) {
+        qCWarning(auralisBluetooth) << "BlueZSnapshotFailed" << name << message;
+        emit snapshotFailed(name, message);
+    } else {
+        qCInfo(auralisBluetooth) << "BlueZSnapshotReceived" << objects.size() << "objects";
+        emit snapshotReceived(objects);
+    }
+
+    if (pendingSnapshotRefresh_ && initialized_ && blueZAvailable_ && generation == busAttachGeneration_) {
+        pendingSnapshotRefresh_ = false;
+        issueSnapshotCall();
+    }
 }
 
 void BlueZDbusClient::onGetManagedObjectsFinished(QDBusPendingCallWatcher* watcher)
 {
     watcher->deleteLater();
+    const quint64 generation = watcher->property("busAttachGeneration").toULongLong();
+    if (!initialized_ || generation != busAttachGeneration_) {
+        snapshotInFlight_ = false;
+        return;
+    }
+
     const QDBusPendingReply<ManagedObjectMap> typed = *watcher;
     if (typed.isError()) {
-        qCWarning(auralisBluetooth) << "BlueZSnapshotFailed" << typed.error().name() << typed.error().message();
-        emit snapshotFailed(typed.error().name(), typed.error().message());
+        finishSnapshot(generation, {}, true, typed.error().name(), typed.error().message());
         return;
     }
 
@@ -580,8 +695,7 @@ void BlueZDbusClient::onGetManagedObjectsFinished(QDBusPendingCallWatcher* watch
     if (objects.isEmpty()) {
         objects = decodeManagedObjects(watcher->reply());
     }
-    qCInfo(auralisBluetooth) << "BlueZSnapshotReceived" << objects.size() << "objects";
-    emit snapshotReceived(objects);
+    finishSnapshot(generation, objects, false, {}, {});
 }
 
 void BlueZDbusClient::startDiscovery(const QString& adapterPath)

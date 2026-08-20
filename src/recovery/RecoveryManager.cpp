@@ -70,6 +70,25 @@ void RecoveryManager::setAutoRecoverEnabled(bool enabled)
         return;
     }
     status_.autoRecoverEnabled = enabled;
+    if (!enabled) {
+        coalesceTimer_.stop();
+        pendingReconcile_ = false;
+    } else if (!shuttingDown_ && !status_.suspended) {
+        // Re-enable while degraded: begin one recovery episode.
+        refreshObservedHealth();
+        const bool healthy = blueZAvailable_ && pipeWireConnected_ && pipeWireGraphReady_ && adapterPresent_;
+        if (!healthy) {
+            setOverall(RecoveryState::Recovering, RecoveryCause::ServiceRestarted);
+            if (!blueZAvailable_ && hooks_.requestBlueZRefresh) {
+                hooks_.requestBlueZRefresh();
+            }
+            if ((!pipeWireConnected_ || !pipeWireGraphReady_) && hooks_.requestPipeWireReconnect) {
+                hooks_.requestPipeWireReconnect();
+                status_.pipeWire = RecoveryState::Recovering;
+            }
+            scheduleCoalescedReconcile();
+        }
+    }
     emit autoRecoverEnabledChanged();
     emitStatus();
 }
@@ -285,6 +304,9 @@ void RecoveryManager::onPreparingForSleep(bool sleeping)
         return;
     }
     if (sleeping) {
+        if (status_.suspended) {
+            return;
+        }
         status_.suspended = true;
         status_.overall = RecoveryState::Suspended;
         coalesceTimer_.stop();
@@ -295,6 +317,10 @@ void RecoveryManager::onPreparingForSleep(bool sleeping)
         }
         emitStatus();
         qCInfo(auralisRecovery) << "RecoveryManager: prepare-for-sleep — timers paused generation=" << status_.generation;
+        return;
+    }
+
+    if (!status_.suspended) {
         return;
     }
 
@@ -372,6 +398,10 @@ void RecoveryManager::scheduleCoalescedReconcile()
 void RecoveryManager::runReconcile()
 {
     if (shuttingDown_ || status_.suspended || !pendingReconcile_) {
+        return;
+    }
+    if (!status_.autoRecoverEnabled) {
+        pendingReconcile_ = false;
         return;
     }
     pendingReconcile_ = false;

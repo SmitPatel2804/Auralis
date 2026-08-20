@@ -62,6 +62,23 @@ A skipped live/hardware test is **not** hardware validation evidence.
 
 ---
 
+## Final Closure recon (before fixes)
+
+Captured: 2026-08-20
+
+| Item | Value |
+|------|-------|
+| Git revision | `eff71d1fd7cc31240b24910cf52c928822f98e18` |
+| Branch | `master` |
+| Compiler | g++ 15.2.0 |
+| CMake | 4.2.3 |
+| Baseline CTest | **45/45 PASS** (~11.5s) |
+| Prior exit claim | SOFTWARE PASS (overstated — residual blockers A–K open) |
+
+Confirmed residual blockers: bus health timer stops when healthy; unused `busAttachGeneration_` fencing; no PW InitialSync timeout; autoRecover disable does not cancel coalesce; duplicate PrepareForSleep not idempotent; one-shot logind subscribe; stub-only integration; weak stress; user-facing attempt 0; no snapshot coalesce; `auralis@localhost` packaging contact.
+
+---
+
 ## Final remediation recon (before fixes)
 
 Captured: 2026-08-20 (remediation start)
@@ -165,15 +182,41 @@ Post-remediation CTest: **45/45 PASS** (~10.4s). ASAN CTest: **45/45 PASS** (~13
 
 ---
 
+## Final Closure remediation (A–K)
+
+| Blocker | Status | Evidence |
+|---------|--------|----------|
+| A Always-on bus health while healthy | Fixed | `busHealthTimer_` stays active; probe override tests |
+| B Generation fencing for snapshots | Fixed | `finishSnapshot` / watcher property generation |
+| C PW InitialSync timeout | Fixed | `initialSyncTimeoutTimer_` + unit tests |
+| D Cancel coalesce when autoRecover off | Fixed | `setAutoRecoverEnabled(false)` + `runReconcile` guard |
+| E Suspend/resume idempotency | Fixed | PowerMonitor + RecoveryManager early-return |
+| F Late logind subscribe | Fixed | retry timer + bus-return notify |
+| G Real-manager harness | Fixed | `tst_Phase8RecoveryHarness` |
+| H Real stress | Fixed | `tst_Phase8Stress` label `stress` |
+| I No user-facing attempt 0 | Fixed | `userFacingStatus` + unit test |
+| J Snapshot coalesce | Fixed | in-flight + pending refresh |
+| K Packaging contact truthfulness | Fixed | Maintainer “contact pending”; release metadata pending |
+
+Post-closure CTest: **47/47 PASS** (~10.1s). Stress label: PASS.
+ASAN CTest (`-DAURALIS_ENABLE_SANITIZERS=ON`, `ASAN_OPTIONS=detect_leaks=0`): **47/47 PASS** (~21.7s).
+
+```text
+PUBLIC PACKAGE RELEASE METADATA: PENDING OWNER CONTACT
+```
+
+---
+
 ## EXIT GATE
 
 ```text
 PHASE 8 SOFTWARE EXIT GATE: PASS
 PHASE 8 HARDWARE EXIT GATE: PENDING
+PHASE 8 OVERALL: PENDING HARDWARE VALIDATION
 ```
 
 Rationale:
 
-- Software defects from the Final Remediation prompt are fixed with regression tests.
-- Packaging metadata is truthful (license not selected; icon installed).
+- Software defects from the Final Remediation and Final Closure prompts are fixed with regression tests.
+- Packaging metadata is truthful (license not selected; contact pending; icon installed).
 - Live BlueZ / PipeWire / laptop suspend paths remain **PENDING** and are not inferred from skipped live tests or sandbox launches.

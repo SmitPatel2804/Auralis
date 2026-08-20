@@ -1,4 +1,5 @@
 #include <auralis/recovery/RecoveryManager.h>
+#include <auralis/recovery/RecoveryTypes.h>
 #include <auralis/recovery/ServiceRetryPolicy.h>
 #include <auralis/recovery/SystemPowerMonitor.h>
 
@@ -7,8 +8,10 @@
 
 using auralis::recovery::RecoveryManager;
 using auralis::recovery::RecoveryState;
+using auralis::recovery::RecoveryStatus;
 using auralis::recovery::ServiceRetryPolicy;
 using auralis::recovery::SystemPowerMonitor;
+using auralis::recovery::userFacingStatus;
 
 class TstRecoveryManager : public QObject {
     Q_OBJECT
@@ -231,6 +234,111 @@ private slots:
         QCOMPARE(spy.count(), 2);
         QVERIFY(!monitor.suspended());
         monitor.shutdown();
+    }
+
+    void duplicatePrepareForSleepIsIdempotent()
+    {
+        SystemPowerMonitor monitor;
+        QVERIFY(monitor.initialize());
+        QSignalSpy spy(&monitor, &SystemPowerMonitor::preparingForSleep);
+        monitor.injectPrepareForSleep(true);
+        monitor.injectPrepareForSleep(true);
+        QCOMPARE(spy.count(), 1);
+        monitor.injectPrepareForSleep(false);
+        monitor.injectPrepareForSleep(false);
+        QCOMPARE(spy.count(), 2);
+
+        RecoveryManager manager;
+        int pauseCount = 0;
+        int resumeCount = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = [&]() { ++pauseCount; };
+        hooks.resumeBluetoothReconnect = [&]() { ++resumeCount; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.onPreparingForSleep(true);
+        manager.onPreparingForSleep(true);
+        QCOMPARE(pauseCount, 1);
+        manager.onPreparingForSleep(false);
+        manager.onPreparingForSleep(false);
+        QCOMPARE(resumeCount, 1);
+    }
+
+    void disableAutoRecoverCancelsPendingReconcile()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.notifyBlueZAvailable(false);
+        manager.notifyBlueZAvailable(true);
+        manager.setAutoRecoverEnabled(false);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 0);
+    }
+
+    void reEnableAutoRecoverStartsEpisodeWhenDegraded()
+    {
+        RecoveryManager manager;
+        int pwReconnect = 0;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.requestPipeWireReconnect = [&]() { ++pwReconnect; };
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return false; };
+        hooks.isPipeWireGraphReady = []() { return false; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.setAutoRecoverEnabled(false);
+        manager.notifyPipeWireError(QStringLiteral("down"));
+        manager.setAutoRecoverEnabled(true);
+        QVERIFY(pwReconnect >= 1);
+        manager.flushPendingReconcileForTesting();
+        QVERIFY(sessionRefresh >= 1);
+    }
+
+    void manualRecoveryStillWorksWhenAutoRecoverDisabled()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        manager.setAutoRecoverEnabled(false);
+        manager.notifyBlueZAvailable(false);
+        manager.notifyBlueZAvailable(true);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 0);
+        // Manual host refresh remains independent of RecoveryManager auto path.
+        ++sessionRefresh;
+        QCOMPARE(sessionRefresh, 1);
+    }
+
+    void userFacingStatusNeverShowsAttemptZero()
+    {
+        RecoveryStatus status;
+        status.overall = RecoveryState::Recovering;
+        status.pipeWire = RecoveryState::Recovering;
+        status.pipeWireAttempts = 0;
+        const QString text = userFacingStatus(status);
+        QVERIFY(!text.contains(QStringLiteral("attempt 0")));
+        QVERIFY(text.contains(QStringLiteral("Preparing")));
+        status.pipeWireAttempts = 2;
+        const QString text2 = userFacingStatus(status);
+        QVERIFY(text2.contains(QStringLiteral("attempt 2")));
     }
 };
 

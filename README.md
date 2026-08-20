@@ -22,7 +22,7 @@ Phase 8: Software exit PASS (hardware validation pending)
 
 `PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. An **Active** route in the Audio Routing panel means Auralis-owned links exist for the current selection.
 
-Licensing terms are **not yet selected** (`LICENSE`). Local `.deb` builds are for engineering validation; public redistribution remains blocked until the owner approves a license.
+Licensing terms are **not yet selected** (`LICENSE`). Package maintainer contact is also pending. Local `.deb` builds are for engineering validation; public redistribution remains blocked until the owner approves a license and contact metadata.
 
 ## Requirements
 
