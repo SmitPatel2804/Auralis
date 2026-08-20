@@ -6,6 +6,7 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
 {
     SessionHealthSnapshot health;
     health.sourceAvailable = sourceAvailable && !session.sourceId.isEmpty();
+    bool routeActivationFailed = false;
     for (const SessionDevice& device : session.devices) {
         if (!device.enabled) {
             continue;
@@ -20,18 +21,21 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
             ++health.pendingCount;
         } else if (device.runtime.lastError.category == SessionError::RouteActivationFailed
             || device.runtime.lastError.category == SessionError::RouteCreationFailed) {
-            health.terminalFailure = true;
+            routeActivationFailed = true;
         }
     }
     if (health.enabledCount == 0) {
         health.terminalFailure = true;
     } else if (session.state == SessionState::Starting) {
-        health.terminalFailure = !health.sourceAvailable && health.routeActiveCount == 0
-            && health.recoveringCount == 0 && health.pendingCount == 0;
+        health.terminalFailure = routeActivationFailed
+            || (!health.sourceAvailable && health.routeActiveCount == 0 && health.recoveringCount == 0
+                && health.pendingCount == 0);
     } else if (!health.sourceAvailable) {
         health.terminalFailure = health.routeActiveCount == 0 && health.recoveringCount == 0
             && health.pendingCount == 0;
     } else if (health.routeActiveCount == 0 && health.recoveringCount == 0 && health.pendingCount == 0) {
+        health.terminalFailure = true;
+    } else if (routeActivationFailed && health.routeActiveCount == 0) {
         health.terminalFailure = true;
     }
     return health;

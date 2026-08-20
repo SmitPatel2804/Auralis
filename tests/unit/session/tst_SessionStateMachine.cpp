@@ -3,6 +3,7 @@
 
 #include <QtTest>
 
+using auralis::session::SessionError;
 using auralis::session::SessionHealthSnapshot;
 using auralis::session::SessionIntent;
 using auralis::session::SessionState;
@@ -197,13 +198,16 @@ private slots:
         device.enabled = true;
         device.runtime.routeRequested = false;
         device.runtime.routeActive = false;
+        device.runtime.lastError = {
+            SessionError::RouteActivationFailed,
+            QStringLiteral("Activation timed out")};
         session.devices.push_back(device);
         const auralis::session::SessionHealthSnapshot health =
             auralis::session::healthSnapshotFromSession(session, true);
         QVERIFY(health.terminalFailure);
-        QCOMPARE(
-            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health),
-            SessionState::Failed);
+        QVERIFY(
+            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
+            == SessionState::Failed);
     }
 };
 

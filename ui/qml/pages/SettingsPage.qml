@@ -47,7 +47,10 @@ Flickable {
                 text: qsTr("Enable file logging")
                 checked: config ? config.fileLoggingEnabled : false
                 enabled: config && !config.fileLoggingEnvLocked
-                onToggled: config.setFileLoggingEnabled(checked)
+                onToggled: {
+                    if (!config.setFileLoggingEnabled(checked))
+                        checked = Qt.binding(function() { return config ? config.fileLoggingEnabled : false })
+                }
             }
             Label {
                 text: qsTr("Changing the log path requires an application restart to take effect.")

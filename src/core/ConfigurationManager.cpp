@@ -145,15 +145,93 @@ bool ConfigurationManager::setFileLoggingEnabled(bool enabled)
         return false;
     }
     if (fileLoggingEnabled_ == enabled) {
+        setLastError({});
         return true;
     }
-    if (!writeValue(kFileLoggingEnabledKey, enabled)) {
+
+    if (enabled) {
+        if (logFilePath_.trimmed().isEmpty()) {
+            setLastError(QStringLiteral("Choose a log file path before enabling file logging."));
+            return false;
+        }
+
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        if (Logger::isInitialized()) {
+            if (!Logger::enableFileLogging(logFilePath_)) {
+                setLastError(QStringLiteral("Unable to enable file logging at the selected path."));
+                return false;
+            }
+        }
+#else
+        setLastError(QStringLiteral("File logging support is not compiled into this build."));
+        return false;
+#endif
+
+        if (!writeValue(kFileLoggingEnabledKey, true)) {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+            if (Logger::isInitialized()) {
+                Logger::disableFileLogging();
+            }
+#endif
+            setLastError(QStringLiteral("Unable to save the file logging setting."));
+            return false;
+        }
+
+        fileLoggingEnabled_ = true;
+        emit fileLoggingEnabledChanged();
+        setLastError({});
+        return true;
+    }
+
+    const bool wasActive = Logger::isInitialized() && Logger::isFileLoggingActive();
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+    if (Logger::isInitialized()) {
+        Logger::disableFileLogging();
+    }
+#endif
+
+    if (!writeValue(kFileLoggingEnabledKey, false)) {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        if (wasActive && Logger::isInitialized() && !logFilePath_.trimmed().isEmpty()) {
+            Logger::enableFileLogging(logFilePath_);
+        }
+#else
+        Q_UNUSED(wasActive)
+#endif
+        setLastError(QStringLiteral("Unable to save the file logging setting."));
         return false;
     }
-    fileLoggingEnabled_ = enabled;
+
+    fileLoggingEnabled_ = false;
     emit fileLoggingEnabledChanged();
-    applyRuntimeFileLogging();
+    setLastError({});
     return true;
+}
+
+void ConfigurationManager::reconcileFileLoggingActivationFailure(const QString& reason)
+{
+    const QString message = reason.trimmed().isEmpty()
+        ? QStringLiteral("Unable to enable file logging at the selected path.")
+        : reason;
+
+    if (fileLoggingEnvLocked_) {
+        setLastError(message);
+        return;
+    }
+
+    if (fileLoggingEnabled_) {
+        writeValue(kFileLoggingEnabledKey, false);
+        fileLoggingEnabled_ = false;
+        emit fileLoggingEnabledChanged();
+    }
+
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+    if (Logger::isInitialized() && Logger::isFileLoggingActive()) {
+        Logger::disableFileLogging();
+    }
+#endif
+
+    setLastError(message);
 }
 
 bool ConfigurationManager::setLogFilePath(const QString& path)
@@ -334,20 +412,6 @@ void ConfigurationManager::setLastError(const QString& text)
     }
     lastErrorText_ = text;
     emit lastErrorTextChanged();
-}
-
-void ConfigurationManager::applyRuntimeFileLogging()
-{
-#ifdef AURALIS_ENABLE_FILE_LOGGING
-    if (!Logger::isInitialized()) {
-        return;
-    }
-    if (fileLoggingEnabled_) {
-        Logger::enableFileLogging(logFilePath_);
-    } else {
-        Logger::disableFileLogging();
-    }
-#endif
 }
 
 } // namespace auralis::core

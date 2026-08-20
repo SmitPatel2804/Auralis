@@ -2,6 +2,7 @@
 #include <auralis/core/Logger.h>
 
 #include <QSettings>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -134,9 +135,167 @@ private slots:
         const QString path = dir.filePath(QStringLiteral("auralis.log"));
         QVERIFY(manager.setLogFilePath(path));
         QVERIFY(manager.setFileLoggingEnabled(true));
+        QCOMPARE(manager.fileLoggingEnabled(), true);
         QVERIFY(auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(manager.lastErrorText().isEmpty());
         QVERIFY(manager.setFileLoggingEnabled(false));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
         QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void fileLoggingEnableEmptyPathFailsWithoutStateDivergence()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        QVERIFY(manager.setLogFilePath(QString()));
+
+        QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
+        QVERIFY(!manager.setFileLoggingEnabled(true));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
+        QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(!manager.lastErrorText().trimmed().isEmpty());
+        QCOMPARE(enabledSpy.count(), 0);
+
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void fileLoggingEnableInvalidPathFailsWithoutStateDivergence()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString impossible = dir.filePath(QStringLiteral("missing-parent/auralis.log"));
+        QVERIFY(manager.setLogFilePath(impossible));
+
+        QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
+        QVERIFY(!manager.setFileLoggingEnabled(true));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
+        QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(!manager.lastErrorText().trimmed().isEmpty());
+        QCOMPARE(enabledSpy.count(), 0);
+
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void fileLoggingEnableValidPathActivatesRuntimeLogger()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString path = dir.filePath(QStringLiteral("auralis-valid.log"));
+
+        QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
+        QVERIFY(manager.setLogFilePath(path));
+        QVERIFY(manager.setFileLoggingEnabled(true));
+        QCOMPARE(manager.fileLoggingEnabled(), true);
+        QVERIFY(auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(manager.lastErrorText().isEmpty());
+        QCOMPARE(enabledSpy.count(), 1);
+
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void fileLoggingDisableDeactivatesRuntimeLogger()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString path = dir.filePath(QStringLiteral("auralis-disable.log"));
+        QVERIFY(manager.setLogFilePath(path));
+        QVERIFY(manager.setFileLoggingEnabled(true));
+        QVERIFY(manager.setFileLoggingEnabled(false));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
+        QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(manager.lastErrorText().isEmpty());
+        QVERIFY(manager.setFileLoggingEnabled(false));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
+
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void fileLoggingRepeatedEnableIsIdempotent()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString path = dir.filePath(QStringLiteral("auralis-idempotent.log"));
+        QVERIFY(manager.setLogFilePath(path));
+
+        QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
+        QVERIFY(manager.setFileLoggingEnabled(true));
+        QCOMPARE(enabledSpy.count(), 1);
+        QVERIFY(manager.setFileLoggingEnabled(true));
+        QCOMPARE(enabledSpy.count(), 1);
+        QCOMPARE(manager.fileLoggingEnabled(), true);
+        QVERIFY(auralis::core::Logger::isFileLoggingActive());
+
+        auralis::core::Logger::shutdown();
+#else
+        QSKIP("File logging is compiled out");
+#endif
+    }
+
+    void reconcileFileLoggingActivationFailureClearsEnabledState()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        auralis::core::Logger::shutdown();
+        QVERIFY(auralis::core::Logger::initialize());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+        QVERIFY(manager.initialize());
+        const QString path = dir.filePath(QStringLiteral("auralis-reconcile.log"));
+        QVERIFY(manager.setLogFilePath(path));
+        QVERIFY(manager.setFileLoggingEnabled(true));
+
+        manager.reconcileFileLoggingActivationFailure(QStringLiteral("Unable to enable file logging at the selected path."));
+        QCOMPARE(manager.fileLoggingEnabled(), false);
+        QVERIFY(!auralis::core::Logger::isFileLoggingActive());
+        QVERIFY(!manager.lastErrorText().isEmpty());
+
         auralis::core::Logger::shutdown();
 #else
         QSKIP("File logging is compiled out");

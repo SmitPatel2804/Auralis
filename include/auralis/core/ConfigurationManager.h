@@ -54,6 +54,9 @@ public:
     Q_INVOKABLE bool setWindowHeight(int height);
     Q_INVOKABLE bool resetToDefaults();
 
+    /// Clear persisted/runtime enabled state after Logger activation fails (e.g. at startup).
+    void reconcileFileLoggingActivationFailure(const QString& reason);
+
 signals:
     void fileLoggingEnabledChanged();
     void logFilePathChanged();
@@ -67,7 +70,6 @@ private:
     void applyEnvironmentOverrides();
     bool writeValue(const char* key, const QVariant& value);
     void setLastError(const QString& text);
-    void applyRuntimeFileLogging();
 
     std::unique_ptr<QSettings> settings_;
     bool initialized_ = false;

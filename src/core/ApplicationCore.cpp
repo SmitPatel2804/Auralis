@@ -68,6 +68,8 @@ bool ApplicationCore::initialize()
         if (!Logger::enableFileLogging(services_.configuration->logFilePath())) {
             qCWarning(auralisCore)
                 << "File logging requested but unavailable; continuing with console logging";
+            services_.configuration->reconcileFileLoggingActivationFailure(
+                QStringLiteral("Unable to enable file logging at the selected path."));
         }
     }
 

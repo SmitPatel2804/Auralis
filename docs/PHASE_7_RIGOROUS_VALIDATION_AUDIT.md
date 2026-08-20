@@ -114,7 +114,7 @@ Failures: none.
 | Diagnostics completeness | PASS | Diagnostics sections: System, Bluetooth, PipeWire, Devices (BT model), Routes (`ownerLabel`), current session members (recovering/route/endpoint). Source-backed, not terminal. |
 | Clipboard placeholder removed/wired | PASS | `copyVisibleToClipboard()` uses `QGuiApplication::clipboard()`. QML no longer toasts “not wired”. Guiless path returns false (tested). **Live paste of clipboard contents was not inspected.** |
 | Dark-theme contrast | PASS | `rg 'color:\s*"#[0-9A-Fa-f]{6}"' ui` — no matches. Listed leftover rows use `Theme.*`. Visual hover/focus/disabled on a display **NOT RUN**. |
-| File logging semantics | PASS | `setFileLoggingEnabled` → `applyRuntimeFileLogging()` → `Logger::enableFileLogging`/`disableFileLogging`. Settings labels **path** restart-only, not the enable toggle. Unit updates `Logger::isFileLoggingActive()`. |
+| File logging semantics | PASS (corrected) | Previous validation covered valid-path enable only and did not assert Logger failure handling. `applyRuntimeFileLogging()` ignored `Logger::enableFileLogging()`’s return, so Settings could show enabled while the sink stayed inactive. Final correction: transactional `setFileLoggingEnabled`, empty/invalid path rejection, startup `reconcileFileLoggingActivationFailure`, Settings snap-back. Negative-path unit tests added. Path field remains restart-only. |
 | Behavioral GUI tests | PASS (reduced) | Isolation/notify/ownership/duplicate/restore are C++ behavioral tests. No mouse-driven QML test of Sessions editor vs Dashboard. `tst_DesktopBackendSmoke` loads Main + live device insert. |
 
 Coverage map (requirement → automated evidence):
@@ -365,7 +365,34 @@ Impact:       Multi-device (and single-device) session activate unusable on this
 ## 23. Phase 7 Exit Gate
 
 ```text
-PHASE 7 EXIT GATE: PASS (retest 2026-08-19T17:24:16Z)
+PHASE 7 EXIT GATE: PASS (retest 2026-08-19T17:24:16Z; file-logging final correction 2026-08-20)
 ```
 
-Original FAIL in this section (ConfirmDialog loops + session Starting→Failed) was reproduced, then fixed, then retested. Current gate: CTest 42/42, offscreen QML loads without `implicitWidth` binding loops, live BlueZ/PipeWire/manual routes/session activate/Phase 7 hardware 4/4 PASS, dual-headset audible play Active on both members. Interactive GUI walkthrough remains **NOT RUN**. End-to-end latency is dominated by AAC A2DP (~189 ms advertised), not by the 21 ms `pw-play`/graph quantum.
+Original FAIL in this section (ConfirmDialog loops + session Starting→Failed) was reproduced, then fixed, then retested. A later review found file-logging state divergence on Logger activation failure; that is now corrected with negative-path regression tests. Current gate: CTest 42/42, ConfigurationManager file-logging cases include empty/invalid/valid/disable/idempotent/reconcile. Interactive GUI walkthrough of Settings checkbox remains operator-confirmed when a display is available.
+
+## 24. Final File Logging Correction
+
+```text
+Previous validation gap:
+  The earlier audit marked file logging PASS for the happy path only. It did not test
+  Logger activation failure, so config/UI could silently diverge from runtime.
+
+Root cause:
+  ConfigurationManager persisted and emitted enabled=true, then called
+  applyRuntimeFileLogging() which ignored Logger::enableFileLogging()'s bool.
+
+Fix:
+  Transactional enable/disable; empty path and open failure leave enabled=false with
+  lastErrorText; ApplicationCore reconciles startup open failure; Settings checkbox
+  rebinds to authoritative state on failed toggle.
+
+Test matrix:
+  Valid writable path          PASS (unit)
+  Empty path reject            PASS (unit)
+  Invalid/unusable path        PASS (unit)
+  Runtime failure → config OFF PASS (unit)
+  Error text on failure        PASS (unit)
+  Disable after enable         PASS (unit)
+  Repeated enable idempotent   PASS (unit)
+  Full CTest suite             PASS (42/42)
+```

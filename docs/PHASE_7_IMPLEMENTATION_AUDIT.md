@@ -139,11 +139,49 @@ Phase 1–6 unit and integration tests remain passing (`41/41`, previously `40/4
 - `copyVisibleToClipboard()` returns false when there is no `QGuiApplication` (guiless tests, some CI).
 - Interactive resize/keyboard/hardware pairing were not run on a physical display in this gate.
 
+## 10a. Final File Logging Correction
+
+```text
+Previous defect:
+  setFileLoggingEnabled persisted and emitted enabled=true before (and without checking)
+  Logger::enableFileLogging(). Empty/invalid paths could leave Settings checked while the
+  runtime sink stayed inactive. The earlier audit covered the valid-path case only.
+
+Root cause:
+  applyRuntimeFileLogging() ignored the bool return from Logger::enableFileLogging().
+
+Production fix:
+  - ConfigurationManager::setFileLoggingEnabled is transactional (validate path → activate
+    Logger → persist → update property / emit).
+  - Empty path and Logger open failure reject enable, keep config OFF, set lastErrorText.
+  - Persist failure after successful enable rolls back Logger::disableFileLogging().
+  - ApplicationCore calls reconcileFileLoggingActivationFailure() on startup open failure.
+  - Settings CheckBox snaps back to authoritative fileLoggingEnabled on failed toggle.
+
+Invariant:
+  If ConfigurationManager::fileLoggingEnabled() is true (Logger initialized, file logging
+  compiled in), then Logger::isFileLoggingActive() is true.
+
+Tests added (tst_ConfigurationManager):
+  - fileLoggingEnableValidPathActivatesRuntimeLogger
+  - fileLoggingEnableEmptyPathFailsWithoutStateDivergence
+  - fileLoggingEnableInvalidPathFailsWithoutStateDivergence
+  - fileLoggingDisableDeactivatesRuntimeLogger
+  - fileLoggingRepeatedEnableIsIdempotent
+  - reconcileFileLoggingActivationFailureClearsEnabledState
+
+Verification (this correction):
+  - Build: PASS
+  - CTest: 42/42 PASS
+  - ConfigurationManager/Logger targeted: PASS (14 + 7 cases)
+```
+
 ## 11. Phase 7 Exit Gate
 
 ```text
-PHASE 7 EXIT GATE: PASSED (automated A–H)
-Hardware GUI steps: NOT RUN (no interactive adapter/display session)
+PHASE 7 EXIT GATE: PASSED
+File logging transactional truthfulness: PASS (negative-path unit coverage)
+Hardware GUI steps: NOT RUN (no interactive adapter/display session required for logging-only patch)
 ```
 
-Blocking in-scope code defects A–H from the correction plan are addressed and covered by automated tests. Hardware-only GUI steps remain `NOT RUN`.
+Blocking in-scope code defects A–H from the correction plan are addressed and covered by automated tests. The final file-logging divergence gap is closed. Hardware-only GUI steps remain `NOT RUN`.
