@@ -69,3 +69,7 @@ PHASE 8 OVERALL: PENDING HARDWARE VALIDATION
 ```
 
 Hardware BlueZ/PipeWire/suspend-on-laptop validation was not executed as PASS evidence.
+
+## Post-closure note — multi-device fan-out
+
+Shared-source N-destination routing no longer destroys sibling links (input-only conflict clearing). Software gate remains PASS; live multi-headset confirmation remains HARDWARE PENDING.

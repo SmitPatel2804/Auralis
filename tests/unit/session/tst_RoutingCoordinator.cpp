@@ -94,6 +94,27 @@ private slots:
         QVERIFY(!session.devices.at(0).runtime.routeId.isEmpty());
         QVERIFY(!session.devices.at(1).runtime.routeId.isEmpty());
         QVERIFY(session.devices.at(0).runtime.routeId != session.devices.at(1).runtime.routeId);
+
+        const QString routeA = session.devices.at(0).runtime.routeId;
+        const QString routeB = session.devices.at(1).runtime.routeId;
+        const auto a = h.router.routeById(routeA);
+        const auto b = h.router.routeById(routeB);
+        QVERIFY(a.has_value());
+        QVERIFY(b.has_value());
+        QVERIFY(a->state == RouteState::Active);
+        QVERIFY(b->state == RouteState::Active);
+        QCOMPARE(a->ownedLinks.size(), 2);
+        QCOMPARE(b->ownedLinks.size(), 2);
+        QCOMPARE(h.router.ownedLinkCount(), 4);
+        QCOMPARE(h.backend.createCalls, 4);
+
+        // Reconcile while both Active must not tear down or recreate.
+        const int creates = h.backend.createCalls;
+        h.coordinator.reconcile(session, 1, generations);
+        QCOMPARE(h.backend.createCalls, creates);
+        QVERIFY(session.devices.at(0).runtime.routeActive);
+        QVERIFY(session.devices.at(1).runtime.routeActive);
+        QCOMPARE(h.router.ownedLinkCount(), 4);
     }
 
     void repeatedReconcileDoesNotDuplicateRoutes()

@@ -274,6 +274,10 @@ std::optional<quint32> PipeWireObjectStore::findConflictingLinkGlobalId(
     quint32 inputNode,
     quint32 inputPort) const
 {
+    Q_UNUSED(outputNode)
+    Q_UNUSED(outputPort)
+    // Input ports are exclusive: another producer feeding the same input blocks us.
+    // Output ports may fan out to many inputs — that is not a conflict.
     for (const PipeWireLinkInfo& link : links_) {
         if (!link.inputNode.has_value() || !link.inputPort.has_value()) {
             continue;
@@ -287,22 +291,6 @@ std::optional<quint32> PipeWireObjectStore::findConflictingLinkGlobalId(
         const bool sameOutput = link.outputNode.has_value() && link.outputPort.has_value()
             && *link.outputNode == outputNode && *link.outputPort == outputPort;
         if (!sameOutput) {
-            return link.globalId;
-        }
-    }
-    for (const PipeWireLinkInfo& link : links_) {
-        if (!link.outputNode.has_value() || !link.outputPort.has_value()) {
-            continue;
-        }
-        if (*link.outputNode != outputNode || *link.outputPort != outputPort) {
-            continue;
-        }
-        if (!linkIsUsable(link)) {
-            continue;
-        }
-        const bool sameInput = link.inputNode.has_value() && link.inputPort.has_value()
-            && *link.inputNode == inputNode && *link.inputPort == inputPort;
-        if (!sameInput) {
             return link.globalId;
         }
     }

@@ -752,24 +752,64 @@ void AudioRouter::clearConflictingLinks(const ResolvedRoutePlan& plan)
             continue;
         }
         for (int pass = 0; pass < 8; ++pass) {
+            // Only clear foreign producers on the destination input. Output fan-out is allowed.
             std::optional<quint32> conflict = store_->findConflictingLinkGlobalId(
                 pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId);
             if (!conflict.has_value()) {
-                conflict = store_->findAnyLinkOnPort(pair.outputNodeId, pair.outputPortId, true);
-            }
-            if (!conflict.has_value()) {
                 conflict = store_->findAnyLinkOnPort(pair.inputNodeId, pair.inputPortId, false);
+                if (conflict.has_value()) {
+                    const std::optional<quint32> exact = store_->findExactLinkGlobalId(
+                        pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId);
+                    if (exact.has_value() && *exact == *conflict) {
+                        conflict.reset();
+                    }
+                }
             }
             if (!conflict.has_value()) {
+                break;
+            }
+            if (isLinkOwnedByAnyRoute(*conflict)) {
+                qCInfo(auralisAudio) << "AudioRouter SkippingOwnedPeerLink id=" << *conflict
+                                     << "planned out=" << pair.outputNodeId << ":" << pair.outputPortId
+                                     << "in=" << pair.inputNodeId << ":" << pair.inputPortId;
                 break;
             }
             qCInfo(auralisAudio) << "AudioRouter ClearingConflictingLink id=" << *conflict
                                  << "planned out=" << pair.outputNodeId << ":" << pair.outputPortId
                                  << "in=" << pair.inputNodeId << ":" << pair.inputPortId;
-            backend_->destroyForeignLink(*conflict);
+            if (!backend_->destroyForeignLink(*conflict)) {
+                qCWarning(auralisAudio) << "AudioRouter ForeignLinkDestroyRefused id=" << *conflict;
+                break;
+            }
             store_->remove(*conflict);
         }
     }
+}
+
+bool AudioRouter::isLinkOwnedByAnyRoute(quint32 globalId) const
+{
+    if (globalId == 0) {
+        return false;
+    }
+    for (const AudioRoute& route : routes_) {
+        for (const OwnedLink& owned : route.ownedLinks) {
+            if (owned.globalId == globalId) {
+                return true;
+            }
+            if (backend_ != nullptr && owned.ownershipToken != 0
+                && backend_->ownedLinkGlobalId(owned.ownershipToken) == globalId) {
+                return true;
+            }
+        }
+    }
+    if (store_ != nullptr) {
+        if (const PipeWireLinkInfo* link = store_->link(globalId)) {
+            if (!link->properties.value(QStringLiteral("auralis.route.id")).isEmpty()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 QVector<OwnedLink> AudioRouter::tryAdoptExistingLinks(const QString& routeId, const ResolvedRoutePlan& plan)

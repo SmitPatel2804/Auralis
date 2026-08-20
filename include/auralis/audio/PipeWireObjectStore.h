@@ -25,7 +25,8 @@ public:
     QVector<PipeWireLinkInfo> links() const;
     QVector<PipeWirePortInfo> portsForNode(quint32 nodeId) const;
 
-    /// Returns a link global id that blocks the requested connection (including output-side conflicts).
+    /// Returns a link global id that blocks the requested connection on the input side
+    /// (a different producer already feeding the same input port). Output fan-out is allowed.
     std::optional<quint32> findConflictingLinkGlobalId(
         quint32 outputNode,
         quint32 outputPort,

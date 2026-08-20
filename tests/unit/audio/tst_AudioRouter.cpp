@@ -605,8 +605,9 @@ private slots:
         Harness h;
         h.addStereoStream(1, 11, 12);
         h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
-        h.store.upsert(makeLink(50, 1, 11, 99, 91, QStringLiteral("active")));
-        h.store.upsert(makeLink(51, 1, 12, 99, 92, QStringLiteral("active")));
+        // Foreign producers on the destination inputs must be cleared (input exclusivity).
+        h.store.upsert(makeLink(50, 90, 91, 2, 21, QStringLiteral("active")));
+        h.store.upsert(makeLink(51, 90, 92, 2, 22, QStringLiteral("active")));
         const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
         h.router.activateRoute(id);
         const auto route = h.router.routeById(id);
@@ -634,6 +635,79 @@ private slots:
         QCOMPARE(route->ownedLinks.at(0).globalId, 60u);
         QCOMPARE(route->ownedLinks.at(1).globalId, 61u);
         QCOMPARE(route->ownedLinks.at(0).ownershipToken, 0u);
+    }
+
+    void twoDestinationsShareSourceWithoutTearingSiblingLinks()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+
+        const QString routeA = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(routeA);
+        const auto activeA = h.router.routeById(routeA);
+        QVERIFY(activeA.has_value());
+        QVERIFY(activeA->state == RouteState::Active);
+        QCOMPARE(activeA->ownedLinks.size(), 2);
+        const quint32 aFl = activeA->ownedLinks.at(0).globalId;
+        const quint32 aFr = activeA->ownedLinks.at(1).globalId;
+        QVERIFY(aFl != 0);
+        QVERIFY(aFr != 0);
+
+        const QString routeB = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-b")});
+        h.router.activateRoute(routeB);
+        const auto activeB = h.router.routeById(routeB);
+        QVERIFY(activeB.has_value());
+        QVERIFY(activeB->state == RouteState::Active);
+        QCOMPARE(activeB->ownedLinks.size(), 2);
+
+        const auto stillA = h.router.routeById(routeA);
+        QVERIFY(stillA.has_value());
+        QVERIFY(stillA->state == RouteState::Active);
+        QCOMPARE(stillA->ownedLinks.size(), 2);
+        QCOMPARE(stillA->ownedLinks.at(0).globalId, aFl);
+        QCOMPARE(stillA->ownedLinks.at(1).globalId, aFr);
+        QVERIFY(h.store.link(aFl) != nullptr);
+        QVERIFY(h.store.link(aFr) != nullptr);
+        QCOMPARE(h.router.ownedLinkCount(), 4);
+    }
+
+    void outputFanOutIsNotAConflict()
+    {
+        PipeWireObjectStore store;
+        store.upsert(makeLink(10, 1, 11, 2, 21, QStringLiteral("active")));
+        // Same output, different input — fan-out, not a conflict.
+        QVERIFY(!store.findConflictingLinkGlobalId(1, 11, 3, 31).has_value());
+        // Different producer on the same input — conflict.
+        store.upsert(makeLink(11, 9, 91, 3, 31, QStringLiteral("active")));
+        QCOMPARE(store.findConflictingLinkGlobalId(1, 11, 3, 31).value_or(0u), 11u);
+    }
+
+    void secondRouteDoesNotDestroyAdoptedSibling()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        h.store.upsert(makeLink(60, 1, 11, 2, 21, QStringLiteral("active")));
+        h.store.upsert(makeLink(61, 1, 12, 2, 22, QStringLiteral("active")));
+
+        const QString routeA = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(routeA);
+        QCOMPARE(h.backend.createCalls, 0);
+
+        const QString routeB = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-b")});
+        h.router.activateRoute(routeB);
+        QCOMPARE(h.backend.createCalls, 2);
+
+        const auto stillA = h.router.routeById(routeA);
+        QVERIFY(stillA.has_value());
+        QVERIFY(stillA->state == RouteState::Active);
+        QCOMPARE(stillA->ownedLinks.at(0).globalId, 60u);
+        QCOMPARE(stillA->ownedLinks.at(1).globalId, 61u);
+        QVERIFY(h.store.link(60) != nullptr);
+        QVERIFY(h.store.link(61) != nullptr);
     }
 };
 

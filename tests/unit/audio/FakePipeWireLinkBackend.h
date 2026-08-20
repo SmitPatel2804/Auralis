@@ -98,7 +98,17 @@ public:
         if (globalId == 0) {
             return true;
         }
+        for (auto it = owned.constBegin(); it != owned.constEnd(); ++it) {
+            if (it->globalId == globalId) {
+                return false;
+            }
+        }
         if (store_ != nullptr) {
+            if (const auto* link = store_->link(globalId)) {
+                if (!link->properties.value(QStringLiteral("auralis.route.id")).isEmpty()) {
+                    return false;
+                }
+            }
             store_->remove(globalId);
         }
         createdIds.removeAll(globalId);

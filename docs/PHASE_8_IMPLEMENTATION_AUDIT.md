@@ -220,3 +220,15 @@ Rationale:
 - Software defects from the Final Remediation and Final Closure prompts are fixed with regression tests.
 - Packaging metadata is truthful (license not selected; contact pending; icon installed).
 - Live BlueZ / PipeWire / laptop suspend paths remain **PENDING** and are not inferred from skipped live tests or sandbox launches.
+
+---
+
+## Post-closure: multi-device source fan-out (2026-08-20)
+
+Live multi-sink sessions were tearing sibling links: `clearConflictingLinks` treated output fan-out as exclusive and destroyed peer/adopted links, then Session recovery re-activated and raised `LinkCreationFailed` toasts.
+
+Fix: conflict semantics are **input exclusivity only**; never clear owned/peer Auralis links on shared source outs; fake backend refuses destroying owned globals. Tests: `tst_AudioRouter` multi-dest + `tst_RoutingCoordinator::twoMembersCreateTwoRoutes`.
+
+Post-fix CTest: **47/47 PASS** (~10.3s). Stress: PASS. ASAN smoke on fan-out tests: PASS.
+
+Software exit gate unchanged; hardware multi-headset validation still **PENDING**.
