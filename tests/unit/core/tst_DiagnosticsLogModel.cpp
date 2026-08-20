@@ -23,6 +23,7 @@ private slots:
     void retainsBoundedEntries()
     {
         auralis::ui::DiagnosticsLogModel model;
+        model.setCaptureEnabled(true);
         model.setCapacity(100);
         qCInfo(auralisCore) << "hello-log";
         QTRY_VERIFY(model.rowCount() >= 1);
@@ -37,6 +38,7 @@ private slots:
     void filtersBySeverity()
     {
         auralis::ui::DiagnosticsLogModel model;
+        model.setCaptureEnabled(true);
         qCWarning(auralisCore) << "warn-only";
         QTRY_VERIFY(model.rowCount() >= 1);
         model.setSeverityFilter(QStringLiteral("DEBUG"));

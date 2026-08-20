@@ -2,6 +2,8 @@
 
 #include <auralis/audio/PipeWireObjectStore.h>
 
+#include <algorithm>
+
 namespace auralis::audio {
 namespace {
 
@@ -33,7 +35,14 @@ AudioSource makeSourceFromNode(const PipeWireNodeInfo& node, AudioSourceType typ
     source.pipeWireNodeId = node.globalId;
     source.objectSerial = node.serial;
     source.nodeName = node.name;
-    source.description = !node.description.isEmpty() ? node.description : node.name;
+    const QString mediaName = node.properties.value(QStringLiteral("media.name")).trimmed();
+    if (!node.description.isEmpty()) {
+        source.description = node.description;
+    } else if (!mediaName.isEmpty()) {
+        source.description = mediaName;
+    } else {
+        source.description = node.name;
+    }
     source.mediaClass = node.mediaClass;
     source.sourceType = type;
     source.available = true;
@@ -139,6 +148,29 @@ QVector<AudioSource> classifyAudioSources(const PipeWireObjectStore& store)
             result.push_back(*source);
         }
     }
+    // App playback first (what sessions usually want), then mics, then sink monitors.
+    std::sort(result.begin(), result.end(), [](const AudioSource& left, const AudioSource& right) {
+        auto rank = [](AudioSourceType type) {
+            switch (type) {
+            case AudioSourceType::ApplicationPlaybackStream:
+                return 0;
+            case AudioSourceType::PhysicalAudioSource:
+            case AudioSourceType::VirtualAudioSource:
+                return 1;
+            case AudioSourceType::SinkMonitor:
+                return 2;
+            case AudioSourceType::Unknown:
+                return 3;
+            }
+            return 3;
+        };
+        const int leftRank = rank(left.sourceType);
+        const int rightRank = rank(right.sourceType);
+        if (leftRank != rightRank) {
+            return leftRank < rightRank;
+        }
+        return left.description < right.description;
+    });
     return result;
 }
 

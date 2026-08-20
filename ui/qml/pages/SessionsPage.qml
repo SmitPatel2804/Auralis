@@ -11,6 +11,7 @@ Item {
     readonly property var selected: sessions ? sessions.selectedSession : null
     property string selectedId: ""
     readonly property int memberCount: sessions && sessions.sessionMembers ? sessions.sessionMembers.count : 0
+    readonly property int sourceCount: router ? router.sourceCount : 0
     readonly property bool canActivate: selected && selected.exists
         && selected.sourceId.length > 0 && root.memberCount > 0
     readonly property bool canRetry: selected && selected.exists
@@ -38,6 +39,19 @@ Item {
         const first = sessions.sessionList.sessionIdAt(0)
         if (first && String(first).length > 0)
             root.selectedId = String(first)
+    }
+
+    function syncSourceCombo() {
+        if (!sourceCombo || !selected)
+            return
+        const idx = sourceCombo.indexOfValue(selected.sourceId)
+        if (sourceCombo.currentIndex !== idx)
+            sourceCombo.currentIndex = idx
+    }
+
+    Connections {
+        target: router
+        function onSourcesChanged() { Qt.callLater(root.syncSourceCombo) }
     }
 
     ColumnLayout {
@@ -92,6 +106,7 @@ Item {
 
             Frame {
                 SplitView.preferredWidth: 280
+                SplitView.minimumWidth: 200
                 ListView {
                     id: list
                     anchors.fill: parent
@@ -137,100 +152,156 @@ Item {
 
             Frame {
                 SplitView.fillWidth: true
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Metrics.sm
-                    spacing: Metrics.sm
-                    visible: selected && selected.exists
+                SplitView.minimumWidth: 320
 
-                    KeyValueRow { label: qsTr("State"); value: selected ? selected.stateLabel : "" }
-                    ComboBox {
-                        id: sourceCombo
-                        Layout.fillWidth: true
-                        model: router ? router.sources : null
-                        textRole: "name"
-                        valueRole: "sourceId"
-                        currentIndex: selected ? indexOfValue(selected.sourceId) : -1
-                        displayText: currentIndex >= 0 ? currentText : qsTr("Select source")
-                        onActivated: root.report(sessions.setSource(root.selectedId, currentValue))
-                    }
-                    RowLayout {
-                        Button {
-                            text: qsTr("Activate")
-                            enabled: root.canActivate
-                            onClicked: root.report(sessions.activateSession(root.selectedId))
-                        }
-                        Button {
-                            text: qsTr("Deactivate")
-                            enabled: root.canDeactivate
-                            onClicked: root.report(sessions.deactivateSession(root.selectedId))
-                        }
-                        Button {
-                            text: qsTr("Retry")
-                            enabled: root.canRetry
-                            onClicked: root.report(sessions.retrySession(root.selectedId))
-                        }
-                    }
-                    VolumeControl {
-                        label: qsTr("Group volume")
-                        value: selected ? selected.groupVolume : 1
-                        muted: selected ? selected.muted : false
-                        onVolumeCommitted: function(v) { root.report(sessions.setGroupVolume(root.selectedId, v)) }
-                        onMuteToggled: function(m) { root.report(sessions.setSessionMuted(root.selectedId, m)) }
-                    }
-                    ComboBox {
-                        id: policyCombo
-                        Layout.fillWidth: true
-                        model: [ "ReconnectAndRestore", "RestoreRoutesOnly", "None" ]
-                        currentIndex: selected ? model.indexOf(selected.recoveryPolicy) : 0
-                        onActivated: root.report(sessions.setRecoveryPolicy(root.selectedId, currentText))
-                    }
-
-                    Label { text: qsTr("Members"); color: Theme.text; font.bold: true }
-                    ListView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: sessions ? sessions.sessionMembers : null
-                        delegate: RowLayout {
-                            required property string deviceId
-                            required property string displayName
-                            required property bool connected
-                            required property bool endpointAvailable
-                            required property real volume
-                            required property bool muted
-                            width: ListView.view.width
-                            Label { text: displayName; color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
-                            StatusBadge { label: connected ? qsTr("Connected") : qsTr("Disconnected"); kind: connected ? "connected" : "warning" }
-                            Slider {
-                                from: 0; to: 1; value: volume
-                                onPressedChanged: if (!pressed) root.report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
-                            }
-                            Button { text: qsTr("Remove"); onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId)) }
-                        }
-                    }
-                    ComboBox {
-                        id: addDeviceCombo
-                        Layout.fillWidth: true
-                        model: bluetooth ? bluetooth.devices : null
-                        textRole: "displayName"
-                        valueRole: "address"
-                        displayText: qsTr("Add device")
-                        onActivated: {
-                            const address = currentValue
-                            if (address === undefined || address === null || String(address).length === 0) {
-                                AppCore.notifications.postError(qsTr("Session"), qsTr("Select a device with a Bluetooth address"))
-                            } else {
-                                root.report(sessions.addDevice(root.selectedId, String(address)))
-                            }
-                            currentIndex = -1
-                        }
-                    }
-                }
                 EmptyState {
                     visible: !selected || !selected.exists
                     anchors.centerIn: parent
                     title: qsTr("Select a session")
+                }
+
+                ScrollView {
+                    id: detailScroll
+                    anchors.fill: parent
+                    anchors.margins: Metrics.sm
+                    visible: selected && selected.exists
+                    clip: true
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: detailScroll.availableWidth
+                        spacing: Metrics.sm
+
+                        KeyValueRow { label: qsTr("State"); value: selected ? selected.stateLabel : "" }
+
+                        Label {
+                            text: qsTr("Audio source")
+                            color: Theme.text
+                            font.bold: true
+                        }
+                        Label {
+                            text: root.sourceCount === 0
+                                  ? qsTr("No sources yet. Start YouTube in Brave (leave it playing), then reopen this list.")
+                                  : qsTr("Pick a playing app (Brave). Entries marked (mic) are microphones — not YouTube.")
+                            color: Theme.textMuted
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: sourceCombo
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            Layout.minimumHeight: 36
+                            model: router ? router.sources : null
+                            textRole: "name"
+                            valueRole: "sourceId"
+                            enabled: root.sourceCount > 0
+                            displayText: {
+                                if (currentIndex >= 0)
+                                    return currentText
+                                if (selected && selected.sourceName && selected.sourceName.length > 0)
+                                    return selected.sourceName
+                                return qsTr("Select source")
+                            }
+                            Component.onCompleted: root.syncSourceCombo()
+                            onModelChanged: Qt.callLater(root.syncSourceCombo)
+                            onActivated: root.report(sessions.setSource(root.selectedId, currentValue))
+                            popup.implicitHeight: Math.min(360, 40 * Math.max(1, root.sourceCount))
+                        }
+
+                        RowLayout {
+                            Button {
+                                text: qsTr("Activate")
+                                enabled: root.canActivate
+                                onClicked: root.report(sessions.activateSession(root.selectedId))
+                            }
+                            Button {
+                                text: qsTr("Deactivate")
+                                enabled: root.canDeactivate
+                                onClicked: root.report(sessions.deactivateSession(root.selectedId))
+                            }
+                            Button {
+                                text: qsTr("Retry")
+                                enabled: root.canRetry
+                                onClicked: root.report(sessions.retrySession(root.selectedId))
+                            }
+                        }
+
+                        VolumeControl {
+                            Layout.fillWidth: true
+                            label: qsTr("Group volume")
+                            value: selected ? selected.groupVolume : 1
+                            muted: selected ? selected.muted : false
+                            onVolumeCommitted: function(v) { root.report(sessions.setGroupVolume(root.selectedId, v)) }
+                            onMuteToggled: function(m) { root.report(sessions.setSessionMuted(root.selectedId, m)) }
+                        }
+
+                        Label {
+                            text: qsTr("Recovery policy")
+                            color: Theme.text
+                            font.bold: true
+                        }
+                        ComboBox {
+                            id: policyCombo
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            model: [ "ReconnectAndRestore", "RestoreRoutesOnly", "None" ]
+                            currentIndex: selected ? model.indexOf(selected.recoveryPolicy) : 0
+                            onActivated: root.report(sessions.setRecoveryPolicy(root.selectedId, currentText))
+                        }
+
+                        Label { text: qsTr("Members"); color: Theme.text; font.bold: true }
+                        Frame {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.max(120, Math.min(220, 48 * Math.max(1, root.memberCount)))
+                            ListView {
+                                anchors.fill: parent
+                                clip: true
+                                model: sessions ? sessions.sessionMembers : null
+                                delegate: RowLayout {
+                                    required property string deviceId
+                                    required property string displayName
+                                    required property bool connected
+                                    required property bool endpointAvailable
+                                    required property real volume
+                                    required property bool muted
+                                    width: ListView.view.width
+                                    Label { text: displayName; color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    StatusBadge { label: connected ? qsTr("Connected") : qsTr("Disconnected"); kind: connected ? "connected" : "warning" }
+                                    Slider {
+                                        from: 0; to: 1; value: volume
+                                        onPressedChanged: if (!pressed) root.report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
+                                    }
+                                    Button { text: qsTr("Remove"); onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId)) }
+                                }
+                                EmptyState {
+                                    visible: root.memberCount === 0
+                                    anchors.centerIn: parent
+                                    title: qsTr("No devices")
+                                    message: qsTr("Add Smokin' Buds below.")
+                                }
+                            }
+                        }
+                        ComboBox {
+                            id: addDeviceCombo
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            model: bluetooth ? bluetooth.devices : null
+                            textRole: "displayName"
+                            valueRole: "address"
+                            displayText: qsTr("Add device")
+                            onActivated: {
+                                const address = currentValue
+                                if (address === undefined || address === null || String(address).length === 0) {
+                                    AppCore.notifications.postError(qsTr("Session"), qsTr("Select a device with a Bluetooth address"))
+                                } else {
+                                    root.report(sessions.addDevice(root.selectedId, String(address)))
+                                }
+                                currentIndex = -1
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -191,6 +191,46 @@ private slots:
         QCOMPARE(session.devices.front().runtime.routeId, routeId);
     }
 
+    void failedRouteIsNotRetriedUntilStarting()
+    {
+        Harness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"));
+        AuralisSession session;
+        session.id = QStringLiteral("sess-failed");
+        session.sourceId = QStringLiteral("src:7:Stream/Output/Audio");
+        session.state = SessionState::Active;
+        SessionDevice left;
+        left.deviceId = QStringLiteral("AA:BB:CC:DD:EE:01");
+        session.devices = {left};
+        session.operationGeneration = 1;
+        QHash<QString, quint64> generations{{session.id, 1}};
+        h.coordinator.reconcile(session, 1, generations);
+        const QString routeId = session.devices.front().runtime.routeId;
+        QVERIFY(!routeId.isEmpty());
+        const int creates = h.backend.createCalls;
+
+        if (auto* route = h.router.mutableRoute(routeId)) {
+            route->state = RouteState::Failed;
+        }
+        session.devices.front().runtime.routeActive = false;
+        h.coordinator.reconcile(session, 1, generations);
+        QCOMPARE(h.backend.createCalls, creates);
+        QCOMPARE(session.devices.front().runtime.routeId, routeId);
+
+        session.state = SessionState::Starting;
+        h.coordinator.reconcile(session, 1, generations);
+        QCOMPARE(h.backend.createCalls, creates);
+        QCOMPARE(session.devices.front().runtime.routeId, routeId);
+
+        h.router.removeRoute(routeId);
+        session.devices.front().runtime.routeId.clear();
+        session.devices.front().runtime.routeRequested = false;
+        h.coordinator.reconcile(session, 1, generations);
+        QVERIFY(session.devices.front().runtime.routeId != routeId);
+        QVERIFY(h.backend.createCalls > creates);
+    }
+
     void groupAndTrimCombine()
     {
         AuralisSession session;

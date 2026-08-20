@@ -187,6 +187,24 @@ private slots:
             SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health)
             == SessionState::Failed);
     }
+
+    void startHealthIsTerminalWhenRouteFailed()
+    {
+        auralis::session::AuralisSession session;
+        session.state = SessionState::Starting;
+        session.sourceId = QStringLiteral("src:1");
+        auralis::session::SessionDevice device;
+        device.enabled = true;
+        device.runtime.routeRequested = false;
+        device.runtime.routeActive = false;
+        session.devices.push_back(device);
+        const auralis::session::SessionHealthSnapshot health =
+            auralis::session::healthSnapshotFromSession(session, true);
+        QVERIFY(health.terminalFailure);
+        QCOMPARE(
+            SessionStateMachine::recompute(SessionState::Starting, SessionIntent::Starting, health),
+            SessionState::Failed);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSessionStateMachine)

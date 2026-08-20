@@ -110,11 +110,17 @@ void RoutingCoordinator::reconcile(
         device.runtime.endpointAvailable = true;
 
         bool routeMatches = false;
+        auralis::audio::RouteState existingRouteState = auralis::audio::RouteState::Inactive;
         if (!device.runtime.routeId.isEmpty()) {
             if (const std::optional<auralis::audio::AudioRoute> route = router_->routeById(device.runtime.routeId)) {
+                existingRouteState = route->state;
                 routeMatches = route->sourceId == session.sourceId
                     && route->destinationIds.size() == 1 && route->destinationIds.front() == wanted.endpointId;
                 device.runtime.routeActive = route->state == auralis::audio::RouteState::Active;
+                if (route->state == auralis::audio::RouteState::Failed) {
+                    device.runtime.routeRequested = false;
+                    routeMatches = true;
+                }
             } else {
                 device.runtime.routeId.clear();
             }
@@ -149,6 +155,9 @@ void RoutingCoordinator::reconcile(
             device.runtime.lastError = {};
             router_->activateRoute(routeId);
         } else if (!device.runtime.routeActive) {
+            if (existingRouteState == auralis::audio::RouteState::Failed) {
+                continue;
+            }
             if (!device.runtime.autoRestoreAllowed && session.state != SessionState::Starting) {
                 qCInfo(auralisSession) << "RouteRecoverySuppressedByPolicy" << session.id << device.deviceId;
                 continue;
@@ -225,6 +234,9 @@ void RoutingCoordinator::refreshRuntime(AuralisSession& session)
         }
         if (const std::optional<auralis::audio::AudioRoute> route = router_->routeById(device.runtime.routeId)) {
             device.runtime.routeActive = route->state == auralis::audio::RouteState::Active;
+            if (route->state == auralis::audio::RouteState::Failed) {
+                device.runtime.routeRequested = false;
+            }
             if (!device.runtime.endpointId.isEmpty()) {
                 device.runtime.endpointId = route->destinationIds.value(0);
             }

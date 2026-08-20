@@ -32,17 +32,11 @@ QString severityName(QtMsgType type)
 DiagnosticsLogModel::DiagnosticsLogModel(QObject* parent)
     : QAbstractListModel(parent)
 {
-    auralis::core::Logger::setObserver([this](QtMsgType type, const QString& category, const QString& message) {
-        QMetaObject::invokeMethod(
-            this,
-            [this, type, category, message]() { appendFromLogger(type, category, message); },
-            Qt::QueuedConnection);
-    });
 }
 
 DiagnosticsLogModel::~DiagnosticsLogModel()
 {
-    auralis::core::Logger::setObserver({});
+    removeObserver();
 }
 
 int DiagnosticsLogModel::rowCount(const QModelIndex& parent) const
@@ -50,16 +44,15 @@ int DiagnosticsLogModel::rowCount(const QModelIndex& parent) const
     if (parent.isValid()) {
         return 0;
     }
-    return visibleIndices().size();
+    return visibleRows_.size();
 }
 
 QVariant DiagnosticsLogModel::data(const QModelIndex& index, int role) const
 {
-    const QVector<int> visible = visibleIndices();
-    if (!index.isValid() || index.row() < 0 || index.row() >= visible.size()) {
+    if (!index.isValid() || index.row() < 0 || index.row() >= visibleRows_.size()) {
         return {};
     }
-    const Entry& entry = entries_.at(visible.at(index.row()));
+    const Entry& entry = entries_.at(visibleRows_.at(index.row()));
     switch (role) {
     case TimestampRole:
         return entry.timestamp.toString(QStringLiteral("HH:mm:ss.zzz"));
@@ -100,6 +93,7 @@ void DiagnosticsLogModel::setCapacity(int value)
     capacity_ = next;
     beginResetModel();
     trimLocked();
+    rebuildVisibleRows();
     endResetModel();
     emit capacityChanged();
     emit filterChanged();
@@ -117,6 +111,7 @@ void DiagnosticsLogModel::setSeverityFilter(const QString& value)
     }
     beginResetModel();
     severityFilter_ = value;
+    rebuildVisibleRows();
     endResetModel();
     emit filterChanged();
 }
@@ -133,20 +128,40 @@ void DiagnosticsLogModel::setCategoryFilter(const QString& value)
     }
     beginResetModel();
     categoryFilter_ = value;
+    rebuildVisibleRows();
     endResetModel();
     emit filterChanged();
 }
 
 int DiagnosticsLogModel::visibleCount() const
 {
-    return visibleIndices().size();
+    return visibleRows_.size();
+}
+
+bool DiagnosticsLogModel::captureEnabled() const noexcept
+{
+    return captureEnabled_;
+}
+
+void DiagnosticsLogModel::setCaptureEnabled(bool enabled)
+{
+    if (captureEnabled_ == enabled) {
+        return;
+    }
+    captureEnabled_ = enabled;
+    if (enabled) {
+        installObserver();
+    } else {
+        removeObserver();
+    }
+    emit captureEnabledChanged();
 }
 
 QString DiagnosticsLogModel::visibleText() const
 {
     QStringList lines;
-    const QVector<int> visible = visibleIndices();
-    for (int row : visible) {
+    lines.reserve(visibleRows_.size());
+    for (int row : visibleRows_) {
         const Entry& entry = entries_.at(row);
         lines.push_back(
             entry.timestamp.toString(Qt::ISODateWithMs) + QLatin1Char(' ') + entry.severity + QLatin1Char(' ')
@@ -173,12 +188,20 @@ void DiagnosticsLogModel::clear()
 {
     beginResetModel();
     entries_.clear();
+    visibleRows_.clear();
     endResetModel();
     emit filterChanged();
 }
 
 void DiagnosticsLogModel::appendFromLogger(QtMsgType type, const QString& category, const QString& message)
 {
+    if (!captureEnabled_) {
+        return;
+    }
+    if (type == QtDebugMsg && severityFilter_.isEmpty()) {
+        return;
+    }
+
     Entry entry;
     entry.timestamp = QDateTime::currentDateTime();
     entry.severity = severityName(type);
@@ -189,20 +212,21 @@ void DiagnosticsLogModel::appendFromLogger(QtMsgType type, const QString& catego
         beginResetModel();
         entries_.removeFirst();
         entries_.push_back(entry);
+        rebuildVisibleRows();
         endResetModel();
         emit filterChanged();
         return;
     }
 
+    const int storageIndex = entries_.size();
+    entries_.push_back(entry);
     if (matches(entry)) {
-        const int visibleBefore = visibleIndices().size();
-        beginInsertRows(QModelIndex(), visibleBefore, visibleBefore);
-        entries_.push_back(entry);
+        const int visibleRow = visibleRows_.size();
+        beginInsertRows(QModelIndex(), visibleRow, visibleRow);
+        visibleRows_.push_back(storageIndex);
         endInsertRows();
         emit filterChanged();
-        return;
     }
-    entries_.push_back(entry);
 }
 
 bool DiagnosticsLogModel::matches(const Entry& entry) const
@@ -216,16 +240,15 @@ bool DiagnosticsLogModel::matches(const Entry& entry) const
     return true;
 }
 
-QVector<int> DiagnosticsLogModel::visibleIndices() const
+void DiagnosticsLogModel::rebuildVisibleRows()
 {
-    QVector<int> rows;
-    rows.reserve(entries_.size());
+    visibleRows_.clear();
+    visibleRows_.reserve(entries_.size());
     for (int i = 0; i < entries_.size(); ++i) {
         if (matches(entries_.at(i))) {
-            rows.push_back(i);
+            visibleRows_.push_back(i);
         }
     }
-    return rows;
 }
 
 void DiagnosticsLogModel::trimLocked()
@@ -233,6 +256,29 @@ void DiagnosticsLogModel::trimLocked()
     while (entries_.size() > capacity_) {
         entries_.removeFirst();
     }
+}
+
+void DiagnosticsLogModel::installObserver()
+{
+    if (observerInstalled_) {
+        return;
+    }
+    auralis::core::Logger::setObserver([this](QtMsgType type, const QString& category, const QString& message) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, type, category, message]() { appendFromLogger(type, category, message); },
+            Qt::QueuedConnection);
+    });
+    observerInstalled_ = true;
+}
+
+void DiagnosticsLogModel::removeObserver()
+{
+    if (!observerInstalled_) {
+        return;
+    }
+    auralis::core::Logger::setObserver({});
+    observerInstalled_ = false;
 }
 
 } // namespace auralis::ui

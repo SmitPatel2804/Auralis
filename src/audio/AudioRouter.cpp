@@ -74,18 +74,26 @@ int AudioRouter::sourceCount() const
 QString AudioRouter::sourceDisplayName(const QString& sourceId) const
 {
     for (const AudioSource& source : sources_) {
-        if (source.id == sourceId) {
-            if (!source.applicationName.isEmpty()) {
-                return source.applicationName;
-            }
-            if (!source.description.isEmpty()) {
-                return source.description;
-            }
-            if (!source.nodeName.isEmpty()) {
-                return source.nodeName;
-            }
-            return source.id;
+        if (source.id != sourceId) {
+            continue;
         }
+        if (!source.applicationName.isEmpty()) {
+            if (!source.description.isEmpty() && source.description != source.applicationName
+                && source.description != source.nodeName) {
+                return source.applicationName + QStringLiteral(" — ") + source.description;
+            }
+            return source.applicationName;
+        }
+        const QString base = !source.description.isEmpty() ? source.description
+            : (!source.nodeName.isEmpty() ? source.nodeName : source.id);
+        if (source.monitorSource) {
+            return base + QStringLiteral(" (monitor)");
+        }
+        if (source.sourceType == AudioSourceType::PhysicalAudioSource
+            || source.sourceType == AudioSourceType::VirtualAudioSource) {
+            return base + QStringLiteral(" (mic)");
+        }
+        return base;
     }
     return sourceId;
 }
@@ -467,6 +475,29 @@ void AudioRouter::handleGraphChanged()
                 rollback(route, RouteError::LinkEnteredErrorState, QStringLiteral("A created link entered ERROR"), true);
                 continue;
             }
+            refreshOwnedLinkIds(route);
+            if (!linksOperational(route) && !route.ownedLinks.isEmpty() && route.activatedAt.isValid()
+                && route.activatedAt.msecsTo(QDateTime::currentDateTimeUtc()) > 300) {
+                bool anyLive = false;
+                for (const OwnedLink& owned : route.ownedLinks) {
+                    const quint32 globalId =
+                        owned.globalId != 0 ? owned.globalId
+                                            : (backend_ != nullptr ? backend_->ownedLinkGlobalId(owned.ownershipToken)
+                                                                   : 0);
+                    if (globalId != 0) {
+                        anyLive = true;
+                        break;
+                    }
+                }
+                if (!anyLive) {
+                    rollback(
+                        route,
+                        RouteError::LinkCreationFailed,
+                        QStringLiteral("Link creation rejected by PipeWire"),
+                        true);
+                    continue;
+                }
+            }
             finishActivationIfReady(route);
             continue;
         }
@@ -657,6 +688,36 @@ void AudioRouter::beginActivation(AudioRoute& route, quint64 generation)
         rollback(route, plan.error.category, plan.error.detail, true);
         return;
     }
+    if (QVector<OwnedLink> adopted = tryAdoptExistingLinks(route.id, plan); !adopted.isEmpty()) {
+        if (adopted.size() != plan.pairs.size()) {
+            rollback(
+                route,
+                RouteError::PartialActivationFailed,
+                QStringLiteral("Only part of the route could be adopted from existing PipeWire links"),
+                true);
+            return;
+        }
+        route.ownedLinks = std::move(adopted);
+        route.activatedAt = QDateTime::currentDateTimeUtc();
+        route.error = {};
+        setState(route, RouteState::Active);
+        qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route.id << "links=" << route.ownedLinks.size()
+                             << "adopted=true";
+        return;
+    }
+    clearConflictingLinks(plan);
+    for (const ResolvedPortPair& pair : plan.pairs) {
+        if (store_->findConflictingLinkGlobalId(
+                pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId)
+                .has_value()) {
+            rollback(
+                route,
+                RouteError::LinkCreationFailed,
+                QStringLiteral("Audio port already linked — stop other playback or deactivate first"),
+                true);
+            return;
+        }
+    }
     setState(route, RouteState::Ready);
     setState(route, RouteState::Activating);
     RouteErrorInfo error;
@@ -677,6 +738,87 @@ void AudioRouter::beginActivation(AudioRoute& route, quint64 generation)
     route.activatedAt = QDateTime::currentDateTimeUtc();
     armActivationTimeout(route.id, generation);
     finishActivationIfReady(route);
+}
+
+void AudioRouter::clearConflictingLinks(const ResolvedRoutePlan& plan)
+{
+    if (store_ == nullptr || backend_ == nullptr) {
+        return;
+    }
+    for (const ResolvedPortPair& pair : plan.pairs) {
+        if (store_->findExactLinkGlobalId(
+                pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId)
+                .has_value()) {
+            continue;
+        }
+        for (int pass = 0; pass < 8; ++pass) {
+            std::optional<quint32> conflict = store_->findConflictingLinkGlobalId(
+                pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId);
+            if (!conflict.has_value()) {
+                conflict = store_->findAnyLinkOnPort(pair.outputNodeId, pair.outputPortId, true);
+            }
+            if (!conflict.has_value()) {
+                conflict = store_->findAnyLinkOnPort(pair.inputNodeId, pair.inputPortId, false);
+            }
+            if (!conflict.has_value()) {
+                break;
+            }
+            qCInfo(auralisAudio) << "AudioRouter ClearingConflictingLink id=" << *conflict
+                                 << "planned out=" << pair.outputNodeId << ":" << pair.outputPortId
+                                 << "in=" << pair.inputNodeId << ":" << pair.inputPortId;
+            backend_->destroyForeignLink(*conflict);
+            store_->remove(*conflict);
+        }
+    }
+}
+
+QVector<OwnedLink> AudioRouter::tryAdoptExistingLinks(const QString& routeId, const ResolvedRoutePlan& plan)
+{
+    QVector<OwnedLink> adopted;
+    if (store_ == nullptr) {
+        return adopted;
+    }
+    adopted.reserve(plan.pairs.size());
+    for (const ResolvedPortPair& pair : plan.pairs) {
+        const std::optional<quint32> existing = store_->findExactLinkGlobalId(
+            pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId);
+        if (!existing.has_value()) {
+            adopted.clear();
+            return adopted;
+        }
+        OwnedLink owned;
+        owned.routeId = routeId;
+        owned.destinationId = pair.destinationId;
+        owned.outputNodeId = pair.outputNodeId;
+        owned.outputPortId = pair.outputPortId;
+        owned.inputNodeId = pair.inputNodeId;
+        owned.inputPortId = pair.inputPortId;
+        owned.globalId = *existing;
+        owned.channel = pair.channel;
+        adopted.push_back(owned);
+    }
+    return adopted;
+}
+
+void AudioRouter::handleOwnedLinkError(quint64 ownershipToken, const QString& detail)
+{
+    if (ownershipToken == 0) {
+        return;
+    }
+    for (AudioRoute& route : routes_) {
+        if (route.state != RouteState::Activating) {
+            continue;
+        }
+        for (const OwnedLink& owned : route.ownedLinks) {
+            if (owned.ownershipToken != ownershipToken) {
+                continue;
+            }
+            rollback(route, RouteError::LinkCreationFailed, detail, true);
+            emitRouteSignals(route);
+            emitQmlPropertyNotifications();
+            return;
+        }
+    }
 }
 
 void AudioRouter::finishActivationIfReady(AudioRoute& route)
@@ -806,12 +948,10 @@ bool AudioRouter::linksOperational(const AudioRoute& route) const
         return false;
     }
     for (const OwnedLink& owned : route.ownedLinks) {
-        if (owned.ownershipToken == 0) {
-            return false;
+        quint32 globalId = owned.globalId;
+        if (globalId == 0 && owned.ownershipToken != 0 && backend_ != nullptr) {
+            globalId = backend_->ownedLinkGlobalId(owned.ownershipToken);
         }
-        const quint32 globalId =
-            owned.globalId != 0 ? owned.globalId
-                                : (backend_ != nullptr ? backend_->ownedLinkGlobalId(owned.ownershipToken) : 0);
         if (globalId == 0) {
             return false;
         }

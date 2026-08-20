@@ -20,6 +20,11 @@ SelectedSessionViewModel::SelectedSessionViewModel(SessionManager* manager, QObj
     connect(manager_, &SessionManager::sessionUpdated, this, &SelectedSessionViewModel::handleSessionUpdated);
     connect(manager_, &SessionManager::sessionRemoved, this, &SelectedSessionViewModel::handleSessionRemoved);
     connect(manager_, &SessionManager::sessionsChanged, this, &SelectedSessionViewModel::refresh);
+    connect(manager_, &SessionManager::sessionStateChanged, this, [this](const QString& sessionId, SessionState, SessionState) {
+        if (sessionId == sessionId_) {
+            refresh();
+        }
+    });
 }
 
 QString SelectedSessionViewModel::sessionId() const

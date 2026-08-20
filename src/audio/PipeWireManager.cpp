@@ -28,7 +28,18 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
     , guard_(std::make_shared<Guard>())
 {
     router_ = new AudioRouter(store_.get(), endpoints_.get(), connection_.get(), this);
+    connection_->setLinkErrorHandler([this](quint64 token, int res, const QString& message) {
+        Q_UNUSED(res)
+        QMetaObject::invokeMethod(
+            router_,
+            [this, token, message]() { router_->handleOwnedLinkError(token, message); },
+            Qt::QueuedConnection);
+    });
     wireBluetoothRegistry();
+
+    graphRefreshTimer_.setSingleShot(true);
+    graphRefreshTimer_.setInterval(100);
+    connect(&graphRefreshTimer_, &QTimer::timeout, this, &PipeWireManager::refreshGraph);
 }
 
 PipeWireManager::~PipeWireManager()
@@ -210,6 +221,7 @@ void PipeWireManager::shutdown()
     }
 
     qCInfo(auralisAudio) << "PipeWire Stopping";
+    graphRefreshTimer_.stop();
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
     if (router_ != nullptr) {
@@ -262,19 +274,26 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
                               << "type=" << event.snapshot.interfaceType
                               << "mediaClass=" << event.snapshot.properties.value(QStringLiteral("media.class"));
         store_->upsert(event.snapshot);
-        refreshGraph();
+        if (initialSyncComplete_) {
+            scheduleGraphRefresh();
+        }
         break;
     case PipeWireClientEvent::Type::GlobalUpdated:
         store_->upsert(event.snapshot);
-        refreshGraph();
+        if (initialSyncComplete_) {
+            scheduleGraphRefresh();
+        }
         break;
     case PipeWireClientEvent::Type::GlobalRemoved:
         qCDebug(auralisAudio) << "PipeWireRegistry GlobalRemoved id=" << event.removedId;
         store_->remove(event.removedId);
-        refreshGraph();
+        if (initialSyncComplete_) {
+            scheduleGraphRefresh();
+        }
         break;
     case PipeWireClientEvent::Type::InitialSyncDone:
         initialSyncComplete_ = true;
+        graphRefreshTimer_.stop();
         refreshGraph();
         if (router_ != nullptr) {
             router_->handleConnectionState(connectionState_, true);
@@ -300,6 +319,11 @@ void PipeWireManager::setConnectionState(PipeWireConnectionState state, const QS
     if (changed) {
         bumpGraph();
     }
+}
+
+void PipeWireManager::scheduleGraphRefresh()
+{
+    graphRefreshTimer_.start();
 }
 
 void PipeWireManager::refreshGraph()

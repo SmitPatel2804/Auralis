@@ -88,6 +88,7 @@ public:
     void refreshSources();
     void handleGraphChanged();
     void handleConnectionState(PipeWireConnectionState state, bool initialSyncComplete);
+    void handleOwnedLinkError(quint64 ownershipToken, const QString& detail);
     void shutdown();
 
 signals:
@@ -113,6 +114,8 @@ private:
     void emitQmlPropertyNotifications();
     bool validateSelection(const QString& sourceId, const QStringList& destinationIds, RouteErrorInfo* error) const;
     void beginActivation(AudioRoute& route, quint64 generation);
+    void clearConflictingLinks(const ResolvedRoutePlan& plan);
+    QVector<OwnedLink> tryAdoptExistingLinks(const QString& routeId, const ResolvedRoutePlan& plan);
     void finishActivationIfReady(AudioRoute& route);
     void rollback(AudioRoute& route, RouteError category, const QString& detail, bool disable);
     void replanIfEnabled(AudioRoute& route);

@@ -37,8 +37,26 @@ QVariant AudioSourceListModel::data(const QModelIndex& index, int role) const
     case SourceIdRole:
         return source.id;
     case NameRole:
-    case Qt::DisplayRole:
+    case Qt::DisplayRole: {
+        // Prefer app streams as "Brave — …"; keep hardware as description (e.g. Built-in Analog).
+        if (!source.applicationName.isEmpty()) {
+            if (!source.description.isEmpty() && source.description != source.applicationName
+                && source.description != source.nodeName) {
+                return source.applicationName + QStringLiteral(" — ") + source.description;
+            }
+            return source.applicationName;
+        }
+        if (source.monitorSource) {
+            const QString base = !source.description.isEmpty() ? source.description : source.nodeName;
+            return base + QStringLiteral(" (monitor)");
+        }
+        if (source.sourceType == AudioSourceType::PhysicalAudioSource
+            || source.sourceType == AudioSourceType::VirtualAudioSource) {
+            const QString base = !source.description.isEmpty() ? source.description : source.nodeName;
+            return base + QStringLiteral(" (mic)");
+        }
         return !source.description.isEmpty() ? source.description : source.nodeName;
+    }
     case DescriptionRole:
         return source.description;
     case MediaClassRole:

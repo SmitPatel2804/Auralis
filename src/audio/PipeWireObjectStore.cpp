@@ -208,6 +208,107 @@ QVector<PipeWirePortInfo> PipeWireObjectStore::portsForNode(quint32 nodeId) cons
     return result;
 }
 
+namespace {
+
+bool linkEndpointsMatch(
+    const PipeWireLinkInfo& link,
+    quint32 outputNode,
+    quint32 outputPort,
+    quint32 inputNode,
+    quint32 inputPort)
+{
+    return link.outputNode.has_value() && link.outputPort.has_value() && link.inputNode.has_value()
+        && link.inputPort.has_value() && *link.outputNode == outputNode && *link.outputPort == outputPort
+        && *link.inputNode == inputNode && *link.inputPort == inputPort;
+}
+
+bool linkIsUsable(const PipeWireLinkInfo& link)
+{
+    return link.state != PipeWireLinkState::Error;
+}
+
+} // namespace
+
+std::optional<quint32> PipeWireObjectStore::findExactLinkGlobalId(
+    quint32 outputNode,
+    quint32 outputPort,
+    quint32 inputNode,
+    quint32 inputPort) const
+{
+    for (const PipeWireLinkInfo& link : links_) {
+        if (!linkIsUsable(link)) {
+            continue;
+        }
+        if (linkEndpointsMatch(link, outputNode, outputPort, inputNode, inputPort)) {
+            return link.globalId;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<quint32> PipeWireObjectStore::findAnyLinkOnPort(
+    quint32 nodeId,
+    quint32 portId,
+    bool asOutput) const
+{
+    for (const PipeWireLinkInfo& link : links_) {
+        if (!linkIsUsable(link)) {
+            continue;
+        }
+        if (asOutput) {
+            if (link.outputNode.has_value() && link.outputPort.has_value() && *link.outputNode == nodeId
+                && *link.outputPort == portId) {
+                return link.globalId;
+            }
+        } else if (link.inputNode.has_value() && link.inputPort.has_value() && *link.inputNode == nodeId
+            && *link.inputPort == portId) {
+            return link.globalId;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<quint32> PipeWireObjectStore::findConflictingLinkGlobalId(
+    quint32 outputNode,
+    quint32 outputPort,
+    quint32 inputNode,
+    quint32 inputPort) const
+{
+    for (const PipeWireLinkInfo& link : links_) {
+        if (!link.inputNode.has_value() || !link.inputPort.has_value()) {
+            continue;
+        }
+        if (*link.inputNode != inputNode || *link.inputPort != inputPort) {
+            continue;
+        }
+        if (!linkIsUsable(link)) {
+            continue;
+        }
+        const bool sameOutput = link.outputNode.has_value() && link.outputPort.has_value()
+            && *link.outputNode == outputNode && *link.outputPort == outputPort;
+        if (!sameOutput) {
+            return link.globalId;
+        }
+    }
+    for (const PipeWireLinkInfo& link : links_) {
+        if (!link.outputNode.has_value() || !link.outputPort.has_value()) {
+            continue;
+        }
+        if (*link.outputNode != outputNode || *link.outputPort != outputPort) {
+            continue;
+        }
+        if (!linkIsUsable(link)) {
+            continue;
+        }
+        const bool sameInput = link.inputNode.has_value() && link.inputPort.has_value()
+            && *link.inputNode == inputNode && *link.inputPort == inputPort;
+        if (!sameInput) {
+            return link.globalId;
+        }
+    }
+    return std::nullopt;
+}
+
 int PipeWireObjectStore::deviceCount() const noexcept
 {
     return static_cast<int>(devices_.size());

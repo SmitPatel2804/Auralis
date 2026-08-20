@@ -18,6 +18,9 @@ SessionHealthSnapshot healthSnapshotFromSession(const AuralisSession& session, b
             ++health.routeActiveCount;
         } else if (device.runtime.routeRequested) {
             ++health.pendingCount;
+        } else if (device.runtime.lastError.category == SessionError::RouteActivationFailed
+            || device.runtime.lastError.category == SessionError::RouteCreationFailed) {
+            health.terminalFailure = true;
         }
     }
     if (health.enabledCount == 0) {

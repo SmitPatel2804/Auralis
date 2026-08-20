@@ -64,7 +64,7 @@ Flickable {
             title: qsTr("Current session")
             visible: sessions && sessions.currentSessionId.length > 0
             KeyValueRow { label: qsTr("Name"); value: AppCore.activeSessionName }
-            KeyValueRow { label: qsTr("State"); value: sessions ? sessions.sessionStateLabel(sessions.currentSessionId) : "" }
+            KeyValueRow { label: qsTr("State"); value: sessions ? sessions.sessionStateText : "" }
             KeyValueRow {
                 label: qsTr("Source")
                 value: sessions ? sessions.sourceDisplayName(sessions.currentSourceId) : ""
@@ -87,12 +87,12 @@ Flickable {
             RowLayout {
                 Button {
                     text: qsTr("Activate")
-                    enabled: sessions && sessions.sessionStateText === "Idle"
+                    enabled: sessions && sessions.sessionStateText === "Inactive"
                     onClicked: root.report(sessions.activateSession(sessions.currentSessionId))
                 }
                 Button {
                     text: qsTr("Deactivate")
-                    enabled: sessions && sessions.currentSessionId.length > 0 && sessions.sessionStateText !== "Idle"
+                    enabled: sessions && sessions.currentSessionId.length > 0 && sessions.sessionStateText !== "Inactive"
                     onClicked: root.report(sessions.deactivateSession(sessions.currentSessionId))
                 }
                 Button {

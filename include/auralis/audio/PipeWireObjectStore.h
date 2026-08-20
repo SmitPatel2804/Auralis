@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QVector>
 
+#include <optional>
+
 namespace auralis::audio {
 
 class PipeWireObjectStore {
@@ -22,6 +24,23 @@ public:
     QVector<PipeWirePortInfo> ports() const;
     QVector<PipeWireLinkInfo> links() const;
     QVector<PipeWirePortInfo> portsForNode(quint32 nodeId) const;
+
+    /// Returns a link global id that blocks the requested connection (including output-side conflicts).
+    std::optional<quint32> findConflictingLinkGlobalId(
+        quint32 outputNode,
+        quint32 outputPort,
+        quint32 inputNode,
+        quint32 inputPort) const;
+
+    /// Returns an active link that already connects the exact endpoints.
+    std::optional<quint32> findExactLinkGlobalId(
+        quint32 outputNode,
+        quint32 outputPort,
+        quint32 inputNode,
+        quint32 inputPort) const;
+
+    /// Returns any non-error link using the given node port as output or input.
+    std::optional<quint32> findAnyLinkOnPort(quint32 nodeId, quint32 portId, bool asOutput) const;
 
     int deviceCount() const noexcept;
     int nodeCount() const noexcept;

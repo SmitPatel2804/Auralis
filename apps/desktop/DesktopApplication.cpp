@@ -13,6 +13,7 @@
 #include <auralis/ui/NotificationController.h>
 
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QQmlApplicationEngine>
 #include <QQmlExtensionPlugin>
 #include <QTimer>
@@ -52,6 +53,16 @@ int DesktopApplication::run(int argc, char* argv[])
     QGuiApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
     auralis::core::Logger::initialize({.enableConsole = true, .enableFile = false, .filePath = {}});
+    if (qEnvironmentVariableIntValue("AURALIS_VERBOSE") != 1) {
+        QLoggingCategory::setFilterRules(QStringLiteral(
+            "auralis.audio.debug=false\n"
+            "auralis.bluetooth.debug=false\n"
+            "auralis.session.debug=false\n"
+            "auralis.ui.debug=false\n"
+            "auralis.devices.debug=false\n"
+            "auralis.config.debug=false\n"
+            "auralis.core.debug=false"));
+    }
     qCInfo(auralisCore) << "Auralis starting";
 
     auralis::core::ApplicationCore core(makeProductionServices());

@@ -7,6 +7,7 @@
 #include <QAbstractItemModel>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 #include <atomic>
 #include <memory>
@@ -83,6 +84,7 @@ private:
     void handleClientEvent(const PipeWireClientEvent& event, quint64 generation);
     void setConnectionState(PipeWireConnectionState state, const QString& error = {});
     void refreshGraph();
+    void scheduleGraphRefresh();
     void bumpGraph();
     void wireBluetoothRegistry();
 
@@ -100,6 +102,7 @@ private:
     bool initialSyncComplete_ = false;
     int graphRevision_ = 0;
     bool bluetoothWired_ = false;
+    QTimer graphRefreshTimer_;
 };
 
 } // namespace auralis::audio

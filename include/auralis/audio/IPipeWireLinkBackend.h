@@ -25,6 +25,7 @@ public:
         const QHash<QString, QString>& extraProps = {}) = 0;
 
     virtual bool destroyOwnedLink(quint64 ownershipToken) = 0;
+    virtual bool destroyForeignLink(quint32 globalId) = 0;
     virtual quint32 ownedLinkGlobalId(quint64 ownershipToken) const = 0;
     virtual bool setNodeVolume(quint32 nodeId, double volume) = 0;
     virtual bool setNodeMuted(quint32 nodeId, bool muted) = 0;

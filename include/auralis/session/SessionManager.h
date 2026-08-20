@@ -183,6 +183,7 @@ private:
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;
     bool reconciling_ = false;
     bool reconcilePending_ = false;
+    int routeTeardownDepth_ = 0;
     bool persistenceDirty_ = false;
     std::function<void(const QString&)> managedReconnectHook_;
     QVector<QString> managedReconnectRequestsForTest_;

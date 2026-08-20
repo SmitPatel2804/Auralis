@@ -7,9 +7,11 @@ Item {
     id: root
     readonly property var bluetooth: AppCore.bluetooth
     readonly property var audio: AppCore.audio
+
     property string filter: "all"
     property string query: ""
     property string selectedPath: ""
+    property int audioGraphRevision: audio ? audio.graphRevision : 0
     readonly property bool selectedAvailable: bluetooth && selectedPath.length > 0 && bluetooth.hasDevice(selectedPath)
     readonly property var details: {
         if (!bluetooth || !selectedAvailable)
@@ -134,7 +136,8 @@ Item {
                         required property bool canCancelOperation
                         required property var uuids
 
-                        readonly property string audioStatus: audio ? (audio.graphRevision, audio.audioStatusForDevice(objectPath)) : ""
+                        readonly property string audioStatus: audio && root.audioGraphRevision >= 0
+                            ? audio.audioStatusForDevice(objectPath) : ""
                         readonly property bool matchesQuery: root.query.length === 0
                             || displayName.toLowerCase().indexOf(root.query.toLowerCase()) >= 0
                             || address.toLowerCase().indexOf(root.query.toLowerCase()) >= 0

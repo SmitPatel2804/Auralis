@@ -89,12 +89,51 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: AppCore.currentPage
-                DashboardPage { objectName: "pageDashboard" }
-                DevicesPage { objectName: "pageDevices" }
-                SessionsPage { objectName: "pageSessions" }
-                AudioRoutingPage { objectName: "pageAudioRouting" }
-                DiagnosticsPage { objectName: "pageDiagnostics" }
-                SettingsPage { objectName: "pageSettings" }
+
+                // Keep pages alive after first visit so selection/controls are not destroyed
+                // (destroying Sessions wiped the source ComboBox and session selection).
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 0 || status === Loader.Ready
+                    sourceComponent: DashboardPage {}
+                    onLoaded: if (item) item.objectName = "pageDashboard"
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 1 || status === Loader.Ready
+                    sourceComponent: DevicesPage {}
+                    onLoaded: if (item) item.objectName = "pageDevices"
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 2 || status === Loader.Ready
+                    sourceComponent: SessionsPage {}
+                    onLoaded: if (item) item.objectName = "pageSessions"
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 3 || status === Loader.Ready
+                    sourceComponent: AudioRoutingPage {}
+                    onLoaded: if (item) item.objectName = "pageAudioRouting"
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 4 || status === Loader.Ready
+                    sourceComponent: DiagnosticsPage {}
+                    onLoaded: if (item) item.objectName = "pageDiagnostics"
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: AppCore.currentPage === 5 || status === Loader.Ready
+                    sourceComponent: SettingsPage {}
+                    onLoaded: if (item) item.objectName = "pageSettings"
+                }
             }
         }
     }

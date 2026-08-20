@@ -11,6 +11,15 @@ Item {
     readonly property var logs: AppCore.diagnostics
     readonly property var router: audio ? audio.router : null
 
+    Component.onCompleted: {
+        if (logs)
+            logs.captureEnabled = true
+    }
+    Component.onDestruction: {
+        if (logs)
+            logs.captureEnabled = false
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: Metrics.md

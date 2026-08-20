@@ -123,6 +123,7 @@ struct PipeWireConnection::Impl {
     };
 
     EventHandler handler;
+    LinkErrorHandler linkErrorHandler;
     pw_thread_loop* loop = nullptr;
     pw_context* context = nullptr;
     pw_core* core = nullptr;
@@ -453,6 +454,12 @@ const pw_proxy_events PipeWireConnection::Impl::kProxyEvents = {
             }
             qCDebug(auralisAudio) << "PipeWire proxy error id=" << bound->globalId << "res=" << res
                                  << QString::fromUtf8(message != nullptr ? message : "");
+            if (bound->created && bound->ownershipToken != 0 && bound->impl->linkErrorHandler) {
+                bound->impl->linkErrorHandler(
+                    bound->ownershipToken,
+                    res,
+                    QString::fromUtf8(message != nullptr ? message : ""));
+            }
             if (bound->globalId != 0) {
                 bound->impl->destroyProxy(bound->globalId);
             } else {
@@ -766,6 +773,52 @@ bool PipeWireConnection::destroyOwnedLink(quint64 ownershipToken)
     return true;
 }
 
+bool PipeWireConnection::destroyForeignLink(quint32 globalId)
+{
+    if (globalId == 0) {
+        return true;
+    }
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return false;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    bool owned = false;
+    for (auto it = impl_->tokenToGlobalId.constBegin(); it != impl_->tokenToGlobalId.constEnd(); ++it) {
+        if (it.value() == globalId) {
+            owned = true;
+            break;
+        }
+    }
+    if (owned) {
+        pw_thread_loop_unlock(impl_->loop);
+        return false;
+    }
+    Impl::BoundProxy* bound = impl_->proxies.value(globalId);
+    if (bound != nullptr && bound->proxy != nullptr) {
+        impl_->destroyProxy(globalId);
+        pw_thread_loop_unlock(impl_->loop);
+        qCInfo(auralisAudio) << "PipeWire ForeignLinkDestroyed id=" << globalId;
+        return true;
+    }
+    if (impl_->registry != nullptr) {
+        pw_proxy* proxy = static_cast<pw_proxy*>(pw_registry_bind(
+            impl_->registry,
+            globalId,
+            PW_TYPE_INTERFACE_Link,
+            PW_VERSION_LINK,
+            sizeof(Impl::BoundProxy)));
+        if (proxy != nullptr) {
+            pw_proxy_destroy(proxy);
+            pw_thread_loop_unlock(impl_->loop);
+            qCInfo(auralisAudio) << "PipeWire ForeignLinkDestroyed id=" << globalId << "via=bind";
+            return true;
+        }
+    }
+    pw_thread_loop_unlock(impl_->loop);
+    qCWarning(auralisAudio) << "PipeWire ForeignLinkDestroyFailed id=" << globalId;
+    return false;
+}
+
 quint32 PipeWireConnection::ownedLinkGlobalId(quint64 ownershipToken) const
 {
     if (impl_ == nullptr || impl_->loop == nullptr || ownershipToken == 0) {
@@ -805,6 +858,13 @@ bool PipeWireConnection::volumeSupported(quint32 nodeId) const
         bound != nullptr && bound->kind == PipeWireObjectKind::Node && bound->propsWritable;
     pw_thread_loop_unlock(impl_->loop);
     return supported;
+}
+
+void PipeWireConnection::setLinkErrorHandler(LinkErrorHandler handler)
+{
+    if (impl_ != nullptr) {
+        impl_->linkErrorHandler = std::move(handler);
+    }
 }
 
 } // namespace auralis::audio

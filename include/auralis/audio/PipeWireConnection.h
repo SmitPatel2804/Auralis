@@ -45,10 +45,14 @@ public:
         const QString& routeId,
         const QHash<QString, QString>& extraProps = {}) override;
     bool destroyOwnedLink(quint64 ownershipToken) override;
+    bool destroyForeignLink(quint32 globalId) override;
     quint32 ownedLinkGlobalId(quint64 ownershipToken) const override;
     bool setNodeVolume(quint32 nodeId, double volume) override;
     bool setNodeMuted(quint32 nodeId, bool muted) override;
     bool volumeSupported(quint32 nodeId) const override;
+
+    using LinkErrorHandler = std::function<void(quint64 ownershipToken, int res, const QString& message)>;
+    void setLinkErrorHandler(LinkErrorHandler handler);
 
 private:
     struct Impl;

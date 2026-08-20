@@ -17,6 +17,7 @@ class DiagnosticsLogModel final : public QAbstractListModel {
     Q_PROPERTY(QString severityFilter READ severityFilter WRITE setSeverityFilter NOTIFY filterChanged)
     Q_PROPERTY(QString categoryFilter READ categoryFilter WRITE setCategoryFilter NOTIFY filterChanged)
     Q_PROPERTY(int visibleCount READ visibleCount NOTIFY filterChanged)
+    Q_PROPERTY(bool captureEnabled READ captureEnabled WRITE setCaptureEnabled NOTIFY captureEnabledChanged)
 
 public:
     enum Role {
@@ -40,6 +41,7 @@ public:
     QString categoryFilter() const;
     void setCategoryFilter(const QString& value);
     int visibleCount() const;
+    bool captureEnabled() const noexcept;
 
     Q_INVOKABLE QString visibleText() const;
     Q_INVOKABLE bool copyVisibleToClipboard() const;
@@ -47,9 +49,13 @@ public:
 
     void appendFromLogger(QtMsgType type, const QString& category, const QString& message);
 
+public slots:
+    void setCaptureEnabled(bool enabled);
+
 signals:
     void capacityChanged();
     void filterChanged();
+    void captureEnabledChanged();
 
 private:
     struct Entry {
@@ -60,13 +66,18 @@ private:
     };
 
     bool matches(const Entry& entry) const;
-    QVector<int> visibleIndices() const;
+    void rebuildVisibleRows();
     void trimLocked();
+    void installObserver();
+    void removeObserver();
 
     QVector<Entry> entries_;
-    int capacity_ = 2000;
+    QVector<int> visibleRows_;
+    int capacity_ = 500;
     QString severityFilter_;
     QString categoryFilter_;
+    bool captureEnabled_ = false;
+    bool observerInstalled_ = false;
 };
 
 } // namespace auralis::ui

@@ -93,6 +93,18 @@ public:
         return true;
     }
 
+    bool destroyForeignLink(quint32 globalId) override
+    {
+        if (globalId == 0) {
+            return true;
+        }
+        if (store_ != nullptr) {
+            store_->remove(globalId);
+        }
+        createdIds.removeAll(globalId);
+        return true;
+    }
+
     quint32 ownedLinkGlobalId(quint64 ownershipToken) const override
     {
         return owned.value(ownershipToken).globalId;

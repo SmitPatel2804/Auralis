@@ -59,9 +59,12 @@ SessionListModel::SessionListModel(SessionManager* manager, QObject* parent)
     connect(manager_, &SessionManager::sessionAdded, this, &SessionListModel::onAdded);
     connect(manager_, &SessionManager::sessionRemoved, this, &SessionListModel::onRemoved);
     connect(manager_, &SessionManager::sessionUpdated, this, &SessionListModel::onUpdated);
+    connect(manager_, &SessionManager::sessionStateChanged, this, [this](const QString& sessionId, SessionState, SessionState) {
+        onUpdated(sessionId);
+    });
     connect(manager_, &SessionManager::currentSessionIdChanged, this, [this]() {
         if (!ids_.isEmpty()) {
-            emit dataChanged(index(0, 0), index(ids_.size() - 1, 0), {ActiveRole});
+            emit dataChanged(index(0, 0), index(ids_.size() - 1, 0), {ActiveRole, StateLabelRole});
         }
     });
     reload();

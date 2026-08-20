@@ -599,6 +599,42 @@ private slots:
         QCOMPARE(h.router.routeById(sessionRoute)->muted, false);
         QVERIFY(errorSpy.count() >= 1);
     }
+
+    void clearsForeignLinksBeforeActivation()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.store.upsert(makeLink(50, 1, 11, 99, 91, QStringLiteral("active")));
+        h.store.upsert(makeLink(51, 1, 12, 99, 92, QStringLiteral("active")));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        const auto route = h.router.routeById(id);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state == RouteState::Active);
+        QCOMPARE(h.backend.createCalls, 2);
+        QVERIFY(h.store.link(50) == nullptr);
+        QVERIFY(h.store.link(51) == nullptr);
+    }
+
+    void adoptsExistingLinksInsteadOfCreating()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.store.upsert(makeLink(60, 1, 11, 2, 21, QStringLiteral("active")));
+        h.store.upsert(makeLink(61, 1, 12, 2, 22, QStringLiteral("active")));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        const auto route = h.router.routeById(id);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state == RouteState::Active);
+        QCOMPARE(h.backend.createCalls, 0);
+        QCOMPARE(route->ownedLinks.size(), 2);
+        QCOMPARE(route->ownedLinks.at(0).globalId, 60u);
+        QCOMPARE(route->ownedLinks.at(1).globalId, 61u);
+        QCOMPARE(route->ownedLinks.at(0).ownershipToken, 0u);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioRouter)

@@ -198,14 +198,14 @@ QString SessionManager::currentSessionId() const
 QString SessionManager::sessionStateText() const
 {
     if (activeSessionId_.isEmpty()) {
-        return toString(SessionState::Idle);
+        return userFacingSessionState(SessionState::Idle);
     }
     for (const AuralisSession& session : sessions_) {
         if (session.id == activeSessionId_) {
-            return toString(session.state);
+            return userFacingSessionState(session.state);
         }
     }
-    return toString(SessionState::Idle);
+    return userFacingSessionState(SessionState::Idle);
 }
 
 double SessionManager::groupVolume() const
@@ -560,11 +560,15 @@ SessionCommandResult SessionManager::setSource(const QString& sessionId, const Q
     emit sessionUpdated(sessionId);
     emitSessionUiSignals();
     if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
+        bumpGeneration(*session);
+        ++routeTeardownDepth_;
         if (routing_ != nullptr) {
             routing_->stopSessionRoutes(*session);
         }
+        --routeTeardownDepth_;
         for (SessionDevice& device : session->devices) {
             device.runtime.autoRestoreAllowed = true;
+            device.runtime.routeRequested = false;
         }
         reconcileActiveSession(*session);
     }
@@ -595,6 +599,21 @@ SessionCommandResult SessionManager::activateSession(const QString& sessionId)
     // Switching away from Failed: bump and clear.
     if (session->state == SessionState::Failed) {
         cancelAllRecovery(*session);
+        if (router_ != nullptr) {
+            for (SessionDevice& device : session->devices) {
+                if (device.runtime.routeId.isEmpty()) {
+                    continue;
+                }
+                if (const std::optional<auralis::audio::AudioRoute> route = router_->routeById(device.runtime.routeId)) {
+                    if (route->state == auralis::audio::RouteState::Failed) {
+                        router_->removeRoute(device.runtime.routeId);
+                        device.runtime.routeId.clear();
+                        device.runtime.routeRequested = false;
+                        device.runtime.routeActive = false;
+                    }
+                }
+            }
+        }
     }
 
     bumpGeneration(*session);
@@ -938,7 +957,7 @@ void SessionManager::handleExternalGraphChanged()
 void SessionManager::handleRouteStateChanged(const QString& routeId, auralis::audio::RouteState state)
 {
     Q_UNUSED(routeId);
-    if (activeSessionId_.isEmpty()) {
+    if (activeSessionId_.isEmpty() || routeTeardownDepth_ > 0) {
         return;
     }
     switch (state) {
@@ -947,8 +966,18 @@ void SessionManager::handleRouteStateChanged(const QString& routeId, auralis::au
     case auralis::audio::RouteState::Activating:
     case auralis::audio::RouteState::Deactivating:
     case auralis::audio::RouteState::Failed:
-        // Failed is terminal for this attempt. Reconcile from it would call activateRoute
-        // synchronously and recurse until SIGSEGV. Graph/device updates retry later.
+        if (state == auralis::audio::RouteState::Failed) {
+            if (AuralisSession* session = mutableSession(activeSessionId_)) {
+                if (session->state == SessionState::Stopping || session->state == SessionState::Idle) {
+                    return;
+                }
+                if (routing_ != nullptr) {
+                    routing_->refreshRuntime(*session);
+                }
+                recomputeSession(*session);
+            }
+        }
+        // Failed reconcile would call activateRoute synchronously and recurse. Graph updates retry later.
         return;
     default:
         break;
@@ -978,6 +1007,9 @@ void SessionManager::handleRouteRemoved(const QString& routeId)
                 device.runtime.routeId.clear();
                 device.runtime.routeActive = false;
             }
+        }
+        if (routeTeardownDepth_ > 0) {
+            return;
         }
         if (session->state == SessionState::Stopping || session->state == SessionState::Idle
             || session->state == SessionState::Failed) {
@@ -1236,6 +1268,7 @@ void SessionManager::recomputeSession(AuralisSession& session)
                 emit sessionError(session.id, session.error.category, session.error.detail);
             }
         }
+        emit sessionUpdated(session.id);
         emitSessionUiSignals();
     }
 }
