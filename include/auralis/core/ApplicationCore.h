@@ -5,6 +5,8 @@
 #include <auralis/core/ConfigurationManager.h>
 #include <auralis/core/ServiceStatus.h>
 #include <auralis/devices/IDeviceManager.h>
+#include <auralis/recovery/RecoveryManager.h>
+#include <auralis/recovery/SystemPowerMonitor.h>
 #include <auralis/session/ISessionManager.h>
 #include <auralis/ui/DiagnosticsLogModel.h>
 #include <auralis/ui/NotificationController.h>
@@ -22,6 +24,8 @@ struct ApplicationServices {
     std::unique_ptr<audio::IPipeWireManager> pipeWire;
     std::unique_ptr<devices::IDeviceManager> devices;
     std::unique_ptr<session::ISessionManager> sessions;
+    std::unique_ptr<recovery::RecoveryManager> recovery;
+    std::unique_ptr<recovery::SystemPowerMonitor> powerMonitor;
 };
 
 class ApplicationCore final : public QObject {
@@ -39,6 +43,8 @@ class ApplicationCore final : public QObject {
     Q_PROPERTY(QObject* configuration READ configuration CONSTANT)
     Q_PROPERTY(QObject* notifications READ notifications CONSTANT)
     Q_PROPERTY(QObject* diagnostics READ diagnostics CONSTANT)
+    Q_PROPERTY(QObject* recovery READ recovery CONSTANT)
+    Q_PROPERTY(QString recoveryStatus READ recoveryStatus NOTIFY recoveryStatusChanged)
     Q_PROPERTY(int currentPage READ currentPage WRITE setCurrentPage NOTIFY currentPageChanged)
     Q_PROPERTY(int warningCount READ warningCount NOTIFY warningCountChanged)
     Q_PROPERTY(QString lastErrorText READ lastErrorText NOTIFY lastErrorTextChanged)
@@ -68,6 +74,10 @@ public:
     QObject* configuration() const;
     QObject* notifications() const;
     QObject* diagnostics() const;
+    QObject* recovery() const;
+    recovery::RecoveryManager* recoveryManager() const noexcept;
+    recovery::SystemPowerMonitor* powerMonitor() const noexcept;
+    QString recoveryStatus() const;
     int currentPage() const;
     void setCurrentPage(int page);
     int warningCount() const;
@@ -84,6 +94,7 @@ signals:
     void warningCountChanged();
     void lastErrorTextChanged();
     void activeSessionChanged();
+    void recoveryStatusChanged();
 
 private slots:
     void refreshActiveSessionCache();

@@ -9,6 +9,7 @@
 #include <auralis/core/Logger.h>
 #include <auralis/core/LoggingCategories.h>
 #include <auralis/devices/DeviceManager.h>
+#include <auralis/recovery/RecoveryManager.h>
 #include <auralis/session/SessionManager.h>
 #include <auralis/ui/NotificationController.h>
 
@@ -43,6 +44,105 @@ auralis::core::ApplicationServices makeProductionServices()
     return services;
 }
 
+void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
+{
+    auto* recovery = core.recoveryManager();
+    if (recovery == nullptr) {
+        return;
+    }
+
+    auto* bluetooth = qobject_cast<auralis::bluetooth::BluetoothManager*>(core.bluetooth());
+    auto* pipeWire = qobject_cast<auralis::audio::PipeWireManager*>(core.audio());
+    auto* sessions = qobject_cast<auralis::session::SessionManager*>(core.sessions());
+
+    auralis::recovery::RecoveryManager::HostHooks hooks;
+    hooks.pauseBluetoothReconnect = [bluetooth]() {
+        if (bluetooth != nullptr) {
+            bluetooth->pauseManagedReconnect();
+        }
+    };
+    hooks.resumeBluetoothReconnect = [bluetooth]() {
+        if (bluetooth != nullptr) {
+            bluetooth->resumeManagedReconnect();
+        }
+    };
+    hooks.requestBlueZRefresh = [bluetooth]() {
+        if (bluetooth != nullptr) {
+            bluetooth->refresh();
+        }
+    };
+    hooks.requestPipeWireReconnect = [pipeWire]() {
+        if (pipeWire != nullptr) {
+            pipeWire->requestReconnect();
+        }
+    };
+    hooks.refreshActiveSession = [sessions]() {
+        if (sessions != nullptr) {
+            sessions->refreshActiveSession();
+        }
+    };
+    hooks.isBlueZAvailable = [bluetooth]() {
+        return bluetooth != nullptr && bluetooth->available();
+    };
+    hooks.isPipeWireConnected = [pipeWire]() {
+        return pipeWire != nullptr && pipeWire->connected();
+    };
+    hooks.isPipeWireGraphReady = [pipeWire]() {
+        return pipeWire != nullptr && pipeWire->connected() && pipeWire->initialSyncComplete();
+    };
+    hooks.isSystemBusConnected = [bluetooth]() {
+        return bluetooth != nullptr && bluetooth->systemBusConnected();
+    };
+    recovery->setHooks(std::move(hooks));
+
+    if (bluetooth != nullptr) {
+        QObject::connect(
+            bluetooth,
+            &auralis::bluetooth::BluetoothManager::availableChanged,
+            recovery,
+            [recovery, bluetooth]() { recovery->notifyBlueZAvailable(bluetooth->available()); });
+        QObject::connect(
+            bluetooth,
+            &auralis::bluetooth::BluetoothManager::systemBusConnectedChanged,
+            recovery,
+            &auralis::recovery::RecoveryManager::notifySystemBusConnected);
+        QObject::connect(
+            bluetooth,
+            &auralis::bluetooth::BluetoothManager::adapterChanged,
+            recovery,
+            [recovery, bluetooth]() {
+                recovery->notifyAdapterPresent(
+                    !bluetooth->adapterAddress().isEmpty() || bluetooth->adapterPowered());
+            });
+        recovery->notifyBlueZAvailable(bluetooth->available());
+        recovery->notifySystemBusConnected(bluetooth->systemBusConnected());
+    }
+
+    if (pipeWire != nullptr) {
+        const auto pushPw = [recovery, pipeWire]() {
+            if (pipeWire->connected()) {
+                recovery->notifyPipeWireConnected(true, pipeWire->initialSyncComplete());
+            } else if (
+                pipeWire->connectionState() == auralis::audio::PipeWireConnectionState::Error
+                || pipeWire->connectionState() == auralis::audio::PipeWireConnectionState::Stopped) {
+                recovery->notifyPipeWireError(pipeWire->lastError());
+            } else {
+                recovery->notifyPipeWireConnected(false, false);
+            }
+        };
+        QObject::connect(pipeWire, &auralis::audio::PipeWireManager::connectionStateChanged, recovery, pushPw);
+        QObject::connect(pipeWire, &auralis::audio::PipeWireManager::graphRevisionChanged, recovery, pushPw);
+        QObject::connect(
+            pipeWire,
+            &auralis::audio::PipeWireManager::reconnectExhausted,
+            recovery,
+            [recovery](const QString& reason) {
+                emit recovery->recoveryExhausted(QStringLiteral("PipeWire"), reason);
+            });
+        pushPw();
+    }
+}
+
 } // namespace
 
 int DesktopApplication::run(int argc, char* argv[])
@@ -72,6 +172,7 @@ int DesktopApplication::run(int argc, char* argv[])
     if (!core.initialize()) {
         qCCritical(auralisCore) << "Application core initialization failed";
     }
+    wireRecoveryOrchestration(core);
 
     if (auto* bluetooth = qobject_cast<auralis::bluetooth::BluetoothManager*>(core.bluetooth())) {
         QObject::connect(bluetooth, &auralis::bluetooth::BluetoothManager::errorTextChanged, &core, [&core, bluetooth]() {

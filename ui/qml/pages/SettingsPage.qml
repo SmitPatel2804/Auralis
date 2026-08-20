@@ -32,6 +32,16 @@ Flickable {
                 checked: config ? config.restoreLastSession : false
                 onToggled: config.setRestoreLastSession(checked)
             }
+            CheckBox {
+                text: qsTr("Auto-recover Bluetooth and audio services")
+                checked: config ? config.autoRecoverServices : true
+                onToggled: config.setAutoRecoverServices(checked)
+            }
+            CheckBox {
+                text: qsTr("Restore services after suspend/resume")
+                checked: config ? config.restoreOnResume : true
+                onToggled: config.setRestoreOnResume(checked)
+            }
             Label {
                 visible: config && config.developerStatusEnvLocked
                 text: qsTr("Developer status is locked by AURALIS_UI_SHOW_DEVELOPER_STATUS (restart not required for other settings).")

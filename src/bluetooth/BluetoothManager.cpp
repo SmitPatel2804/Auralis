@@ -179,6 +179,25 @@ ReconnectPolicy* BluetoothManager::reconnectPolicy() const noexcept
     return reconnect_;
 }
 
+void BluetoothManager::pauseManagedReconnect()
+{
+    if (reconnect_ != nullptr) {
+        reconnect_->pauseAll();
+    }
+}
+
+void BluetoothManager::resumeManagedReconnect()
+{
+    if (reconnect_ != nullptr) {
+        reconnect_->resumeAll();
+    }
+}
+
+bool BluetoothManager::systemBusConnected() const
+{
+    return client_ != nullptr && client_->isSystemBusConnected();
+}
+
 void BluetoothManager::connectClientSignals()
 {
     if (signalsWired_ || client_ == nullptr) {
@@ -423,11 +442,19 @@ void BluetoothManager::handleBlueZAvailable(bool available)
         available_ = available;
         emit availableChanged();
     }
-    if (!available && registry_ != nullptr) {
-        registry_->clear();
-    }
-    if (!available && adapters_ != nullptr) {
-        adapters_->clear();
+    if (!available) {
+        pauseManagedReconnect();
+        if (registry_ != nullptr) {
+            registry_->clear();
+        }
+        if (adapters_ != nullptr) {
+            adapters_->clear();
+        }
+    } else {
+        resumeManagedReconnect();
+        if (client_ != nullptr) {
+            client_->requestSnapshot();
+        }
     }
     if (discovery_ != nullptr) {
         discovery_->onBlueZAvailabilityChanged(available);
@@ -449,8 +476,15 @@ void BluetoothManager::handleSystemBusStateChanged(bool connected)
     emit scanningChanged();
     updateStatusText();
     refreshDisplayedError();
+    emit systemBusConnectedChanged(connected);
     if (!connected) {
         qCWarning(auralisBluetooth) << "SystemBusUnavailable";
+        pauseManagedReconnect();
+    } else {
+        resumeManagedReconnect();
+        if (client_ != nullptr) {
+            client_->requestSnapshot();
+        }
     }
 }
 

@@ -68,3 +68,6 @@ target_include_directories(tst_SessionManagedReconnectIntegration PRIVATE
     "${CMAKE_SOURCE_DIR}/tests/unit/audio"
 )
 
+auralis_add_test(tst_ServiceRecoveryIntegration tst_ServiceRecoveryIntegration.cpp)
+target_link_libraries(tst_ServiceRecoveryIntegration PRIVATE auralis-recovery auralis-core)
+

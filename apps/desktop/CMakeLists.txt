@@ -12,6 +12,7 @@ target_link_libraries(auralis-desktop
         auralis-audio
         auralis-devices
         auralis-session
+        auralis-recovery
         auralis-ui
         auralis-uiplugin
         Qt6::Gui
@@ -27,3 +28,19 @@ set_target_properties(auralis-desktop PROPERTIES
 qt_import_qml_plugins(auralis-desktop)
 
 auralis_apply_warnings(auralis-desktop)
+
+include(GNUInstallDirs)
+
+install(TARGETS auralis-desktop
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES
+    "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.desktop"
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
+)
+
+install(FILES
+    "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.metainfo.xml"
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo"
+)

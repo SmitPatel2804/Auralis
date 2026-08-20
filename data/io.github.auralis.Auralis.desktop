@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Auralis
+GenericName=Audio Hub
+Comment=Multi-device Bluetooth and PipeWire audio hub
+Exec=auralis-desktop
+Icon=io.github.auralis.Auralis
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=bluetooth;pipewire;hearing;audio;routing;
+StartupNotify=true

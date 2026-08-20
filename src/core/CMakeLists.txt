@@ -21,6 +21,7 @@ target_include_directories(auralis-core
 
 target_link_libraries(auralis-core
     PUBLIC
+        auralis-recovery
         Qt6::Core
         Qt6::Gui
 )

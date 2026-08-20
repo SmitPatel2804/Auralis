@@ -1,8 +1,8 @@
 # Auralis
 
-Auralis is a Linux desktop application for eventually managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
+Auralis is a Linux desktop application for managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
 
-This repository currently contains **Phase 6**: Phase 1 foundation through Phase 5 additive PipeWire routing, plus Phase 6 **multi-device session engine**.
+This repository currently contains **Phase 8**: reliability orchestration, service recovery, suspend/resume coordination, log rotation, automated failure-injection tests, and `.deb` packaging on top of Phases 0–7.
 
 ## Current status
 
@@ -14,7 +14,8 @@ Phase 3: Implemented
 Phase 4: Implemented
 Phase 5: Implemented
 Phase 6: Software complete (live two-device hardware opt-in)
-Phase 7+: Not implemented
+Phase 7: Implemented (GUI + hardened file logging)
+Phase 8: Software complete (live/hardware validation pending)
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
@@ -65,6 +66,25 @@ In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, an
 The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
 The **Audio Routing** panel selects a playback source and one or more playback endpoints, then Activate/Deactivate. Volume/mute appear when the destinations support `SPA_PROP_volume`.
+
+## Package (`.deb`)
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build
+cd build && cpack -G DEB
+```
+
+Install validation (no root required for extract/launch smoke):
+
+```bash
+dpkg-deb -I build/auralis_0.1.0_amd64.deb
+dpkg-deb -c build/auralis_0.1.0_amd64.deb
+mkdir -p /tmp/auralis-prefix && dpkg-deb -x build/auralis_0.1.0_amd64.deb /tmp/auralis-prefix
+QT_QPA_PLATFORM=offscreen /tmp/auralis-prefix/usr/bin/auralis-desktop
+```
+
+Runtime does not require root. System install via `sudo dpkg -i` is optional.
 
 ## Test
 
@@ -121,6 +141,7 @@ ctest --test-dir build -R tst_SessionLiveIntegration --output-on-failure
 | `auralis-audio` | Native PipeWire graph + additive routing (`AudioRouter`) | Phase 5 |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
 | `auralis-session` | Multi-device session engine (`SessionManager`) | Phase 6 |
+| `auralis-recovery` | Service recovery orchestration + logind power monitor | Phase 8 |
 | `auralis-ui` | QML resources | Status + discovery + device actions + endpoints + routing |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 

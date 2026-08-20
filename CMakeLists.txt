@@ -21,6 +21,7 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
 
+add_subdirectory(src/recovery)
 add_subdirectory(src/core)
 add_subdirectory(src/bluetooth)
 add_subdirectory(src/audio)
@@ -32,3 +33,5 @@ add_subdirectory(apps/desktop)
 if(AURALIS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+include(AuralisPackaging)

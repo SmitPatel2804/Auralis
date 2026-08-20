@@ -98,7 +98,13 @@ public:
     ReconnectPolicy* reconnectPolicy() const noexcept;
     void setReconnectPolicyConfig(const ReconnectPolicyConfig& config);
 
+    /// Pause/resume managed device reconnect during service loss or suspend (Phase 8).
+    void pauseManagedReconnect();
+    void resumeManagedReconnect();
+    bool systemBusConnected() const;
+
 signals:
+    void systemBusConnectedChanged(bool connected);
     void availableChanged();
     void adapterChanged();
     void scanningChanged();

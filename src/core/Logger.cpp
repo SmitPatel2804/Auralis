@@ -20,6 +20,9 @@ struct LoggerState {
     bool consoleEnabled = true;
     bool fileEnabled = false;
     std::unique_ptr<QFile> file;
+    QString filePath;
+    qint64 maxFileBytes = 5 * 1024 * 1024;
+    int retainRotatedFiles = 3;
     QtMessageHandler previousHandler = nullptr;
     Logger::Observer observer;
 };
@@ -65,6 +68,72 @@ QString formatLine(QtMsgType type, const QMessageLogContext& context, const QStr
         .arg(timestamp, QString::fromLatin1(severityName(type)), categoryLabel(context), message);
 }
 
+void rotateFilesLocked()
+{
+    LoggerState& state = loggerState();
+    if (state.filePath.isEmpty() || state.retainRotatedFiles <= 0) {
+        return;
+    }
+
+    if (state.file) {
+        state.file->flush();
+        state.file->close();
+        state.file.reset();
+    }
+
+    for (int i = state.retainRotatedFiles - 1; i >= 1; --i) {
+        const QString from = QStringLiteral("%1.%2").arg(state.filePath).arg(i);
+        const QString to = QStringLiteral("%1.%2").arg(state.filePath).arg(i + 1);
+        if (QFile::exists(to)) {
+            QFile::remove(to);
+        }
+        if (QFile::exists(from)) {
+            QFile::rename(from, to);
+        }
+    }
+    const QString first = QStringLiteral("%1.1").arg(state.filePath);
+    if (QFile::exists(first)) {
+        QFile::remove(first);
+    }
+    if (QFile::exists(state.filePath)) {
+        QFile::rename(state.filePath, first);
+    }
+}
+
+bool openFileSinkLocked(const QString& filePath)
+{
+    LoggerState& state = loggerState();
+    state.file.reset();
+    state.fileEnabled = false;
+    state.filePath = filePath;
+
+    if (filePath.isEmpty()) {
+        return false;
+    }
+
+    auto file = std::make_unique<QFile>(filePath);
+    if (!file->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        return false;
+    }
+
+    state.file = std::move(file);
+    state.fileEnabled = true;
+    return true;
+}
+
+void maybeRotateLocked()
+{
+    LoggerState& state = loggerState();
+    if (!state.file || !state.file->isOpen() || state.maxFileBytes <= 0) {
+        return;
+    }
+    if (state.file->size() < state.maxFileBytes) {
+        return;
+    }
+    rotateFilesLocked();
+    openFileSinkLocked(state.filePath);
+}
+
 void writeLine(const QString& line)
 {
     LoggerState& state = loggerState();
@@ -76,9 +145,12 @@ void writeLine(const QString& line)
     }
 
     if (state.file && state.file->isOpen()) {
-        state.file->write(utf8);
-        state.file->write("\n", 1);
-        state.file->flush();
+        maybeRotateLocked();
+        if (state.file && state.file->isOpen()) {
+            state.file->write(utf8);
+            state.file->write("\n", 1);
+            state.file->flush();
+        }
     }
 }
 
@@ -103,26 +175,6 @@ void messageHandler(QtMsgType type, const QMessageLogContext& context, const QSt
     }
 }
 
-bool openFileSinkLocked(const QString& filePath)
-{
-    LoggerState& state = loggerState();
-    state.file.reset();
-    state.fileEnabled = false;
-
-    if (filePath.isEmpty()) {
-        return false;
-    }
-
-    auto file = std::make_unique<QFile>(filePath);
-    if (!file->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        return false;
-    }
-
-    state.file = std::move(file);
-    state.fileEnabled = true;
-    return true;
-}
-
 } // namespace
 
 bool Logger::initialize()
@@ -140,6 +192,8 @@ bool Logger::initialize(const Options& options)
     }
 
     state.consoleEnabled = options.enableConsole;
+    state.maxFileBytes = options.maxFileBytes;
+    state.retainRotatedFiles = options.retainRotatedFiles;
     state.previousHandler = qInstallMessageHandler(&messageHandler);
     state.initialized = true;
 
@@ -179,6 +233,7 @@ void Logger::shutdown()
     }
 
     state.fileEnabled = false;
+    state.filePath.clear();
     state.initialized = false;
     state.observer = {};
     qInstallMessageHandler(state.previousHandler);
@@ -197,6 +252,14 @@ bool Logger::isFileLoggingActive()
     LoggerState& state = loggerState();
     QMutexLocker locker(&state.mutex);
     return state.fileEnabled && state.file && state.file->isOpen();
+}
+
+void Logger::setRotationPolicy(qint64 maxFileBytes, int retainRotatedFiles)
+{
+    LoggerState& state = loggerState();
+    QMutexLocker locker(&state.mutex);
+    state.maxFileBytes = maxFileBytes > 0 ? maxFileBytes : state.maxFileBytes;
+    state.retainRotatedFiles = retainRotatedFiles > 0 ? retainRotatedFiles : state.retainRotatedFiles;
 }
 
 bool Logger::enableFileLogging(const QString& filePath)
@@ -240,6 +303,7 @@ void Logger::disableFileLogging()
         state.file.reset();
     }
     state.fileEnabled = false;
+    state.filePath.clear();
 }
 
 } // namespace auralis::core

@@ -16,6 +16,8 @@ constexpr auto kFileLoggingEnabledKey = "logging/fileEnabled";
 constexpr auto kFileLoggingPathKey = "logging/filePath";
 constexpr auto kShowDeveloperStatusKey = "ui/showDeveloperStatus";
 constexpr auto kRestoreLastSessionKey = "ui/restoreLastSession";
+constexpr auto kAutoRecoverServicesKey = "recovery/autoRecoverServices";
+constexpr auto kRestoreOnResumeKey = "recovery/restoreOnResume";
 constexpr auto kLastNavPageKey = "ui/lastNavPage";
 constexpr auto kWindowWidthKey = "ui/windowWidth";
 constexpr auto kWindowHeightKey = "ui/windowHeight";
@@ -67,6 +69,8 @@ bool ConfigurationManager::initialize()
     logFilePath_ = settings_->value(kFileLoggingPathKey, QString()).toString();
     showDeveloperStatus_ = settings_->value(kShowDeveloperStatusKey, true).toBool();
     restoreLastSession_ = settings_->value(kRestoreLastSessionKey, false).toBool();
+    autoRecoverServices_ = settings_->value(kAutoRecoverServicesKey, true).toBool();
+    restoreOnResume_ = settings_->value(kRestoreOnResumeKey, true).toBool();
     lastNavPage_ = settings_->value(kLastNavPageKey, 0).toInt();
     windowWidth_ = settings_->value(kWindowWidthKey, 1280).toInt();
     windowHeight_ = settings_->value(kWindowHeightKey, 800).toInt();
@@ -106,6 +110,16 @@ bool ConfigurationManager::showDeveloperStatus() const
 bool ConfigurationManager::restoreLastSession() const
 {
     return restoreLastSession_;
+}
+
+bool ConfigurationManager::autoRecoverServices() const
+{
+    return autoRecoverServices_;
+}
+
+bool ConfigurationManager::restoreOnResume() const
+{
+    return restoreOnResume_;
 }
 
 int ConfigurationManager::lastNavPage() const
@@ -281,6 +295,32 @@ bool ConfigurationManager::setRestoreLastSession(bool enabled)
     return true;
 }
 
+bool ConfigurationManager::setAutoRecoverServices(bool enabled)
+{
+    if (autoRecoverServices_ == enabled) {
+        return true;
+    }
+    if (!writeValue(kAutoRecoverServicesKey, enabled)) {
+        return false;
+    }
+    autoRecoverServices_ = enabled;
+    emit autoRecoverServicesChanged();
+    return true;
+}
+
+bool ConfigurationManager::setRestoreOnResume(bool enabled)
+{
+    if (restoreOnResume_ == enabled) {
+        return true;
+    }
+    if (!writeValue(kRestoreOnResumeKey, enabled)) {
+        return false;
+    }
+    restoreOnResume_ = enabled;
+    emit restoreOnResumeChanged();
+    return true;
+}
+
 bool ConfigurationManager::setLastNavPage(int page)
 {
     if (page < 0) {
@@ -350,6 +390,8 @@ bool ConfigurationManager::resetToDefaults()
         ok = setShowDeveloperStatus(true) && ok;
     }
     ok = setRestoreLastSession(false) && ok;
+    ok = setAutoRecoverServices(true) && ok;
+    ok = setRestoreOnResume(true) && ok;
     ok = setLastNavPage(0) && ok;
     ok = setWindowWidth(1280) && ok;
     ok = setWindowHeight(800) && ok;

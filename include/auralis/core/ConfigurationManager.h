@@ -15,6 +15,8 @@ class ConfigurationManager : public QObject {
     Q_PROPERTY(QString logFilePath READ logFilePath WRITE setLogFilePath NOTIFY logFilePathChanged)
     Q_PROPERTY(bool showDeveloperStatus READ showDeveloperStatus WRITE setShowDeveloperStatus NOTIFY showDeveloperStatusChanged)
     Q_PROPERTY(bool restoreLastSession READ restoreLastSession WRITE setRestoreLastSession NOTIFY restoreLastSessionChanged)
+    Q_PROPERTY(bool autoRecoverServices READ autoRecoverServices WRITE setAutoRecoverServices NOTIFY autoRecoverServicesChanged)
+    Q_PROPERTY(bool restoreOnResume READ restoreOnResume WRITE setRestoreOnResume NOTIFY restoreOnResumeChanged)
     Q_PROPERTY(int lastNavPage READ lastNavPage WRITE setLastNavPage NOTIFY lastNavPageChanged)
     Q_PROPERTY(int windowWidth READ windowWidth WRITE setWindowWidth NOTIFY windowGeometryChanged)
     Q_PROPERTY(int windowHeight READ windowHeight WRITE setWindowHeight NOTIFY windowGeometryChanged)
@@ -38,6 +40,8 @@ public:
     QString logFilePath() const;
     bool showDeveloperStatus() const;
     bool restoreLastSession() const;
+    bool autoRecoverServices() const;
+    bool restoreOnResume() const;
     int lastNavPage() const;
     int windowWidth() const;
     int windowHeight() const;
@@ -49,6 +53,8 @@ public:
     Q_INVOKABLE bool setLogFilePath(const QString& path);
     Q_INVOKABLE bool setShowDeveloperStatus(bool enabled);
     Q_INVOKABLE bool setRestoreLastSession(bool enabled);
+    Q_INVOKABLE bool setAutoRecoverServices(bool enabled);
+    Q_INVOKABLE bool setRestoreOnResume(bool enabled);
     Q_INVOKABLE bool setLastNavPage(int page);
     Q_INVOKABLE bool setWindowWidth(int width);
     Q_INVOKABLE bool setWindowHeight(int height);
@@ -62,6 +68,8 @@ signals:
     void logFilePathChanged();
     void showDeveloperStatusChanged();
     void restoreLastSessionChanged();
+    void autoRecoverServicesChanged();
+    void restoreOnResumeChanged();
     void lastNavPageChanged();
     void windowGeometryChanged();
     void lastErrorTextChanged();
@@ -78,6 +86,8 @@ private:
     QString logFilePath_;
     bool showDeveloperStatus_ = true;
     bool restoreLastSession_ = false;
+    bool autoRecoverServices_ = true;
+    bool restoreOnResume_ = true;
     int lastNavPage_ = 0;
     int windowWidth_ = 1280;
     int windowHeight_ = 800;

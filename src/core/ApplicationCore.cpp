@@ -134,6 +134,55 @@ bool ApplicationCore::initialize()
         emit lastErrorTextChanged();
     });
 
+    if (!services_.recovery) {
+        services_.recovery = std::make_unique<recovery::RecoveryManager>(this);
+    }
+    if (!services_.powerMonitor) {
+        services_.powerMonitor = std::make_unique<recovery::SystemPowerMonitor>(this);
+    }
+    services_.powerMonitor->initialize();
+    services_.recovery->setAutoRecoverEnabled(services_.configuration->autoRecoverServices());
+    services_.recovery->setRestoreOnResume(services_.configuration->restoreOnResume());
+    connect(
+        services_.configuration.get(),
+        &ConfigurationManager::autoRecoverServicesChanged,
+        services_.recovery.get(),
+        [this]() {
+            if (services_.recovery) {
+                services_.recovery->setAutoRecoverEnabled(services_.configuration->autoRecoverServices());
+            }
+        });
+    connect(
+        services_.configuration.get(),
+        &ConfigurationManager::restoreOnResumeChanged,
+        services_.recovery.get(),
+        [this]() {
+            if (services_.recovery) {
+                services_.recovery->setRestoreOnResume(services_.configuration->restoreOnResume());
+            }
+        });
+    services_.recovery->initialize();
+    connect(
+        services_.recovery.get(),
+        &recovery::RecoveryManager::statusChanged,
+        this,
+        &ApplicationCore::recoveryStatusChanged);
+    connect(
+        services_.recovery.get(),
+        &recovery::RecoveryManager::recoveryExhausted,
+        this,
+        [this](const QString& domain, const QString& reason) {
+            notifications_.postError(
+                QStringLiteral("Recovery"),
+                QStringLiteral("%1 recovery exhausted%2")
+                    .arg(domain, reason.isEmpty() ? QString() : QStringLiteral(": %1").arg(reason)));
+        });
+    connect(
+        services_.powerMonitor.get(),
+        &recovery::SystemPowerMonitor::preparingForSleep,
+        services_.recovery.get(),
+        &recovery::RecoveryManager::onPreparingForSleep);
+
     setStatus(ServiceStatus::Ready);
     qCInfo(auralisCore) << "Application core ready";
     return true;
@@ -208,6 +257,29 @@ QObject* ApplicationCore::notifications() const
 QObject* ApplicationCore::diagnostics() const
 {
     return const_cast<ui::DiagnosticsLogModel*>(&diagnostics_);
+}
+
+QObject* ApplicationCore::recovery() const
+{
+    return services_.recovery.get();
+}
+
+recovery::RecoveryManager* ApplicationCore::recoveryManager() const noexcept
+{
+    return services_.recovery.get();
+}
+
+recovery::SystemPowerMonitor* ApplicationCore::powerMonitor() const noexcept
+{
+    return services_.powerMonitor.get();
+}
+
+QString ApplicationCore::recoveryStatus() const
+{
+    if (!services_.recovery) {
+        return QStringLiteral("Recovery not initialized");
+    }
+    return services_.recovery->statusText();
 }
 
 int ApplicationCore::currentPage() const
@@ -299,6 +371,12 @@ void ApplicationCore::setStatus(ServiceStatus status)
 
 void ApplicationCore::rollbackInitializedServices()
 {
+    if (services_.recovery) {
+        services_.recovery->shutdown();
+    }
+    if (services_.powerMonitor) {
+        services_.powerMonitor->shutdown();
+    }
     if (services_.sessions) {
         services_.sessions->shutdown();
     }

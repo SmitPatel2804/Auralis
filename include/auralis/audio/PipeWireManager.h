@@ -69,11 +69,18 @@ public:
 
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
 
+    /// Bounded reconnect after daemon loss. RecoveryManager may also call requestReconnect().
+    void setAutoReconnectEnabled(bool enabled);
+    bool autoReconnectEnabled() const noexcept;
+    void requestReconnect();
+
 signals:
     void statusChanged();
     void connectionStateChanged();
     void lastErrorChanged();
     void graphRevisionChanged();
+    void reconnectAttemptStarted(int attempt);
+    void reconnectExhausted(const QString& reason);
 
 private:
     struct Guard {
@@ -87,6 +94,9 @@ private:
     void scheduleGraphRefresh();
     void bumpGraph();
     void wireBluetoothRegistry();
+    void scheduleAutoReconnect(const QString& reason);
+    void performReconnect();
+    bool startConnection(quint64 generation);
 
     bluetooth::DeviceRegistry* bluetoothRegistry_ = nullptr;
     std::unique_ptr<PipeWireObjectStore> store_;
@@ -103,6 +113,14 @@ private:
     int graphRevision_ = 0;
     bool bluetoothWired_ = false;
     QTimer graphRefreshTimer_;
+    QTimer reconnectTimer_;
+    bool autoReconnectEnabled_ = true;
+    bool shuttingDown_ = false;
+    bool reconnectInProgress_ = false;
+    int reconnectAttempt_ = 0;
+    int maxReconnectAttempts_ = 8;
+    int reconnectInitialDelayMs_ = 500;
+    int reconnectMaxDelayMs_ = 30000;
 };
 
 } // namespace auralis::audio

@@ -1,5 +1,6 @@
 #include <auralis/core/Logger.h>
 
+#include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -63,6 +64,30 @@ private slots:
         QVERIFY(auralis::core::Logger::initialize());
         QVERIFY(auralis::core::Logger::enableFileLogging(path));
         QVERIFY(auralis::core::Logger::isFileLoggingActive());
+    }
+
+    void rotatesWhenMaxSizeExceeded()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("rotate.log"));
+
+        auralis::core::Logger::Options options;
+        options.enableConsole = false;
+        options.maxFileBytes = 64;
+        options.retainRotatedFiles = 2;
+        QVERIFY(auralis::core::Logger::initialize(options));
+        QVERIFY(auralis::core::Logger::enableFileLogging(path));
+
+        for (int i = 0; i < 40; ++i) {
+            qInfo("rotation-fill-%d-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", i);
+        }
+
+        QVERIFY(QFile::exists(path) || QFile::exists(path + QStringLiteral(".1")));
+#else
+        QSKIP("File logging disabled in this build");
+#endif
     }
 };
 

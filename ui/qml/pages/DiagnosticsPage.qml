@@ -36,6 +36,7 @@ Item {
                 SectionCard {
                     title: qsTr("System")
                     KeyValueRow { label: qsTr("Core"); value: AppCore.coreStatus }
+                    KeyValueRow { label: qsTr("Recovery"); value: AppCore.recoveryStatus }
                     KeyValueRow { label: qsTr("Bluetooth"); value: AppCore.bluetoothStatus }
                     KeyValueRow { label: qsTr("PipeWire"); value: audio ? audio.connectionStateText : AppCore.pipeWireStatus }
                     KeyValueRow { label: qsTr("Session"); value: sessions ? sessions.sessionStateText : "" }

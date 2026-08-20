@@ -1,0 +1,2 @@
+auralis_add_test(tst_RecoveryManager tst_RecoveryManager.cpp)
+target_link_libraries(tst_RecoveryManager PRIVATE auralis-recovery auralis-core)

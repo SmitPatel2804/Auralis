@@ -10,6 +10,8 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
+
 namespace auralis::audio {
 
 PipeWireManager::PipeWireManager(QObject* parent)
@@ -40,6 +42,9 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
     graphRefreshTimer_.setSingleShot(true);
     graphRefreshTimer_.setInterval(100);
     connect(&graphRefreshTimer_, &QTimer::timeout, this, &PipeWireManager::refreshGraph);
+
+    reconnectTimer_.setSingleShot(true);
+    connect(&reconnectTimer_, &QTimer::timeout, this, &PipeWireManager::performReconnect);
 }
 
 PipeWireManager::~PipeWireManager()
@@ -190,28 +195,113 @@ bool PipeWireManager::initialize()
         return true;
     }
 
+    shuttingDown_ = false;
     status_ = auralis::core::ServiceStatus::Initializing;
     emit statusChanged();
     guard_->alive.store(true);
     const quint64 generation = guard_->generation.load() + 1;
     guard_->generation.store(generation);
 
-    const bool started = connection_->start([this, generation](const PipeWireClientEvent& event) {
+    if (!startConnection(generation)) {
+        status_ = auralis::core::ServiceStatus::Error;
+        setConnectionState(PipeWireConnectionState::Error, QStringLiteral("PipeWire thread failed to start"));
+        emit statusChanged();
+        scheduleAutoReconnect(QStringLiteral("PipeWire thread failed to start"));
+        return false;
+    }
+
+    return true;
+}
+
+bool PipeWireManager::startConnection(quint64 generation)
+{
+    return connection_->start([this, generation](const PipeWireClientEvent& event) {
         auto guard = guard_;
         QMetaObject::invokeMethod(
             this,
             [this, guard, generation, event]() { handleClientEvent(event, generation); },
             Qt::QueuedConnection);
     });
+}
 
-    if (!started) {
-        status_ = auralis::core::ServiceStatus::Error;
-        setConnectionState(PipeWireConnectionState::Error, QStringLiteral("PipeWire thread failed to start"));
-        emit statusChanged();
-        return false;
+void PipeWireManager::setAutoReconnectEnabled(bool enabled)
+{
+    autoReconnectEnabled_ = enabled;
+    if (!enabled) {
+        reconnectTimer_.stop();
     }
+}
 
-    return true;
+bool PipeWireManager::autoReconnectEnabled() const noexcept
+{
+    return autoReconnectEnabled_;
+}
+
+void PipeWireManager::requestReconnect()
+{
+    if (shuttingDown_) {
+        return;
+    }
+    reconnectTimer_.stop();
+    performReconnect();
+}
+
+void PipeWireManager::scheduleAutoReconnect(const QString& reason)
+{
+    if (shuttingDown_ || !autoReconnectEnabled_ || reconnectTimer_.isActive()) {
+        return;
+    }
+    if (reconnectAttempt_ >= maxReconnectAttempts_) {
+        qCWarning(auralisAudio) << "PipeWire reconnect exhausted:" << reason;
+        emit reconnectExhausted(reason);
+        return;
+    }
+    ++reconnectAttempt_;
+    int delay = reconnectInitialDelayMs_;
+    for (int i = 1; i < reconnectAttempt_; ++i) {
+        delay = std::min(delay * 2, reconnectMaxDelayMs_);
+    }
+    qCInfo(auralisAudio) << "PipeWire reconnect scheduled attempt=" << reconnectAttempt_ << "delayMs=" << delay
+                          << "reason=" << reason;
+    emit reconnectAttemptStarted(reconnectAttempt_);
+    reconnectTimer_.start(delay);
+}
+
+void PipeWireManager::performReconnect()
+{
+    if (shuttingDown_) {
+        return;
+    }
+    reconnectInProgress_ = true;
+    qCInfo(auralisAudio) << "PipeWire reconnect attempt=" << reconnectAttempt_;
+    graphRefreshTimer_.stop();
+    if (router_ != nullptr) {
+        router_->handleConnectionState(PipeWireConnectionState::Stopped, false);
+    }
+    connection_->stop();
+    if (QCoreApplication::instance() != nullptr) {
+        QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+    }
+    endpoints_->clear();
+    store_->clear();
+    initialSyncComplete_ = false;
+    lastError_.clear();
+
+    const quint64 generation = guard_->generation.fetch_add(1) + 1;
+    guard_->alive.store(true);
+    status_ = auralis::core::ServiceStatus::Initializing;
+    setConnectionState(PipeWireConnectionState::Starting);
+    emit statusChanged();
+
+    if (!startConnection(generation)) {
+        reconnectInProgress_ = false;
+        status_ = auralis::core::ServiceStatus::Error;
+        setConnectionState(PipeWireConnectionState::Error, QStringLiteral("PipeWire reconnect failed to start"));
+        emit statusChanged();
+        scheduleAutoReconnect(QStringLiteral("PipeWire reconnect failed to start"));
+        return;
+    }
+    reconnectInProgress_ = false;
 }
 
 void PipeWireManager::shutdown()
@@ -220,7 +310,9 @@ void PipeWireManager::shutdown()
         return;
     }
 
+    shuttingDown_ = true;
     qCInfo(auralisAudio) << "PipeWire Stopping";
+    reconnectTimer_.stop();
     graphRefreshTimer_.stop();
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
@@ -235,6 +327,7 @@ void PipeWireManager::shutdown()
     store_->clear();
     initialSyncComplete_ = false;
     lastError_.clear();
+    reconnectAttempt_ = 0;
     setConnectionState(PipeWireConnectionState::Stopped);
     status_ = auralis::core::ServiceStatus::Uninitialized;
     bumpGraph();
@@ -253,11 +346,14 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         setConnectionState(event.state, event.error);
         if (event.state == PipeWireConnectionState::Connected) {
             status_ = auralis::core::ServiceStatus::Ready;
+            reconnectAttempt_ = 0;
+            reconnectTimer_.stop();
             emit statusChanged();
             if (router_ != nullptr) {
                 router_->handleConnectionState(event.state, initialSyncComplete_);
             }
-        } else if (event.state == PipeWireConnectionState::Error) {
+        } else if (event.state == PipeWireConnectionState::Error
+                   || event.state == PipeWireConnectionState::Stopped) {
             status_ = auralis::core::ServiceStatus::Error;
             if (router_ != nullptr) {
                 router_->handleConnectionState(event.state, false);
@@ -267,6 +363,10 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
             initialSyncComplete_ = false;
             emit statusChanged();
             bumpGraph();
+            if (!shuttingDown_ && !reconnectInProgress_) {
+                scheduleAutoReconnect(
+                    event.error.isEmpty() ? toString(event.state) : event.error);
+            }
         }
         break;
     case PipeWireClientEvent::Type::GlobalAdded:
