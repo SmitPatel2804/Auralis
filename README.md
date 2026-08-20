@@ -15,12 +15,14 @@ Phase 4: Implemented
 Phase 5: Implemented
 Phase 6: Software complete (live two-device hardware opt-in)
 Phase 7: Implemented (GUI + hardened file logging)
-Phase 8: Software complete (live/hardware validation pending)
+Phase 8: Software exit PASS (hardware validation pending)
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
 
 `PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. An **Active** route in the Audio Routing panel means Auralis-owned links exist for the current selection.
+
+Licensing terms are **not yet selected** (`LICENSE`). Local `.deb` builds are for engineering validation; public redistribution remains blocked until the owner approves a license.
 
 ## Requirements
 
@@ -67,6 +69,16 @@ The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth 
 
 The **Audio Routing** panel selects a playback source and one or more playback endpoints, then Activate/Deactivate. Volume/mute appear when the destinations support `SPA_PROP_volume`.
 
+Configure fails if Qt 6 DBus or `libpipewire-0.3` development files are missing.
+
+Optional AddressSanitizer/UBSan build:
+
+```bash
+cmake -S . -B build-asan -G Ninja -DAURALIS_ENABLE_SANITIZERS=ON
+cmake --build build-asan
+ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-asan --output-on-failure
+```
+
 ## Package (`.deb`)
 
 ```bash
@@ -81,7 +93,7 @@ Install validation (no root required for extract/launch smoke):
 dpkg-deb -I build/auralis_0.1.0_amd64.deb
 dpkg-deb -c build/auralis_0.1.0_amd64.deb
 mkdir -p /tmp/auralis-prefix && dpkg-deb -x build/auralis_0.1.0_amd64.deb /tmp/auralis-prefix
-QT_QPA_PLATFORM=offscreen /tmp/auralis-prefix/usr/bin/auralis-desktop
+timeout 3 env QT_QPA_PLATFORM=offscreen /tmp/auralis-prefix/usr/bin/auralis-desktop
 ```
 
 Runtime does not require root. System install via `sudo dpkg -i` is optional.

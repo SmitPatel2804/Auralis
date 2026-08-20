@@ -28,3 +28,6 @@ target_include_directories(tst_DeviceLifecycle PRIVATE "${CMAKE_CURRENT_SOURCE_D
 
 auralis_add_test(tst_ReconnectPolicy tst_ReconnectPolicy.cpp)
 target_link_libraries(tst_ReconnectPolicy PRIVATE auralis-bluetooth)
+
+auralis_add_test(tst_BlueZDbusClientBusRecovery tst_BlueZDbusClientBusRecovery.cpp)
+target_link_libraries(tst_BlueZDbusClientBusRecovery PRIVATE auralis-bluetooth)

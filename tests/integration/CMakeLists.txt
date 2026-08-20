@@ -70,4 +70,5 @@ target_include_directories(tst_SessionManagedReconnectIntegration PRIVATE
 
 auralis_add_test(tst_ServiceRecoveryIntegration tst_ServiceRecoveryIntegration.cpp)
 target_link_libraries(tst_ServiceRecoveryIntegration PRIVATE auralis-recovery auralis-core)
+set_tests_properties(tst_ServiceRecoveryIntegration PROPERTIES LABELS "stress")
 

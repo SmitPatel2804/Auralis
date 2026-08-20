@@ -8,7 +8,6 @@
 using auralis::recovery::RecoveryManager;
 using auralis::recovery::RecoveryState;
 using auralis::recovery::ServiceRetryPolicy;
-using auralis::recovery::ServiceRetryPolicyConfig;
 using auralis::recovery::SystemPowerMonitor;
 
 class TstRecoveryManager : public QObject {
@@ -52,10 +51,28 @@ private slots:
 
         manager.notifyBlueZAvailable(true);
         QCOMPARE(resumeCount, 1);
-        QCOMPARE(refreshCount, 1);
+        QCOMPARE(refreshCount, 0); // snapshot owned by BlueZ client, not RecoveryManager
         manager.flushPendingReconcileForTesting();
         QCOMPARE(sessionRefresh, 1);
         QVERIFY(manager.status().overall == RecoveryState::Healthy);
+    }
+
+    void blueZReturnWithAutoRecoverDisabledDoesNotReconcileSession()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        int resumeCount = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.resumeBluetoothReconnect = [&]() { ++resumeCount; };
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        manager.setHooks(std::move(hooks));
+        manager.setAutoRecoverEnabled(false);
+        QVERIFY(manager.initialize());
+        manager.notifyBlueZAvailable(false);
+        manager.notifyBlueZAvailable(true);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(resumeCount, 1);
+        QCOMPARE(sessionRefresh, 0);
     }
 
     void pipeWireErrorMarksRecoveringIdempotently()
@@ -74,10 +91,85 @@ private slots:
         QVERIFY(manager.status().pipeWire == RecoveryState::Recovering);
         QVERIFY(manager.status().overall == RecoveryState::Recovering);
 
+        manager.notifyPipeWireReconnectAttempt(2);
+        QCOMPARE(manager.status().pipeWireAttempts, 2);
+
         manager.notifyPipeWireConnected(true, true);
         manager.flushPendingReconcileForTesting();
         QVERIFY(manager.status().pipeWire == RecoveryState::Healthy);
         QVERIFY(manager.status().overall == RecoveryState::Healthy);
+        QCOMPARE(manager.status().pipeWireAttempts, 0);
+    }
+
+    void pipeWireExhaustionSetsCentralStatus()
+    {
+        RecoveryManager manager;
+        QSignalSpy exhausted(&manager, &RecoveryManager::recoveryExhausted);
+        QVERIFY(manager.initialize());
+        manager.notifyPipeWireReconnectExhausted(QStringLiteral("max attempts"));
+        QVERIFY(manager.status().overall == RecoveryState::Exhausted);
+        QVERIFY(manager.status().pipeWire == RecoveryState::Exhausted);
+        QCOMPARE(exhausted.count(), 1);
+    }
+
+    void resumeWithRestoreDisabledDoesNotLeaveBluetoothReconnectPaused()
+    {
+        RecoveryManager manager;
+        int pauseCount = 0;
+        int resumeCount = 0;
+        int sessionRefresh = 0;
+        int pwReconnect = 0;
+        int blueZRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = [&]() { ++pauseCount; };
+        hooks.resumeBluetoothReconnect = [&]() { ++resumeCount; };
+        hooks.requestBlueZRefresh = [&]() { ++blueZRefresh; };
+        hooks.requestPipeWireReconnect = [&]() { ++pwReconnect; };
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        manager.setRestoreOnResume(false);
+        QVERIFY(manager.initialize());
+
+        manager.onPreparingForSleep(true);
+        QCOMPARE(pauseCount, 1);
+        QVERIFY(manager.suspended());
+
+        manager.onPreparingForSleep(false);
+        QCOMPARE(resumeCount, 1);
+        QVERIFY(!manager.suspended());
+        QCOMPARE(sessionRefresh, 0);
+        QCOMPARE(pwReconnect, 0);
+        QCOMPARE(blueZRefresh, 0);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 0);
+    }
+
+    void repeatedSleepResumeWithoutRestoreBalancesPauseResume()
+    {
+        RecoveryManager manager;
+        int pauseCount = 0;
+        int resumeCount = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = [&]() { ++pauseCount; };
+        hooks.resumeBluetoothReconnect = [&]() { ++resumeCount; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        manager.setRestoreOnResume(false);
+        QVERIFY(manager.initialize());
+
+        for (int i = 0; i < 5; ++i) {
+            manager.onPreparingForSleep(true);
+            manager.onPreparingForSleep(false);
+        }
+        QCOMPARE(pauseCount, 5);
+        QCOMPARE(resumeCount, 5);
     }
 
     void suspendResumeBumpsEpochAndReconciles()

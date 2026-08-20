@@ -452,9 +452,7 @@ void BluetoothManager::handleBlueZAvailable(bool available)
         }
     } else {
         resumeManagedReconnect();
-        if (client_ != nullptr) {
-            client_->requestSnapshot();
-        }
+        // Snapshot is owned by BlueZDbusClient::onBlueZRegistered — avoid duplicate GetManagedObjects.
     }
     if (discovery_ != nullptr) {
         discovery_->onBlueZAvailabilityChanged(available);
@@ -482,9 +480,7 @@ void BluetoothManager::handleSystemBusStateChanged(bool connected)
         pauseManagedReconnect();
     } else {
         resumeManagedReconnect();
-        if (client_ != nullptr) {
-            client_->requestSnapshot();
-        }
+        // Bus recovery recreates watchers; BlueZ registration path owns the authoritative snapshot.
     }
 }
 

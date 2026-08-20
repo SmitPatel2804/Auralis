@@ -16,6 +16,7 @@
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
 #include <QMetaType>
+#include <QTimer>
 
 using BlueZInterfaceMap = QMap<QString, QVariantMap>;
 using BlueZManagedObjectMap = QMap<QDBusObjectPath, BlueZInterfaceMap>;
@@ -288,6 +289,8 @@ BlueZDbusClient::BlueZDbusClient(QObject* parent)
 {
     qDBusRegisterMetaType<InterfacePropertyMap>();
     qDBusRegisterMetaType<ManagedObjectMap>();
+    busHealthTimer_.setInterval(2000);
+    connect(&busHealthTimer_, &QTimer::timeout, this, &BlueZDbusClient::pollSystemBusHealth);
 }
 
 BlueZDbusClient::~BlueZDbusClient()
@@ -302,6 +305,117 @@ void BlueZDbusClient::setBlueZAvailable(bool available)
     }
     blueZAvailable_ = available;
     emit blueZAvailableChanged(available);
+}
+
+void BlueZDbusClient::setSystemBusConnected(bool connected)
+{
+    if (systemBusConnected_ == connected) {
+        return;
+    }
+    systemBusConnected_ = connected;
+    emit systemBusStateChanged(connected);
+}
+
+void BlueZDbusClient::startBusHealthTimer()
+{
+    if (!busHealthTimer_.isActive()) {
+        busHealthTimer_.start();
+    }
+}
+
+void BlueZDbusClient::stopBusHealthTimer()
+{
+    busHealthTimer_.stop();
+}
+
+void BlueZDbusClient::tearDownBusInfrastructure()
+{
+    unsubscribeFromSignals();
+    if (serviceWatcher_ != nullptr) {
+        serviceWatcher_->deleteLater();
+        serviceWatcher_ = nullptr;
+    }
+    setBlueZAvailable(false);
+}
+
+bool BlueZDbusClient::attachSystemBusInfrastructure()
+{
+    connection_ = QDBusConnection::systemBus();
+    if (!connection_.isConnected()) {
+        return false;
+    }
+
+    ++busAttachGeneration_;
+    tearDownBusInfrastructure();
+
+    serviceWatcher_ = new QDBusServiceWatcher(
+        bluez::kService.toString(),
+        connection_,
+        QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
+        this);
+    connect(serviceWatcher_, &QDBusServiceWatcher::serviceRegistered, this, &BlueZDbusClient::onBlueZRegistered);
+    connect(serviceWatcher_, &QDBusServiceWatcher::serviceUnregistered, this, &BlueZDbusClient::onBlueZUnregistered);
+    subscribeToSignals();
+
+    const bool registered = connection_.interface() != nullptr
+        && connection_.interface()->isServiceRegistered(bluez::kService.toString());
+    if (registered) {
+        onBlueZRegistered(bluez::kService.toString());
+    } else {
+        qCWarning(auralisBluetooth) << "BlueZUnavailable";
+        setBlueZAvailable(false);
+    }
+    return true;
+}
+
+void BlueZDbusClient::pollSystemBusHealth()
+{
+    if (!initialized_) {
+        return;
+    }
+    const bool connected = QDBusConnection::systemBus().isConnected();
+    if (connected && !systemBusConnected_) {
+        qCInfo(auralisBluetooth) << "SystemBusReconnected";
+        if (attachSystemBusInfrastructure()) {
+            setSystemBusConnected(true);
+            stopBusHealthTimer();
+        }
+        return;
+    }
+    if (!connected && systemBusConnected_) {
+        qCWarning(auralisBluetooth) << "SystemBusLost";
+        tearDownBusInfrastructure();
+        setSystemBusConnected(false);
+        startBusHealthTimer();
+    }
+}
+
+void BlueZDbusClient::injectSystemBusConnectedForTesting(bool connected)
+{
+    if (!initialized_) {
+        return;
+    }
+    if (connected) {
+        if (systemBusConnected_) {
+            return;
+        }
+        // Testing seam: mark connected and bump attach generation without requiring a live bus.
+        ++busAttachGeneration_;
+        setSystemBusConnected(true);
+        stopBusHealthTimer();
+        return;
+    }
+    if (!systemBusConnected_) {
+        return;
+    }
+    tearDownBusInfrastructure();
+    setSystemBusConnected(false);
+    startBusHealthTimer();
+}
+
+int BlueZDbusClient::busAttachGenerationForTesting() const noexcept
+{
+    return static_cast<int>(busAttachGeneration_);
 }
 
 void BlueZDbusClient::subscribeToSignals()
@@ -380,37 +494,25 @@ bool BlueZDbusClient::initialize()
         return true;
     }
 
+    initialized_ = true;
     connection_ = QDBusConnection::systemBus();
-    systemBusConnected_ = connection_.isConnected();
-    emit systemBusStateChanged(systemBusConnected_);
-    if (!systemBusConnected_) {
+    if (!connection_.isConnected()) {
         qCWarning(auralisBluetooth) << "SystemBusUnavailable";
-        initialized_ = true;
+        setSystemBusConnected(false);
         setBlueZAvailable(false);
+        startBusHealthTimer();
         return true;
     }
 
     qCInfo(auralisBluetooth) << "SystemBusConnected";
-    serviceWatcher_ = new QDBusServiceWatcher(
-        bluez::kService.toString(),
-        connection_,
-        QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
-        this);
-    connect(serviceWatcher_, &QDBusServiceWatcher::serviceRegistered, this, &BlueZDbusClient::onBlueZRegistered);
-    connect(serviceWatcher_, &QDBusServiceWatcher::serviceUnregistered, this, &BlueZDbusClient::onBlueZUnregistered);
-
-    subscribeToSignals();
-
-    const bool registered = connection_.interface() != nullptr
-        && connection_.interface()->isServiceRegistered(bluez::kService.toString());
-    if (registered) {
-        onBlueZRegistered(bluez::kService.toString());
-    } else {
-        qCWarning(auralisBluetooth) << "BlueZUnavailable";
+    if (!attachSystemBusInfrastructure()) {
+        setSystemBusConnected(false);
         setBlueZAvailable(false);
+        startBusHealthTimer();
+        return true;
     }
-
-    initialized_ = true;
+    setSystemBusConnected(true);
+    stopBusHealthTimer();
     return true;
 }
 
@@ -419,12 +521,9 @@ void BlueZDbusClient::shutdown()
     if (!initialized_) {
         return;
     }
-    unsubscribeFromSignals();
-    if (serviceWatcher_ != nullptr) {
-        serviceWatcher_->deleteLater();
-        serviceWatcher_ = nullptr;
-    }
-    setBlueZAvailable(false);
+    stopBusHealthTimer();
+    tearDownBusInfrastructure();
+    setSystemBusConnected(false);
     initialized_ = false;
 }
 

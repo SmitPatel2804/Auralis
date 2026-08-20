@@ -1,6 +1,5 @@
 #include <auralis/recovery/RecoveryManager.h>
 
-#include <QSignalSpy>
 #include <QtTest>
 
 using auralis::recovery::RecoveryManager;
@@ -14,12 +13,11 @@ private slots:
     {
         RecoveryManager manager;
         int sessionRefresh = 0;
-        int pwReconnect = 0;
         RecoveryManager::HostHooks hooks;
         hooks.pauseBluetoothReconnect = []() {};
         hooks.resumeBluetoothReconnect = []() {};
         hooks.requestBlueZRefresh = []() {};
-        hooks.requestPipeWireReconnect = [&]() { ++pwReconnect; };
+        hooks.requestPipeWireReconnect = []() {};
         hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
         hooks.isBlueZAvailable = []() { return true; };
         hooks.isPipeWireConnected = []() { return true; };
@@ -38,6 +36,74 @@ private slots:
 
         QVERIFY(manager.status().overall == RecoveryState::Healthy);
         QVERIFY(sessionRefresh >= 1);
+    }
+
+    void autoRecoverOffBlocksSessionReconcile()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = []() {};
+        hooks.resumeBluetoothReconnect = []() {};
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        manager.setHooks(std::move(hooks));
+        manager.setAutoRecoverEnabled(false);
+        QVERIFY(manager.initialize());
+        manager.notifyPipeWireError(QStringLiteral("x"));
+        manager.notifyPipeWireConnected(true, true);
+        manager.flushPendingReconcileForTesting();
+        QCOMPARE(sessionRefresh, 0);
+    }
+
+    void suspendStressCycles()
+    {
+        RecoveryManager manager;
+        int pause = 0;
+        int resume = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = [&]() { ++pause; };
+        hooks.resumeBluetoothReconnect = [&]() { ++resume; };
+        hooks.refreshActiveSession = []() {};
+        hooks.requestBlueZRefresh = []() {};
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        for (int i = 0; i < 50; ++i) {
+            manager.onPreparingForSleep(true);
+            manager.onPreparingForSleep(false);
+            manager.flushPendingReconcileForTesting();
+        }
+        QCOMPARE(pause, 50);
+        QCOMPARE(resume, 50);
+        QVERIFY(!manager.suspended());
+    }
+
+    void blueZChurnStress()
+    {
+        RecoveryManager manager;
+        int sessionRefresh = 0;
+        RecoveryManager::HostHooks hooks;
+        hooks.pauseBluetoothReconnect = []() {};
+        hooks.resumeBluetoothReconnect = []() {};
+        hooks.refreshActiveSession = [&]() { ++sessionRefresh; };
+        hooks.isBlueZAvailable = []() { return true; };
+        hooks.isPipeWireConnected = []() { return true; };
+        hooks.isPipeWireGraphReady = []() { return true; };
+        hooks.isSystemBusConnected = []() { return true; };
+        manager.setHooks(std::move(hooks));
+        QVERIFY(manager.initialize());
+        for (int i = 0; i < 100; ++i) {
+            manager.notifyBlueZAvailable(false);
+            manager.notifyBlueZAvailable(true);
+        }
+        manager.flushPendingReconcileForTesting();
+        QVERIFY(sessionRefresh >= 1);
+        QVERIFY(manager.status().overall == RecoveryState::Healthy
+                || manager.status().overall == RecoveryState::Reconciling
+                || manager.status().overall == RecoveryState::Recovering);
     }
 
     void shutdownDuringRecoveryIsSafe()

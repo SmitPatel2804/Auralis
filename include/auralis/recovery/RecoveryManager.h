@@ -1,7 +1,6 @@
 #pragma once
 
 #include <auralis/recovery/RecoveryTypes.h>
-#include <auralis/recovery/ServiceRetryPolicy.h>
 
 #include <QObject>
 #include <QString>
@@ -12,6 +11,7 @@
 namespace auralis::recovery {
 
 /// Coordinates service-level recovery without owning BlueZ Device1 or PipeWire links.
+/// PipeWireManager owns bounded PipeWire reconnect timing; this class observes and reconciles.
 class RecoveryManager final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
@@ -36,7 +36,6 @@ public:
     ~RecoveryManager() override;
 
     void setHooks(HostHooks hooks);
-    void setRetryPolicy(const ServiceRetryPolicyConfig& config);
 
     bool initialize();
     void shutdown();
@@ -57,6 +56,8 @@ public:
     void notifySystemBusConnected(bool connected);
     void notifyPipeWireConnected(bool connected, bool graphReady);
     void notifyPipeWireError(const QString& error);
+    void notifyPipeWireReconnectAttempt(int attempt);
+    void notifyPipeWireReconnectExhausted(const QString& reason);
     void notifyAdapterPresent(bool present);
     void onPreparingForSleep(bool sleeping);
 
@@ -73,15 +74,12 @@ private:
     void setOverall(RecoveryState state, RecoveryCause cause = RecoveryCause::None, const QString& error = {});
     void scheduleCoalescedReconcile();
     void runReconcile();
-    void beginPipeWireRecovery(const QString& error);
-    void maybeCompletePipeWireRecovery();
     void emitStatus();
+    void refreshObservedHealth();
 
     HostHooks hooks_;
-    ServiceRetryPolicy pipeWireRetry_;
     RecoveryStatus status_;
     QTimer coalesceTimer_;
-    QTimer pipeWireRetryTimer_;
     bool initialized_ = false;
     bool shuttingDown_ = false;
     bool pendingReconcile_ = false;

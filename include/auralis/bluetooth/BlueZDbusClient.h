@@ -6,6 +6,7 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QString>
+#include <QTimer>
 #include <QVariantMap>
 
 class QDBusPendingCallWatcher;
@@ -41,6 +42,10 @@ public:
     void unregisterAgent(const QString& agentPath) override;
     bool isAgentRegistered() const noexcept override;
 
+    /// Test seam: inject system-bus connectivity without stopping host dbus.
+    void injectSystemBusConnectedForTesting(bool connected);
+    int busAttachGenerationForTesting() const noexcept;
+
 private slots:
     void onBlueZRegistered(const QString& serviceName);
     void onBlueZUnregistered(const QString& serviceName);
@@ -52,19 +57,27 @@ private slots:
         const QVariantMap& changed,
         const QStringList& invalidated,
         const QDBusMessage& message);
+    void pollSystemBusHealth();
 
 private:
     void subscribeToSignals();
     void unsubscribeFromSignals();
     void setBlueZAvailable(bool available);
+    void setSystemBusConnected(bool connected);
+    void tearDownBusInfrastructure();
+    bool attachSystemBusInfrastructure();
+    void startBusHealthTimer();
+    void stopBusHealthTimer();
 
     QDBusConnection connection_;
     QDBusServiceWatcher* serviceWatcher_ = nullptr;
+    QTimer busHealthTimer_;
     bool initialized_ = false;
     bool systemBusConnected_ = false;
     bool blueZAvailable_ = false;
     bool signalsSubscribed_ = false;
     bool agentRegistered_ = false;
+    quint64 busAttachGeneration_ = 0;
 };
 
 } // namespace auralis::bluetooth

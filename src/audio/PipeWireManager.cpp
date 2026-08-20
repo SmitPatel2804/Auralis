@@ -237,10 +237,53 @@ bool PipeWireManager::autoReconnectEnabled() const noexcept
     return autoReconnectEnabled_;
 }
 
+int PipeWireManager::reconnectAttempt() const noexcept
+{
+    return reconnectAttempt_;
+}
+
+int PipeWireManager::maxReconnectAttempts() const noexcept
+{
+    return maxReconnectAttempts_;
+}
+
+void PipeWireManager::setMaxReconnectAttemptsForTesting(int maxAttempts)
+{
+    maxReconnectAttempts_ = std::max(1, maxAttempts);
+}
+
+void PipeWireManager::setReconnectInitialDelayMsForTesting(int delayMs)
+{
+    reconnectInitialDelayMs_ = std::max(1, delayMs);
+    reconnectMaxDelayMs_ = std::max(reconnectInitialDelayMs_, reconnectMaxDelayMs_);
+}
+
+void PipeWireManager::injectClientEventForTesting(const PipeWireClientEvent& event)
+{
+    handleClientEvent(event, guard_->generation.load());
+}
+
+void PipeWireManager::simulateReconnectFailureForTesting(const QString& reason)
+{
+    if (shuttingDown_) {
+        return;
+    }
+    reconnectTimer_.stop();
+    reconnectInProgress_ = false;
+    initialSyncComplete_ = false;
+    scheduleAutoReconnect(reason.isEmpty() ? QStringLiteral("test") : reason);
+    reconnectTimer_.stop();
+}
+
 void PipeWireManager::requestReconnect()
 {
     if (shuttingDown_) {
         return;
+    }
+    // Manual reconnect starts a fresh episode after exhaustion.
+    if (reconnectExhaustedEmitted_ || reconnectAttempt_ >= maxReconnectAttempts_) {
+        reconnectAttempt_ = 0;
+        reconnectExhaustedEmitted_ = false;
     }
     reconnectTimer_.stop();
     performReconnect();
@@ -252,8 +295,11 @@ void PipeWireManager::scheduleAutoReconnect(const QString& reason)
         return;
     }
     if (reconnectAttempt_ >= maxReconnectAttempts_) {
-        qCWarning(auralisAudio) << "PipeWire reconnect exhausted:" << reason;
-        emit reconnectExhausted(reason);
+        if (!reconnectExhaustedEmitted_) {
+            reconnectExhaustedEmitted_ = true;
+            qCWarning(auralisAudio) << "PipeWire reconnect exhausted:" << reason;
+            emit reconnectExhausted(reason);
+        }
         return;
     }
     ++reconnectAttempt_;
@@ -328,6 +374,7 @@ void PipeWireManager::shutdown()
     initialSyncComplete_ = false;
     lastError_.clear();
     reconnectAttempt_ = 0;
+    reconnectExhaustedEmitted_ = false;
     setConnectionState(PipeWireConnectionState::Stopped);
     status_ = auralis::core::ServiceStatus::Uninitialized;
     bumpGraph();
@@ -346,12 +393,12 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         setConnectionState(event.state, event.error);
         if (event.state == PipeWireConnectionState::Connected) {
             status_ = auralis::core::ServiceStatus::Ready;
-            reconnectAttempt_ = 0;
             reconnectTimer_.stop();
             emit statusChanged();
             if (router_ != nullptr) {
                 router_->handleConnectionState(event.state, initialSyncComplete_);
             }
+            // Do not reset reconnectAttempt_ until InitialSyncDone (usable graph).
         } else if (event.state == PipeWireConnectionState::Error
                    || event.state == PipeWireConnectionState::Stopped) {
             status_ = auralis::core::ServiceStatus::Error;
@@ -395,6 +442,11 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         initialSyncComplete_ = true;
         graphRefreshTimer_.stop();
         refreshGraph();
+        if (connectionState_ == PipeWireConnectionState::Connected) {
+            reconnectAttempt_ = 0;
+            reconnectExhaustedEmitted_ = false;
+            reconnectTimer_.stop();
+        }
         if (router_ != nullptr) {
             router_->handleConnectionState(connectionState_, true);
         }

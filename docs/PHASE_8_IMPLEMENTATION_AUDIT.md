@@ -62,6 +62,29 @@ A skipped live/hardware test is **not** hardware validation evidence.
 
 ---
 
+## Final remediation recon (before fixes)
+
+Captured: 2026-08-20 (remediation start)
+
+| Item | Value |
+|------|-------|
+| Git revision | `83f9d5b398d7052f270739750237a1f980fbbb35` |
+| Branch | `master` |
+| Compiler | g++ 15.2.0 |
+| CMake | 4.2.3 |
+| Ninja | 1.13.2 |
+| Qt | 6.10.2 |
+| PipeWire | 1.6.2 |
+| BlueZ | 5.85 |
+| Kernel | 7.0.0-29-generic |
+| Pre-remediation CTest | **44/44 PASS** (~9.3s) |
+
+Contract: `docs/prompts/phase-8/Auralis_PHASE_8_Final_Remediation_100_Percent_Closure_Master_Prompt.md`.
+
+Prior EXIT GATE (`PENDING LIVE/HARDWARE VALIDATION`) was **too optimistic** for software — remediation required for suspend pause leak, autoRecover/PW authority, D-Bus runtime bus, PW attempt accounting, dormant RM retry, status fidelity, snapshot storms, packaging metadata.
+
+---
+
 ## Implementation progress
 
 ### Stage 1 — RecoveryManager skeleton
@@ -121,14 +144,36 @@ AddressSanitizer full matrix: **not run** in this environment (not blocking pack
 
 ---
 
+## Final remediation (software closure)
+
+| Workstream | Status |
+|------------|--------|
+| A Suspend/`restoreOnResume` | Fixed + tests |
+| B `autoRecoverServices` → PipeWire | Fixed |
+| C Runtime system D-Bus | Fixed + tests |
+| D PW success = Connected+InitialSync | Fixed + tests |
+| E Remove dormant RM PW retry | Done |
+| F Central status fidelity | Fixed |
+| G Snapshot storm | Fixed |
+| H Suspend hardening | Covered by unit/stress |
+| I–J Integration/stress | `tst_ServiceRecoveryIntegration` + label |
+| K Sanitizers | Option + ASAN suite PASS (leak detector env caveat) |
+| L Packaging truthfulness | Icon + LICENSE + AppStream |
+| M Docs / exit gate | SOFTWARE PASS / HARDWARE PENDING |
+
+Post-remediation CTest: **45/45 PASS** (~10.4s). ASAN CTest: **45/45 PASS** (~13.7s, `ASAN_OPTIONS=detect_leaks=0`).
+
+---
+
 ## EXIT GATE
 
 ```text
-Phase 8 EXIT GATE: PENDING LIVE/HARDWARE VALIDATION
+PHASE 8 SOFTWARE EXIT GATE: PASS
+PHASE 8 HARDWARE EXIT GATE: PENDING
 ```
 
 Rationale:
 
-- Automated software path is green (44/44 CTest).
-- Recovery orchestration, PipeWire reconnect, BlueZ bounce coordination, suspend inject tests, log rotation, and `.deb` packaging are implemented and evidenced.
-- Live BlueZ / PipeWire / two-device / laptop suspend-on-hardware paths were **not** claimed as PASS from skipped or sandbox-only runs.
+- Software defects from the Final Remediation prompt are fixed with regression tests.
+- Packaging metadata is truthful (license not selected; icon installed).
+- Live BlueZ / PipeWire / laptop suspend paths remain **PENDING** and are not inferred from skipped live tests or sandbox launches.

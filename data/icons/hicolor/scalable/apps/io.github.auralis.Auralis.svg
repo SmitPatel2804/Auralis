@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Auralis">
+  <!-- Project-owned minimal mark for packaging; not a third-party brand asset. -->
+  <rect width="128" height="128" rx="24" fill="#1B2A3A"/>
+  <path d="M32 84 L64 28 L96 84 Z" fill="none" stroke="#E8F0F7" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="64" cy="72" r="10" fill="#6CB4EE"/>
+</svg>

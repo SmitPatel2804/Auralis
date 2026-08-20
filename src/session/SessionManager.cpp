@@ -482,47 +482,71 @@ SessionCommandResult SessionManager::setDeviceEnabled(const QString& sessionId, 
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
     }
-    for (SessionDevice& device : session->devices) {
-        if (device.deviceId != deviceId.trimmed().toUpper()) {
-            continue;
+    const QString normalizedId = deviceId.trimmed().toUpper();
+    int index = -1;
+    for (int i = 0; i < session->devices.size(); ++i) {
+        if (session->devices.at(i).deviceId == normalizedId) {
+            index = i;
+            break;
         }
-        device.enabled = enabled;
-        if (!enabled) {
-            cancelRecovery(sessionId, device.deviceId);
-            device.runtime.autoRestoreAllowed = false;
-            device.runtime.recovering = false;
-            if (!device.runtime.routeId.isEmpty() && router_ != nullptr) {
-                router_->deactivateRoute(device.runtime.routeId);
-                router_->removeRoute(device.runtime.routeId);
-                device.runtime.routeId.clear();
-                device.runtime.routeActive = false;
-                device.runtime.routeRequested = false;
-            }
-            if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
-                const QString path = devicePathForAddress(device.deviceId);
-                if (!path.isEmpty()) {
-                    bluetooth_->unsuppressAutoReconnect(path);
-                }
-            }
-        } else {
-            device.runtime.autoRestoreAllowed = policyAllowsAutoRouteRestore(*session)
-                || session->state == SessionState::Starting;
-            if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
-                const QString path = devicePathForAddress(device.deviceId);
-                if (!path.isEmpty()) {
-                    bluetooth_->suppressAutoReconnect(path);
-                }
-            }
-        }
-        touchUpdated(*session);
-        const SessionCommandResult persistResult = persistAll(sessionId);
-        emit sessionUpdated(sessionId);
-        if (sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
-            reconcileActiveSession(*session);
-        }
-        return persistResult;
     }
-    return SessionCommandResult::MemberNotFound;
+    if (index < 0) {
+        return SessionCommandResult::MemberNotFound;
+    }
+
+    session->devices[index].enabled = enabled;
+    if (!enabled) {
+        cancelRecovery(sessionId, normalizedId);
+        // Copy before route teardown: deactivate/remove may re-enter and detach devices.
+        const QString routeId = session->devices.at(index).runtime.routeId;
+        const QString address = session->devices.at(index).deviceId;
+        session->devices[index].runtime.autoRestoreAllowed = false;
+        session->devices[index].runtime.recovering = false;
+        if (!routeId.isEmpty() && router_ != nullptr) {
+            router_->deactivateRoute(routeId);
+            router_->removeRoute(routeId);
+            session = mutableSession(sessionId);
+            if (session == nullptr) {
+                return SessionCommandResult::SessionNotFound;
+            }
+            index = -1;
+            for (int i = 0; i < session->devices.size(); ++i) {
+                if (session->devices.at(i).deviceId == normalizedId) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0) {
+                return SessionCommandResult::MemberNotFound;
+            }
+            session->devices[index].runtime.routeId.clear();
+            session->devices[index].runtime.routeActive = false;
+            session->devices[index].runtime.routeRequested = false;
+        }
+        if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+            const QString path = devicePathForAddress(address);
+            if (!path.isEmpty()) {
+                bluetooth_->unsuppressAutoReconnect(path);
+            }
+        }
+    } else {
+        session->devices[index].runtime.autoRestoreAllowed = policyAllowsAutoRouteRestore(*session)
+            || session->state == SessionState::Starting;
+        if (sessionId == activeSessionId_ && bluetooth_ != nullptr) {
+            const QString path = devicePathForAddress(session->devices.at(index).deviceId);
+            if (!path.isEmpty()) {
+                bluetooth_->suppressAutoReconnect(path);
+            }
+        }
+    }
+    touchUpdated(*session);
+    const SessionCommandResult persistResult = persistAll(sessionId);
+    emit sessionUpdated(sessionId);
+    session = mutableSession(sessionId);
+    if (session != nullptr && sessionId == activeSessionId_ && allowsRouteCreation(session->state)) {
+        reconcileActiveSession(*session);
+    }
+    return persistResult;
 }
 
 SessionCommandResult SessionManager::setDeviceRole(const QString& sessionId, const QString& deviceId, const QString& role)

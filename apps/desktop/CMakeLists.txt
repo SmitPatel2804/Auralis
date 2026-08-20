@@ -44,3 +44,13 @@ install(FILES
     "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.metainfo.xml"
     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo"
 )
+
+install(FILES
+    "${CMAKE_SOURCE_DIR}/data/icons/hicolor/scalable/apps/io.github.auralis.Auralis.svg"
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
+)
+
+install(FILES
+    "${CMAKE_SOURCE_DIR}/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/auralis"
+)

@@ -4,14 +4,20 @@
   <name>Auralis</name>
   <summary>Multi-device Bluetooth and PipeWire audio hub</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <!-- Project license not yet selected by the owner; do not claim MIT/GPL/etc. -->
+  <project_license>LicenseRef-proprietary</project_license>
   <description>
     <p>
       Auralis helps manage multiple Bluetooth audio devices and route desktop
       audio through PipeWire with session recovery and service resilience.
     </p>
+    <p>
+      Public redistribution is blocked until the project owner selects and
+      approves a license. See the LICENSE file shipped with the package.
+    </p>
   </description>
   <launchable type="desktop-id">io.github.auralis.Auralis.desktop</launchable>
+  <icon type="stock">io.github.auralis.Auralis</icon>
   <provides>
     <binary>auralis-desktop</binary>
   </provides>

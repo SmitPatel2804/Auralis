@@ -69,10 +69,18 @@ public:
 
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
 
-    /// Bounded reconnect after daemon loss. RecoveryManager may also call requestReconnect().
+    /// Bounded reconnect after daemon loss. RecoveryManager observes; does not schedule a second retry.
     void setAutoReconnectEnabled(bool enabled);
     bool autoReconnectEnabled() const noexcept;
     void requestReconnect();
+    int reconnectAttempt() const noexcept;
+    int maxReconnectAttempts() const noexcept;
+    void setMaxReconnectAttemptsForTesting(int maxAttempts);
+    void setReconnectInitialDelayMsForTesting(int delayMs);
+    /// Inject PipeWire client events without a live daemon (unit tests).
+    void injectClientEventForTesting(const PipeWireClientEvent& event);
+    /// Count a failed reconnect attempt without waiting on the retry timer.
+    void simulateReconnectFailureForTesting(const QString& reason = QStringLiteral("test"));
 
 signals:
     void statusChanged();
@@ -117,6 +125,7 @@ private:
     bool autoReconnectEnabled_ = true;
     bool shuttingDown_ = false;
     bool reconnectInProgress_ = false;
+    bool reconnectExhaustedEmitted_ = false;
     int reconnectAttempt_ = 0;
     int maxReconnectAttempts_ = 8;
     int reconnectInitialDelayMs_ = 500;

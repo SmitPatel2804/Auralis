@@ -54,6 +54,18 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
     auto* bluetooth = qobject_cast<auralis::bluetooth::BluetoothManager*>(core.bluetooth());
     auto* pipeWire = qobject_cast<auralis::audio::PipeWireManager*>(core.audio());
     auto* sessions = qobject_cast<auralis::session::SessionManager*>(core.sessions());
+    auto* configuration = qobject_cast<auralis::core::ConfigurationManager*>(core.configuration());
+
+    if (pipeWire != nullptr && configuration != nullptr) {
+        pipeWire->setAutoReconnectEnabled(configuration->autoRecoverServices());
+        QObject::connect(
+            configuration,
+            &auralis::core::ConfigurationManager::autoRecoverServicesChanged,
+            pipeWire,
+            [pipeWire, configuration]() {
+                pipeWire->setAutoReconnectEnabled(configuration->autoRecoverServices());
+            });
+    }
 
     auralis::recovery::RecoveryManager::HostHooks hooks;
     hooks.pauseBluetoothReconnect = [bluetooth]() {
@@ -134,11 +146,14 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
         QObject::connect(pipeWire, &auralis::audio::PipeWireManager::graphRevisionChanged, recovery, pushPw);
         QObject::connect(
             pipeWire,
+            &auralis::audio::PipeWireManager::reconnectAttemptStarted,
+            recovery,
+            &auralis::recovery::RecoveryManager::notifyPipeWireReconnectAttempt);
+        QObject::connect(
+            pipeWire,
             &auralis::audio::PipeWireManager::reconnectExhausted,
             recovery,
-            [recovery](const QString& reason) {
-                emit recovery->recoveryExhausted(QStringLiteral("PipeWire"), reason);
-            });
+            &auralis::recovery::RecoveryManager::notifyPipeWireReconnectExhausted);
         pushPw();
     }
 }

@@ -1,11 +1,35 @@
 #include <auralis/audio/PipeWireManager.h>
+#include <auralis/audio/PipeWireTypes.h>
 #include <auralis/core/ServiceStatus.h>
 
+#include <QSignalSpy>
 #include <QtTest>
 
+using auralis::audio::PipeWireClientEvent;
 using auralis::audio::PipeWireConnectionState;
 using auralis::audio::PipeWireManager;
 using auralis::core::ServiceStatus;
+
+namespace {
+
+PipeWireClientEvent stateEvent(PipeWireConnectionState state, const QString& error = {})
+{
+    PipeWireClientEvent event;
+    event.type = PipeWireClientEvent::Type::StateChanged;
+    event.state = state;
+    event.error = error;
+    return event;
+}
+
+PipeWireClientEvent syncDoneEvent()
+{
+    PipeWireClientEvent event;
+    event.type = PipeWireClientEvent::Type::InitialSyncDone;
+    event.state = PipeWireConnectionState::Connected;
+    return event;
+}
+
+} // namespace
 
 class TstPipeWireManager : public QObject {
     Q_OBJECT
@@ -40,6 +64,89 @@ private slots:
         QCOMPARE(manager.endpointCount(), 0);
         QVERIFY(manager.status() == ServiceStatus::Uninitialized);
         QVERIFY(manager.connectionState() == PipeWireConnectionState::Stopped);
+    }
+
+    void reconnectAttemptNotResetAtTransportConnected()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(5);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("down"));
+        QVERIFY(manager.reconnectAttempt() >= 1);
+        const int before = manager.reconnectAttempt();
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QCOMPARE(manager.reconnectAttempt(), before);
+    }
+
+    void reconnectAttemptResetsOnlyAfterGraphReady()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        QVERIFY(manager.reconnectAttempt() >= 1);
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.reconnectAttempt() >= 1);
+        manager.injectClientEventForTesting(syncDoneEvent());
+        QCOMPARE(manager.reconnectAttempt(), 0);
+        QVERIFY(manager.initialSyncComplete());
+    }
+
+    void boundedRetryExhaustsAfterConfiguredMaximum()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(3);
+        QSignalSpy exhausted(&manager, &PipeWireManager::reconnectExhausted);
+
+        for (int i = 0; i < 5; ++i) {
+            manager.simulateReconnectFailureForTesting(QStringLiteral("fail"));
+        }
+        QCOMPARE(exhausted.count(), 1);
+        QCOMPARE(manager.reconnectAttempt(), 3);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("fail"));
+        QCOMPARE(exhausted.count(), 1);
+    }
+
+    void disableAutoReconnectStopsFurtherScheduling()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        const int attempts = manager.reconnectAttempt();
+        manager.setAutoReconnectEnabled(false);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("y"));
+        QCOMPARE(manager.reconnectAttempt(), attempts);
+    }
+
+    void manualReconnectAfterExhaustionStartsFreshEpisode()
+    {
+        PipeWireManager manager;
+        manager.setAutoReconnectEnabled(true);
+        manager.initialize();
+        manager.setMaxReconnectAttemptsForTesting(2);
+        for (int i = 0; i < 4; ++i) {
+            manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        }
+        QCOMPARE(manager.reconnectAttempt(), 2);
+        manager.setAutoReconnectEnabled(false);
+        manager.requestReconnect();
+        // Fresh episode: attempt counter cleared when starting manual reconnect after exhaustion.
+        QCOMPARE(manager.reconnectAttempt(), 0);
+    }
+
+    void shutdownCancelsScheduledReconnect()
+    {
+        PipeWireManager manager;
+        manager.initialize();
+        manager.setAutoReconnectEnabled(true);
+        manager.simulateReconnectFailureForTesting(QStringLiteral("x"));
+        manager.shutdown();
+        QCOMPARE(manager.reconnectAttempt(), 0);
+        QVERIFY(manager.status() == ServiceStatus::Uninitialized);
     }
 };
 

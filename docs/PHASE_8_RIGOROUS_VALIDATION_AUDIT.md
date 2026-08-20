@@ -1,7 +1,9 @@
 # Phase 8 Rigorous Validation Audit
 
-Date: 2026-08-20  
-Contract: `docs/prompts/phase-8/Auralis_PHASE_8_Reliability_Testing_Production_Hardening_Master_Prompt.md`
+Date: 2026-08-20 (final remediation)  
+Contracts:
+- `docs/prompts/phase-8/Auralis_PHASE_8_Reliability_Testing_Production_Hardening_Master_Prompt.md`
+- `docs/prompts/phase-8/Auralis_PHASE_8_Final_Remediation_100_Percent_Closure_Master_Prompt.md`
 
 ## Environment
 
@@ -13,61 +15,50 @@ Contract: `docs/prompts/phase-8/Auralis_PHASE_8_Reliability_Testing_Production_H
 | PipeWire | 1.6.2 |
 | BlueZ | 5.85 |
 | Kernel | 7.0.0-29-generic |
+| Pre-remediation revision | `83f9d5b398d7052f270739750237a1f980fbbb35` |
 
-## Connectivity / Bluetooth
+## Remediation defect matrix
 
-| Check | Result | Notes |
-|-------|--------|-------|
-| App launches without BlueZ | PASS | Degraded mode; RecoveryManager Waiting |
-| BlueZ bounce coordination (unit) | PASS | pause/resume + snapshot + coalesce reconcile |
-| Live adapter/device matrix | **NOT RUN as PASS** | Opt-in live tests; skip ≠ PASS |
+| Defect | Result | Evidence |
+|--------|--------|----------|
+| `restoreOnResume=false` leaves BT reconnect paused | **FIXED** | `tst_RecoveryManager::resumeWithRestoreDisabled…` |
+| `autoRecoverServices` not wired to PipeWire | **FIXED** | `DesktopApplication` → `setAutoReconnectEnabled` |
+| Runtime system D-Bus loss/recovery | **FIXED** | `BlueZDbusClient` health timer + inject seam; `tst_BlueZDbusClientBusRecovery` |
+| PW attempt reset before graph ready | **FIXED** | Reset only on `InitialSyncDone`; `tst_PipeWireManager` |
+| Dormant RM PipeWire retry owner | **REMOVED** | No `pipeWireRetryTimer_` in RecoveryManager |
+| Central status missing attempt/exhaust | **FIXED** | `notifyPipeWireReconnectAttempt/Exhausted` wired |
+| BlueZ snapshot storm | **FIXED** | Snapshot owned by `onBlueZRegistered`; RM does not refresh on bounce |
+| Cross-layer / stress coverage | **PASS** | `tst_ServiceRecoveryIntegration` label `stress` |
+| ASan/UBSan | **PASS** | `-DAURALIS_ENABLE_SANITIZERS=ON`; 45/45 with `ASAN_OPTIONS=detect_leaks=0` (LS leak detector fails under ptrace in this agent env — not a product defect) |
+| UAF in `setDeviceEnabled` (found via ASan) | **FIXED** | Index/copy before re-entrant route teardown |
+| Packaging icon | **PASS** | SVG installed under hicolor/scalable |
+| False MIT license claim | **FIXED** | AppStream `LicenseRef-proprietary` + LICENSE doc; public distro blocked until owner selects license |
+| Live/hardware | **PENDING** | Not claimed PASS |
 
-## Audio infrastructure
-
-| Check | Result | Notes |
-|-------|--------|-------|
-| PipeWire absent at start | PASS | Continues; schedules bounded reconnect |
-| PipeWire reconnect owner | PASS | `PipeWireManager` bounded attempts |
-| Session refresh after graph ready | PASS | RecoveryManager → `SessionManager::refreshActiveSession` |
-| Live routing / endpoint hardware | **NOT RUN as PASS** | Opt-in |
-
-## Session recovery
-
-| Check | Result | Notes |
-|-------|--------|-------|
-| Coalesced reconcile after multi-failure | PASS | `tst_ServiceRecoveryIntegration` |
-| Shutdown during recovery | PASS | No post-shutdown reconcile |
-| Explicit user-stop resurrection | Deferred to Phase 3/6 owners | RecoveryManager does not call Device1 Connect |
-
-## Suspend / resume
-
-| Check | Result | Notes |
-|-------|--------|-------|
-| Injected PrepareForSleep | PASS | `SystemPowerMonitor::injectPrepareForSleep` |
-| Generation fence + epoch bump | PASS | `tst_RecoveryManager` |
-| Host auto-suspend in CI | **NOT DONE** (forbidden) | Never suspend host in CI |
-| Real laptop suspend | **PENDING LIVE** | |
-
-## Packaging
-
-| Check | Result | Notes |
-|-------|--------|-------|
-| `.deb` produced | PASS | `auralis_0.1.0_amd64.deb` |
-| Contents include binary + desktop + metainfo | PASS | `dpkg-deb -c` |
-| Launch from extracted prefix | PASS | offscreen; no build-tree dependency |
-| Runtime root required | PASS (not required) | |
-
-## CTest
+## CTest (normal build)
 
 | Metric | Value |
 |--------|-------|
-| Count | 44 |
-| Pass | 44 |
+| Count | 45 |
+| Pass | 45 |
 | Fail | 0 |
-| Live skip treated as hardware PASS? | **No** |
+| Stress label | 1 test PASS |
+
+## Packaging
+
+| Check | Result |
+|-------|--------|
+| `.deb` | `build/auralis_0.1.0_amd64.deb` |
+| Icon in package | `usr/share/icons/hicolor/scalable/apps/io.github.auralis.Auralis.svg` |
+| LICENSE in package | `usr/share/doc/auralis/LICENSE` |
+| Extract + `timeout 3` offscreen launch | PASS (degraded OK without bus/PW) |
+| Public redistribution | **BLOCKED** until owner selects license |
 
 ## EXIT GATE
 
-**PENDING LIVE/HARDWARE VALIDATION**
+```text
+PHASE 8 SOFTWARE EXIT GATE: PASS
+PHASE 8 HARDWARE EXIT GATE: PENDING
+```
 
-Software reliability, tests, and packaging are evidenced. Hardware-backed BlueZ/PipeWire/suspend validation remains outstanding and must not be inferred from skipped live tests.
+Hardware BlueZ/PipeWire/suspend-on-laptop validation was not executed as PASS evidence.
