@@ -189,6 +189,31 @@ private slots:
         QVERIFY(route->ownedLinks.front().ownershipToken != oldToken);
     }
 
+    void replanFailureKeepsOperationalLinks()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString id = h.router.createRoute(h.sourceId(), {QStringLiteral("dest-a")});
+        h.router.activateRoute(id);
+        auto route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Active);
+        const quint64 oldToken = route->ownedLinks.front().ownershipToken;
+        const quint32 oldOutputPort = route->ownedLinks.front().outputPortId;
+
+        h.backend.failOnCreate = h.backend.createCalls + 1;
+        h.store.remove(21);
+        h.store.remove(22);
+        h.store.upsert(makePort(221, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(222, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        h.router.handleGraphChanged();
+
+        route = h.router.routeById(id);
+        QVERIFY(route->state == RouteState::Active);
+        QCOMPARE(route->ownedLinks.front().ownershipToken, oldToken);
+        QCOMPARE(route->ownedLinks.front().outputPortId, oldOutputPort);
+    }
+
     void disconnectKeepsEnabledAndReplansAfterSync()
     {
         Harness h;

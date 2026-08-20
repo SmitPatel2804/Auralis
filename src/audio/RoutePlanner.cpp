@@ -19,18 +19,20 @@ bool isAudioPort(const PipeWirePortInfo& port)
 QVector<PipeWirePortInfo> outputPorts(const AudioSource& source, const PipeWireObjectStore& store)
 {
     QVector<PipeWirePortInfo> result;
-    for (quint32 id : source.portIds) {
-        if (const PipeWirePortInfo* port = store.port(id)) {
-            if (port->direction == PipeWirePortDirection::Output && isAudioPort(*port)) {
-                result.push_back(*port);
-            }
-        }
-    }
-    if (result.isEmpty()) {
+    if (store.node(source.pipeWireNodeId) != nullptr) {
         for (const PipeWirePortInfo& port : store.portsForNode(source.pipeWireNodeId)) {
             if (port.direction == PipeWirePortDirection::Output && isAudioPort(port)
                 && (!source.monitorSource || port.monitor)) {
                 result.push_back(port);
+            }
+        }
+    }
+    if (result.isEmpty()) {
+        for (quint32 id : source.portIds) {
+            if (const PipeWirePortInfo* port = store.port(id)) {
+                if (port->direction == PipeWirePortDirection::Output && isAudioPort(*port)) {
+                    result.push_back(*port);
+                }
             }
         }
     }

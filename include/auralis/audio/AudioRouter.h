@@ -145,6 +145,7 @@ private:
     QHash<QString, quint64> generations_;
     QHash<QString, qint64> lastActivateAttemptMs_;
     QHash<QString, QTimer*> activationTimers_;
+    QHash<QString, QVector<OwnedLink>> replanBackups_;
     int activationTimeoutMs_ = 5000;
     PipeWireConnectionState connectionState_ = PipeWireConnectionState::Stopped;
     bool initialSyncComplete_ = false;

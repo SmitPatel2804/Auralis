@@ -341,7 +341,9 @@ private slots:
                 addresses.push_back(n);
             }
         }
-        QVERIFY2(addresses.size() >= 2, "Need AURALIS_EXPECT_DEVICE_ADDRESSES with two MAC addresses");
+        if (addresses.size() < 2) {
+            QSKIP("Set AURALIS_EXPECT_DEVICE_ADDRESSES with two MAC addresses for two-device hardware");
+        }
 
         BluetoothManager bluetooth;
         QVERIFY(bluetooth.initialize());

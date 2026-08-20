@@ -271,6 +271,7 @@ void AudioRouter::removeRoute(const QString& routeId)
     generations_[routeId] = ++nextGeneration_;
     route->enabled = false;
     stopActivationTimeout(routeId);
+    replanBackups_.remove(routeId);
     links_.destroyLinks(route->ownedLinks);
     emit routeRemoved(routeId);
     for (int i = 0; i < routes_.size(); ++i) {
@@ -535,6 +536,7 @@ void AudioRouter::handleConnectionState(PipeWireConnectionState state, bool init
 void AudioRouter::shutdown()
 {
     stopAllActivationTimeouts();
+    replanBackups_.clear();
     for (AudioRoute& route : routes_) {
         route.enabled = false;
         links_.destroyLinks(route.ownedLinks);
@@ -684,6 +686,9 @@ void AudioRouter::finishActivationIfReady(AudioRoute& route)
         return;
     }
     stopActivationTimeout(route.id);
+    if (QVector<OwnedLink> previous = replanBackups_.take(route.id); !previous.isEmpty()) {
+        links_.destroyLinks(previous);
+    }
     route.error = {};
     setState(route, RouteState::Active);
     qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route.id << "links=" << route.ownedLinks.size();
@@ -693,6 +698,22 @@ void AudioRouter::rollback(AudioRoute& route, RouteError category, const QString
 {
     stopActivationTimeout(route.id);
     links_.destroyLinks(route.ownedLinks);
+    route.ownedLinks.clear();
+
+    if (QVector<OwnedLink> backup = replanBackups_.take(route.id); !backup.isEmpty()) {
+        route.ownedLinks = backup;
+        refreshOwnedLinkIds(route);
+        if (linksOperational(route)) {
+            route.enabled = true;
+            route.error = {};
+            setState(route, RouteState::Active);
+            qCInfo(auralisAudio) << "AudioRouter ReplanRestoredPreviousLinks id=" << route.id;
+            return;
+        }
+        links_.destroyLinks(route.ownedLinks);
+        route.ownedLinks.clear();
+    }
+
     if (disable) {
         route.enabled = false;
         setError(route, category, detail);
@@ -713,6 +734,9 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
     }
     const ResolvedRoutePlan plan = planner_.plan(route.sourceId, route.destinationIds, *store_, *endpoints_);
     if (plan.error.hasError()) {
+        if (linksOperational(route)) {
+            return;
+        }
         setError(route, plan.error.category, plan.error.detail);
         setState(route, RouteState::Degraded);
         return;
@@ -739,11 +763,41 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
         return;
     }
 
+    const QVector<OwnedLink> previousLinks = route.ownedLinks;
+    const bool previousOperational = linksOperational(route);
+
     const quint64 generation = ++nextGeneration_;
     generations_[route.id] = generation;
     stopActivationTimeout(route.id);
-    links_.destroyLinks(route.ownedLinks);
-    beginActivation(route, generation);
+
+    route.enabled = true;
+    setState(route, RouteState::Planning);
+    RouteErrorInfo error;
+    QVector<OwnedLink> created = links_.createLinks(route.id, plan, &error);
+    if (generations_.value(route.id) != generation) {
+        links_.destroyLinks(created);
+        return;
+    }
+    if (created.isEmpty()) {
+        if (previousOperational) {
+            route.ownedLinks = previousLinks;
+            route.error = {};
+            setState(route, RouteState::Active);
+        } else {
+            rollback(route, error.category, error.detail, true);
+        }
+        return;
+    }
+
+    if (previousOperational && !previousLinks.isEmpty()) {
+        replanBackups_.insert(route.id, previousLinks);
+    }
+    route.ownedLinks = std::move(created);
+    route.activatedAt = QDateTime::currentDateTimeUtc();
+    setState(route, RouteState::Ready);
+    setState(route, RouteState::Activating);
+    armActivationTimeout(route.id, generation);
+    finishActivationIfReady(route);
 }
 
 bool AudioRouter::linksOperational(const AudioRoute& route) const
