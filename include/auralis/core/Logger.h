@@ -22,6 +22,7 @@ public:
     static void shutdown();
     static bool isInitialized();
     static bool isFileLoggingActive();
+    static QString activeFilePath();
 
     // Optional file sink. Failure is non-fatal: console logging continues.
     static bool enableFileLogging(const QString& filePath);

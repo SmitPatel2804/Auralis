@@ -1,5 +1,6 @@
 set(AURALIS_BLUETOOTH_SOURCES
     BluetoothDeviceListModel.cpp
+    BluetoothTransportFilterModel.cpp
     BluetoothError.cpp
     BlueZPropertyParser.cpp
     BlueZTypes.cpp
@@ -10,7 +11,7 @@ set(AURALIS_BLUETOOTH_SOURCES
     UuidCatalog.cpp
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/AgentCapability.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothDeviceListModel.h"
-    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothButtonControlManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothTransportFilterModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceButtonPolicy.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZPropertyParser.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceReconnectMetadata.h"
@@ -35,6 +36,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgent.h"
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZAgentAdaptor.h"
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothManager.h"
+        "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothButtonControlManager.h"
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZDbusClient.h"
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceLifecycleManager.h"
         "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DiscoveryManager.h"
@@ -66,6 +68,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(auralis-bluetooth PUBLIC Qt6::DBus)
 else()
     target_link_libraries(auralis-bluetooth PUBLIC Qt6::Bluetooth)
+    if(WIN32)
+        target_link_libraries(auralis-bluetooth PRIVATE Bthprops)
+    endif()
 endif()
 
 auralis_apply_warnings(auralis-bluetooth)

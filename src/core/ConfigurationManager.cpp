@@ -4,6 +4,10 @@
 #include <auralis/core/LoggingCategories.h>
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QStandardPaths>
 #include <QVariant>
 
 #include <optional>
@@ -21,6 +25,8 @@ constexpr auto kRestoreOnResumeKey = "recovery/restoreOnResume";
 constexpr auto kLastNavPageKey = "ui/lastNavPage";
 constexpr auto kWindowWidthKey = "ui/windowWidth";
 constexpr auto kWindowHeightKey = "ui/windowHeight";
+constexpr int kMinimumWindowWidth = 880;
+constexpr int kMinimumWindowHeight = 600;
 
 constexpr auto kEnvFileLoggingEnabled = "AURALIS_LOG_FILE_ENABLED";
 constexpr auto kEnvFileLoggingPath = "AURALIS_LOG_FILE_PATH";
@@ -36,6 +42,21 @@ std::optional<bool> parseBool(const QByteArray& raw)
         return false;
     }
     return std::nullopt;
+}
+
+QString defaultExecutionLogPath()
+{
+    QString dataRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (dataRoot.trimmed().isEmpty()) {
+        dataRoot = QDir::currentPath();
+    }
+    QDir logDirectory(QDir(dataRoot).filePath(QStringLiteral("logs")));
+    if (!logDirectory.exists()) {
+        QDir().mkpath(logDirectory.absolutePath());
+    }
+    const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+    return logDirectory.filePath(
+        QStringLiteral("auralis-%1-p%2.log").arg(timestamp).arg(QCoreApplication::applicationPid()));
 }
 
 } // namespace
@@ -65,15 +86,22 @@ bool ConfigurationManager::initialize()
     }
 
     applicationName_ = settings_->value(kApplicationNameKey, QStringLiteral("Auralis")).toString();
-    fileLoggingEnabled_ = settings_->value(kFileLoggingEnabledKey, false).toBool();
+    const bool hasExplicitFileLoggingPreference = settings_->contains(kFileLoggingEnabledKey);
+    fileLoggingEnabled_ = settings_->value(kFileLoggingEnabledKey, true).toBool();
     logFilePath_ = settings_->value(kFileLoggingPathKey, QString()).toString();
+    // Before execution-wise logs existed, a stale path could remain even when
+    // no logging preference had ever been persisted. Migrate that legacy state
+    // to the timestamped per-run default; explicit user preferences are kept.
+    if (!hasExplicitFileLoggingPreference || logFilePath_.trimmed().isEmpty()) {
+        logFilePath_ = defaultExecutionLogPath();
+    }
     showDeveloperStatus_ = settings_->value(kShowDeveloperStatusKey, true).toBool();
     restoreLastSession_ = settings_->value(kRestoreLastSessionKey, false).toBool();
     autoRecoverServices_ = settings_->value(kAutoRecoverServicesKey, true).toBool();
     restoreOnResume_ = settings_->value(kRestoreOnResumeKey, true).toBool();
-    lastNavPage_ = settings_->value(kLastNavPageKey, 0).toInt();
-    windowWidth_ = settings_->value(kWindowWidthKey, 1280).toInt();
-    windowHeight_ = settings_->value(kWindowHeightKey, 800).toInt();
+    lastNavPage_ = qBound(0, settings_->value(kLastNavPageKey, 0).toInt(), 5);
+    windowWidth_ = qMax(kMinimumWindowWidth, settings_->value(kWindowWidthKey, 1280).toInt());
+    windowHeight_ = qMax(kMinimumWindowHeight, settings_->value(kWindowHeightKey, 800).toInt());
 
     applyEnvironmentOverrides();
 
@@ -159,6 +187,24 @@ bool ConfigurationManager::setFileLoggingEnabled(bool enabled)
         return false;
     }
     if (fileLoggingEnabled_ == enabled) {
+        // Configuration is loaded before ApplicationCore activates the file
+        // sink. Keep an idempotent "enable" capable of repairing that runtime
+        // state (also useful after a recoverable sink failure).
+        if (enabled && Logger::isInitialized() && !Logger::isFileLoggingActive()) {
+            if (logFilePath_.trimmed().isEmpty()) {
+                setLastError(QStringLiteral("Choose a log file path before enabling file logging."));
+                return false;
+            }
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+            if (!Logger::enableFileLogging(logFilePath_)) {
+                setLastError(QStringLiteral("Unable to enable file logging at the selected path."));
+                return false;
+            }
+#else
+            setLastError(QStringLiteral("File logging support is not compiled into this build."));
+            return false;
+#endif
+        }
         setLastError({});
         return true;
     }
@@ -260,6 +306,13 @@ bool ConfigurationManager::setLogFilePath(const QString& path)
     if (!writeValue(kFileLoggingPathKey, path)) {
         return false;
     }
+    // Persisting a custom path also makes the logging choice explicit, so the
+    // legacy-state migration does not replace it with a generated path on the
+    // next execution.
+    if (!settings_->contains(kFileLoggingEnabledKey)
+        && !writeValue(kFileLoggingEnabledKey, fileLoggingEnabled_)) {
+        return false;
+    }
     logFilePath_ = path;
     emit logFilePathChanged();
     return true;
@@ -342,8 +395,8 @@ bool ConfigurationManager::setLastNavPage(int page)
 
 bool ConfigurationManager::setWindowWidth(int width)
 {
-    if (width < 800) {
-        width = 800;
+    if (width < kMinimumWindowWidth) {
+        width = kMinimumWindowWidth;
     }
     if (windowWidth_ == width) {
         return true;
@@ -358,8 +411,8 @@ bool ConfigurationManager::setWindowWidth(int width)
 
 bool ConfigurationManager::setWindowHeight(int height)
 {
-    if (height < 560) {
-        height = 560;
+    if (height < kMinimumWindowHeight) {
+        height = kMinimumWindowHeight;
     }
     if (windowHeight_ == height) {
         return true;
@@ -384,7 +437,10 @@ bool ConfigurationManager::resetToDefaults()
         ok = setFileLoggingEnabled(false) && ok;
     }
     if (!logPathEnvLocked_) {
-        ok = setLogFilePath({}) && ok;
+        ok = setLogFilePath(defaultExecutionLogPath()) && ok;
+    }
+    if (!fileLoggingEnvLocked_) {
+        ok = setFileLoggingEnabled(true) && ok;
     }
     if (!developerStatusEnvLocked_) {
         ok = setShowDeveloperStatus(true) && ok;

@@ -7,8 +7,13 @@ Item {
     id: root
     readonly property var bluetooth: AppCore.bluetooth
     readonly property var audio: AppCore.audio
+    readonly property var sessions: AppCore.sessions
+    property string appManagedDevicePath: ""
+    property string appManagedDeviceAddress: ""
+    property string appManagedDeviceName: ""
 
     property string filter: "all"
+    property string transportView: "classic"
     property string query: ""
     property string selectedPath: ""
     property int audioGraphRevision: audio ? audio.graphRevision : 0
@@ -48,11 +53,20 @@ Item {
         RowLayout {
             spacing: Metrics.sm
             SignalButton {
-                text: bluetooth && bluetooth.scanning ? qsTr("Stop Scan") : qsTr("Start Scan")
+                text: bluetooth && bluetooth.scanning ? qsTr("Stop Scan") : qsTr("Scan Audio Devices")
                 primary: true
                 enabled: bluetooth && (bluetooth.scanning ? bluetooth.canStopScan : bluetooth.canStartScan)
                 Accessible.name: text
                 onClicked: bluetooth.scanning ? bluetooth.stopScan() : bluetooth.startScan()
+            }
+            SignalButton {
+                text: qsTr("Scan BLE")
+                enabled: bluetooth && bluetooth.canStartScan && !bluetooth.scanning
+                Accessible.name: qsTr("Scan Bluetooth Low Energy devices")
+                onClicked: {
+                    root.transportView = "ble"
+                    bluetooth.startLowEnergyScan()
+                }
             }
             SignalButton {
                 text: qsTr("Refresh")
@@ -61,7 +75,9 @@ Item {
                 onClicked: bluetooth.refresh()
             }
             Label {
-                text: bluetooth && bluetooth.scanning ? qsTr("Scanning…") : qsTr("Idle")
+                text: bluetooth && bluetooth.scanning
+                      ? qsTr("Scanning %1…").arg(bluetooth.scanModeText)
+                      : qsTr("Idle")
                 color: Theme.textMuted
             }
             Label {
@@ -72,6 +88,7 @@ Item {
             TextField {
                 Layout.preferredWidth: 220
                 placeholderText: qsTr("Search")
+                Accessible.name: qsTr("Search devices by name or address")
                 text: root.query
                 onTextChanged: root.query = text
                 leftPadding: Metrics.md
@@ -106,6 +123,48 @@ Item {
             }
         }
 
+        RowLayout {
+            spacing: Metrics.sm
+            Label {
+                text: qsTr("TRANSPORT")
+                color: Theme.textFaint
+                font.pixelSize: 9
+                font.bold: true
+                font.letterSpacing: 1.1
+                Layout.rightMargin: Metrics.xs
+            }
+            SignalButton {
+                text: bluetooth
+                      ? qsTr("CLASSIC & AUDIO  %1").arg(bluetooth.classicDeviceCount)
+                      : qsTr("CLASSIC & AUDIO")
+                checkable: true
+                checked: root.transportView === "classic"
+                primary: checked
+                compact: true
+                onClicked: root.transportView = "classic"
+            }
+            SignalButton {
+                text: bluetooth
+                      ? qsTr("BLE & SENSORS  %1").arg(bluetooth.lowEnergyDeviceCount)
+                      : qsTr("BLE & SENSORS")
+                checkable: true
+                checked: root.transportView === "ble"
+                primary: checked
+                compact: true
+                onClicked: root.transportView = "ble"
+            }
+            Label {
+                Layout.fillWidth: true
+                text: root.transportView === "ble"
+                      ? qsTr("Low-energy advertisements are isolated from audio devices.")
+                      : qsTr("Headsets, speakers, and paired Classic devices.")
+                horizontalAlignment: Text.AlignRight
+                color: Theme.textMuted
+                font.pixelSize: 10
+                elide: Text.ElideRight
+            }
+        }
+
         SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -136,7 +195,9 @@ Item {
                     anchors.fill: parent
                     clip: true
                     spacing: Metrics.sm
-                    model: bluetooth ? bluetooth.devices : null
+                    model: bluetooth
+                           ? (root.transportView === "ble" ? bluetooth.lowEnergyDevices : bluetooth.classicDevices)
+                           : null
                     delegate: Item {
                         id: wrap
                         objectName: "deviceWrap"
@@ -176,7 +237,6 @@ Item {
                             || (root.filter === "nearby" && !paired)
                             || (root.filter === "known" && paired)
                             || (root.filter === "connected" && connected)
-
                         width: ListView.view.width
                         height: matchesQuery && matchesFilter ? row.implicitHeight : 0
                         visible: height > 0
@@ -231,6 +291,18 @@ Item {
                                 forgetDialog.open()
                             }
                             onShowServicesRequested: root.selectedPath = wrap.objectPath
+                            onManageInAppRequested: {
+                                root.appManagedDevicePath = wrap.objectPath
+                                root.appManagedDeviceAddress = wrap.address
+                                root.appManagedDeviceName = wrap.displayName
+                                appManagementDialog.open()
+                            }
+                            onManageInOsRequested: {
+                                if (Qt.platform.os === "windows")
+                                    Qt.openUrlExternally("ms-settings:bluetooth")
+                                else if (Qt.platform.os === "osx")
+                                    Qt.openUrlExternally("x-apple.systempreferences:com.apple.BluetoothSettings")
+                            }
                         }
 
                         MouseArea {
@@ -242,11 +314,17 @@ Item {
 
                     EmptyState {
                         visible: deviceList.count === 0
+                            || (root.transportView === "classic" && bluetooth && bluetooth.classicDeviceCount === 0)
+                            || (root.transportView === "ble" && bluetooth && bluetooth.lowEnergyDeviceCount === 0)
                             || (root.filter === "connected" && bluetooth && bluetooth.connectedDeviceCount === 0)
                         anchors.centerIn: parent
                         title: {
                             if (bluetooth && !bluetooth.available)
                                 return qsTr("Bluetooth unavailable")
+                            if (root.transportView === "ble")
+                                return bluetooth && bluetooth.scanning
+                                    ? qsTr("Scanning for BLE devices…")
+                                    : qsTr("No BLE devices")
                             if (root.filter === "connected" && deviceList.count > 0)
                                 return qsTr("No connected devices")
                             return bluetooth && bluetooth.scanning ? qsTr("Scanning…") : qsTr("No devices yet")
@@ -254,6 +332,8 @@ Item {
                         message: {
                             if (root.filter === "connected" && deviceList.count > 0)
                                 return qsTr("Paired devices appear under All or Known. Connect them from the device row.")
+                            if (root.transportView === "ble")
+                                return qsTr("Use Scan BLE to discover nearby low-energy sensors and advertisements.")
                             return bluetooth && bluetooth.scanning
                                 ? qsTr("Nearby devices will appear here.")
                                 : qsTr("Start a scan to discover nearby Bluetooth devices.")
@@ -334,7 +414,7 @@ Item {
                             }
                             KeyValueRow {
                                 label: qsTr("Device buttons")
-                                value: details.buttonPolicy || qsTr("ALLOW")
+                                value: details.buttonPolicy || qsTr("UNAVAILABLE")
                             }
                             KeyValueRow {
                                 visible: details.buttonPolicy === "DISALLOW"
@@ -383,5 +463,53 @@ Item {
         message: qsTr("Remove %1 from the operating system's paired devices? This cannot be undone from Auralis.").arg(deviceName)
         confirmText: qsTr("Forget")
         onConfirmed: bluetooth.forgetDevice(devicePath)
+    }
+
+    Dialog {
+        id: appManagementDialog
+        title: qsTr("Manage %1 in Auralis").arg(root.appManagedDeviceName)
+        modal: true
+        standardButtons: Dialog.Close
+        parent: Overlay.overlay
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(520, parent ? parent.width - 48 : 520)
+
+        contentItem: ColumnLayout {
+            spacing: Metrics.sm
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.textMuted
+                text: qsTr("Auralis controls this device's session membership, routing and volume. Windows continues to own Bluetooth pairing and the physical profile connection.")
+            }
+            KeyValueRow {
+                label: qsTr("Active Auralis routes")
+                value: root.sessions
+                    ? String(root.sessions.auralisRouteCountForDevice(root.appManagedDevicePath))
+                    : "0"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                SignalButton {
+                    text: qsTr("OPEN SESSIONS")
+                    primary: true
+                    onClicked: {
+                        appManagementDialog.close()
+                        AppCore.navigateTo(2)
+                    }
+                }
+                SignalButton {
+                    text: qsTr("RELEASE FROM AURALIS")
+                    danger: true
+                    enabled: !!root.sessions
+                    onClicked: {
+                        const result = root.sessions.releaseDeviceFromAuralis(root.appManagedDevicePath)
+                        if (result !== 0)
+                            AppCore.notifications.postError(qsTr("Device"), root.sessions.commandResultText(result))
+                        appManagementDialog.close()
+                    }
+                }
+            }
+        }
     }
 }

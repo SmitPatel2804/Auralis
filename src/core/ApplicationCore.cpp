@@ -4,6 +4,8 @@
 #include <auralis/core/LoggingCategories.h>
 
 #include <QAbstractItemModel>
+#include <QCoreApplication>
+#include <QSysInfo>
 
 namespace auralis::core {
 namespace {
@@ -72,6 +74,12 @@ bool ApplicationCore::initialize()
                 << "File logging requested but unavailable; continuing with console logging";
             services_.configuration->reconcileFileLoggingActivationFailure(
                 QStringLiteral("Unable to enable file logging at the selected path."));
+        } else {
+            qCInfo(auralisCore) << "ExecutionLogStarted path=" << Logger::activeFilePath()
+                                << "pid=" << QCoreApplication::applicationPid()
+                                << "os=" << QSysInfo::prettyProductName()
+                                << "arch=" << QSysInfo::currentCpuArchitecture()
+                                << "qt=" << qVersion();
         }
     }
 

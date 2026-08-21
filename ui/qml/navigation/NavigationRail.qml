@@ -30,6 +30,7 @@ ColumnLayout {
 
         delegate: Button {
             id: navButton
+            objectName: page === 0 ? "primaryNavigationTarget" : "navigationTarget"
             required property string glyph
             required property string title
             required property int page
@@ -76,8 +77,10 @@ ColumnLayout {
 
             background: Rectangle {
                 radius: 12
-                border.width: navButton.checked ? 1 : 0
-                border.color: Theme.alpha(Theme.accent, 0.36)
+                border.width: navButton.visualFocus ? 2 : (navButton.checked ? 1 : 0)
+                border.color: navButton.visualFocus
+                              ? Theme.focusRing
+                              : Theme.alpha(Theme.accent, 0.36)
                 color: navButton.checked
                        ? Theme.alpha(Theme.accent, 0.11)
                        : (navButton.hovered ? Theme.alpha(Theme.surfaceHover, 0.68) : "transparent")

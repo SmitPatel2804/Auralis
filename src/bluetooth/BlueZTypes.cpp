@@ -32,6 +32,15 @@ QString BluetoothDeviceData::displayName() const
 
 QString BluetoothDeviceData::transportHint() const
 {
+    if (supportsClassic && supportsLowEnergy) {
+        return QStringLiteral("Classic / BLE");
+    }
+    if (supportsClassic) {
+        return QStringLiteral("Classic");
+    }
+    if (supportsLowEnergy) {
+        return QStringLiteral("BLE");
+    }
     const bool randomLike =
         addressType.compare(QStringLiteral("random"), Qt::CaseInsensitive) == 0
         || addressType.compare(QStringLiteral("anonymous"), Qt::CaseInsensitive) == 0;

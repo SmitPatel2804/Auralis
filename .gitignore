@@ -82,3 +82,4 @@ Thumbs.db
 
 # Temporary audit evidence dumps (host-specific logs; the Markdown audit is the deliverable)
 /audit-phase*/
+/logs_*/

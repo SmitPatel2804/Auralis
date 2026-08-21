@@ -23,6 +23,13 @@
 #include <QSet>
 #include <QTimer>
 
+#if defined(Q_OS_WIN)
+#include "WindowsAudioSessions.h"
+#include "WindowsProcessLoopbackCapture.h"
+#include <QMetaObject>
+#include <QPointer>
+#endif
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -152,6 +159,43 @@ PipeWireObjectSnapshot portSnapshot(quint32 id, quint32 nodeId, bool output)
     return snapshot;
 }
 
+#if defined(Q_OS_WIN)
+quint64 windowsSessionSerial(const WindowsAudioSession& session)
+{
+    const QByteArray key = QByteArray::number(session.processId) + ':' + session.sessionIdentifier.toUtf8();
+    const QByteArray digest = QCryptographicHash::hash(key, QCryptographicHash::Sha256);
+    quint64 serial = 0;
+    for (int index = 0; index < 8; ++index) {
+        serial = (serial << 8U) | static_cast<quint8>(digest.at(index));
+    }
+    return serial == 0 ? 1 : serial;
+}
+
+PipeWireObjectSnapshot applicationSnapshot(quint32 id, const WindowsAudioSession& session)
+{
+    PipeWireObjectSnapshot snapshot;
+    snapshot.globalId = id;
+    snapshot.interfaceType = QStringLiteral("PipeWire:Interface:Node");
+    snapshot.kind = PipeWireObjectKind::Node;
+    snapshot.properties = PipeWireProperties::fromHash({
+        {QStringLiteral("object.serial"), QString::number(windowsSessionSerial(session))},
+        {QStringLiteral("node.name"), QStringLiteral("windows.process.%1").arg(session.processId)},
+        {QStringLiteral("node.description"), session.displayName},
+        {QStringLiteral("media.name"), session.displayName},
+        {QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+        {QStringLiteral("application.name"), session.applicationName},
+        {QStringLiteral("application.process.id"), QString::number(session.processId)},
+        {QStringLiteral("device.api"), QStringLiteral("WASAPI process loopback")},
+        // Process loopback observes a copy of audio that Windows still renders
+        // to its selected OS endpoint. Routing that copy back to the same
+        // endpoint produces an audible delayed double path.
+        {QStringLiteral("auralis.capture.mode"), QStringLiteral("copy")},
+        {QStringLiteral("stream.active"), session.active ? QStringLiteral("true") : QStringLiteral("false")},
+    });
+    return snapshot;
+}
+#endif
+
 class NativeAudioLinkBackend final : public QObject, public IPipeWireLinkBackend {
 public:
     explicit NativeAudioLinkBackend(PipeWireObjectStore* store, QObject* parent = nullptr)
@@ -170,6 +214,13 @@ public:
         inputs_.insert(nodeId, device);
     }
 
+#if defined(Q_OS_WIN)
+    void registerProcess(quint32 nodeId, quint32 processId)
+    {
+        processes_.insert(nodeId, processId);
+    }
+#endif
+
     void registerOutput(quint32 nodeId, const QAudioDevice& device)
     {
         outputs_.insert(nodeId, device);
@@ -179,6 +230,9 @@ public:
     {
         clearLinks();
         inputs_.clear();
+#if defined(Q_OS_WIN)
+        processes_.clear();
+#endif
         outputs_.clear();
         volumes_.clear();
         muted_.clear();
@@ -192,7 +246,14 @@ public:
         const QString& routeId,
         const QHash<QString, QString>& extraProps) override
     {
-        if (!inputs_.contains(outputNode) || !outputs_.contains(inputNode)) {
+        qCInfo(auralisAudio) << "NativeLinkCreateRequested route=" << routeId
+                             << "sourceNode=" << outputNode << "destinationNode=" << inputNode;
+        const bool sourceAvailable = inputs_.contains(outputNode)
+#if defined(Q_OS_WIN)
+            || processes_.contains(outputNode)
+#endif
+            ;
+        if (!sourceAvailable || !outputs_.contains(inputNode)) {
             reportError(QStringLiteral("The selected native audio devices are no longer available."));
             return std::nullopt;
         }
@@ -220,6 +281,8 @@ public:
         snapshot.kind = PipeWireObjectKind::Link;
         snapshot.properties = PipeWireProperties::fromHash(std::move(properties));
         store_->upsert(snapshot);
+        qCInfo(auralisAudio) << "NativeLinkCreated route=" << routeId
+                             << "token=" << token << "globalId=" << globalId;
         return LinkCreateResult{token, globalId};
     }
 
@@ -229,6 +292,8 @@ public:
         if (it == links_.end()) {
             return false;
         }
+        qCInfo(auralisAudio) << "NativeLinkDestroyRequested token=" << token
+                             << "route=" << it->routeId;
         store_->remove(it->globalId);
         links_.erase(it);
         restartStreams();
@@ -341,8 +406,53 @@ private:
         return std::nullopt;
     }
 
+
+    std::optional<QAudioFormat> commonOutputFormat(const QSet<quint32>& renderNodes) const
+    {
+        QVector<QAudioFormat> candidates;
+        for (quint32 nodeId : renderNodes) candidates.push_back(outputs_.value(nodeId).preferredFormat());
+        const QList<int> rates{48000, 44100};
+        const QList<int> channels{2, 1};
+        const QList<QAudioFormat::SampleFormat> samples{
+            QAudioFormat::Float, QAudioFormat::Int16, QAudioFormat::Int32, QAudioFormat::UInt8};
+        for (int rate : rates) {
+            for (int channelCount : channels) {
+                for (QAudioFormat::SampleFormat sample : samples) {
+                    QAudioFormat candidate;
+                    candidate.setSampleRate(rate);
+                    candidate.setChannelCount(channelCount);
+                    candidate.setSampleFormat(sample);
+                    candidates.push_back(candidate);
+                }
+            }
+        }
+        for (const QAudioFormat& candidate : candidates) {
+            if (!candidate.isValid()) continue;
+            bool supported = true;
+            for (quint32 nodeId : renderNodes) {
+                if (!outputs_.value(nodeId).isFormatSupported(candidate)) {
+                    supported = false;
+                    break;
+                }
+            }
+            if (supported) return candidate;
+        }
+        return std::nullopt;
+    }
+
     void stopStreams()
     {
+        if (source_ != nullptr || !renders_.empty()
+#if defined(Q_OS_WIN)
+            || processCapture_ != nullptr
+#endif
+        ) {
+            qCInfo(auralisAudio) << "NativeAudioStreamsStopping outputs=" << renders_.size();
+        }
+#if defined(Q_OS_WIN)
+        if (processCapture_ != nullptr) processCapture_->stop();
+        processCapture_.reset();
+#endif
         if (source_ != nullptr) {
             source_->stop();
         }
@@ -354,6 +464,18 @@ private:
         captureDevice_ = nullptr;
         source_.reset();
         renders_.clear();
+    }
+
+    void distributePcm(const QByteArray& pcm)
+    {
+        if (pcm.isEmpty() || !activeFormat_.isValid()) return;
+        const qsizetype frameBytes = std::max(1, activeFormat_.bytesPerFrame());
+        for (RenderTarget& target : renders_) {
+            if (target.device == nullptr || target.sink == nullptr) continue;
+            const qsizetype writable = std::max<qsizetype>(0, target.sink->bytesFree());
+            const qsizetype aligned = std::min(pcm.size(), writable) / frameBytes * frameBytes;
+            if (aligned > 0) target.device->write(pcm.constData(), static_cast<qint64>(aligned));
+        }
     }
 
     void clearLinks()
@@ -369,6 +491,7 @@ private:
     {
         stopStreams();
         if (links_.isEmpty()) {
+            qCInfo(auralisAudio) << "NativeAudioStreamsIdle no-links";
             return true;
         }
 
@@ -384,16 +507,32 @@ private:
         }
 
         const QAudioDevice input = inputs_.value(captureNode);
+#if defined(Q_OS_WIN)
+        const bool processSource = processes_.contains(captureNode);
+        if (input.isNull() && !processSource) {
+#else
         if (input.isNull()) {
+#endif
             reportError(QStringLiteral("The selected native capture source has no usable audio format."));
             return false;
         }
-        const std::optional<QAudioFormat> selectedFormat = commonFormat(input, renderNodes);
+        const std::optional<QAudioFormat> selectedFormat =
+#if defined(Q_OS_WIN)
+            processSource ? commonOutputFormat(renderNodes) : commonFormat(input, renderNodes);
+#else
+            commonFormat(input, renderNodes);
+#endif
         if (!selectedFormat.has_value()) {
             reportError(QStringLiteral("The selected devices do not share a native PCM format."));
             return false;
         }
         const QAudioFormat format = *selectedFormat;
+        activeFormat_ = format;
+        qCInfo(auralisAudio) << "NativeAudioStreamsStarting sourceNode=" << captureNode
+                             << "outputs=" << renderNodes.size()
+                             << "rate=" << format.sampleRate()
+                             << "channels=" << format.channelCount()
+                             << "sampleFormat=" << static_cast<int>(format.sampleFormat());
 
         for (quint32 nodeId : renderNodes) {
             RenderTarget target;
@@ -406,8 +545,45 @@ private:
                 return false;
             }
             renders_.push_back(std::move(target));
+            qCInfo(auralisAudio) << "NativeOutputStarted node=" << nodeId
+                                 << "name=" << outputs_.value(nodeId).description();
         }
         applyLevels();
+
+#if defined(Q_OS_WIN)
+        if (processSource) {
+            processCapture_ = std::make_unique<WindowsProcessLoopbackCapture>();
+            const QPointer<NativeAudioLinkBackend> guard(this);
+            QString captureError;
+            if (!processCapture_->start(
+                    processes_.value(captureNode),
+                    format,
+                    [guard](QByteArray pcm) {
+                        if (guard.isNull()) return;
+                        QMetaObject::invokeMethod(
+                            guard,
+                            [guard, pcm = std::move(pcm)]() {
+                                if (!guard.isNull()) guard->distributePcm(pcm);
+                            },
+                            Qt::QueuedConnection);
+                    },
+                    [guard](QString error) {
+                        if (guard.isNull()) return;
+                        QMetaObject::invokeMethod(
+                            guard,
+                            [guard, error = std::move(error)]() {
+                                if (!guard.isNull()) guard->reportError(error);
+                            },
+                            Qt::QueuedConnection);
+                    },
+                    &captureError)) {
+                reportError(captureError);
+                stopStreams();
+                return false;
+            }
+            return true;
+        }
+#endif
 
         source_ = std::make_unique<QAudioSource>(input, format, this);
         captureDevice_ = source_->start();
@@ -421,17 +597,7 @@ private:
             if (pcm.isEmpty()) {
                 return;
             }
-            const qsizetype frameBytes = std::max(1, format.bytesPerFrame());
-            for (RenderTarget& target : renders_) {
-                if (target.device == nullptr || target.sink == nullptr) {
-                    continue;
-                }
-                const qsizetype writable = std::max<qsizetype>(0, target.sink->bytesFree());
-                const qsizetype aligned = std::min(pcm.size(), writable) / frameBytes * frameBytes;
-                if (aligned > 0) {
-                    target.device->write(pcm.constData(), static_cast<qint64>(aligned));
-                }
-            }
+            distributePcm(pcm);
         });
         return true;
     }
@@ -446,6 +612,7 @@ private:
 
     void reportError(const QString& error)
     {
+        qCWarning(auralisAudio) << "NativeAudioBackendError" << error;
         if (errorHandler_) {
             errorHandler_(error);
         }
@@ -453,11 +620,18 @@ private:
 
     PipeWireObjectStore* store_ = nullptr;
     QHash<quint32, QAudioDevice> inputs_;
+#if defined(Q_OS_WIN)
+    QHash<quint32, quint32> processes_;
+#endif
     QHash<quint32, QAudioDevice> outputs_;
     QHash<quint64, Link> links_;
     QHash<quint32, double> volumes_;
     QSet<quint32> muted_;
     std::unique_ptr<QAudioSource> source_;
+#if defined(Q_OS_WIN)
+    std::unique_ptr<WindowsProcessLoopbackCapture> processCapture_;
+#endif
+    QAudioFormat activeFormat_;
     QIODevice* captureDevice_ = nullptr;
     std::vector<RenderTarget> renders_;
     std::function<void(const QString&)> errorHandler_;
@@ -483,7 +657,11 @@ struct NativeAudioManager::State {
     std::unique_ptr<PipeWireObjectStore> store = std::make_unique<PipeWireObjectStore>();
     NativeAudioLinkBackend* backend = nullptr;
     QTimer graphRefreshTimer;
+    QTimer sessionRefreshTimer;
     QByteArray graphFingerprint;
+#if defined(Q_OS_WIN)
+    QVector<WindowsAudioSession> sessions;
+#endif
 };
 
 NativeAudioManager::NativeAudioManager(bluetooth::DeviceRegistry* bluetoothRegistry, QObject* parent)
@@ -501,6 +679,14 @@ NativeAudioManager::NativeAudioManager(bluetooth::DeviceRegistry* bluetoothRegis
     connect(&stateImpl_->graphRefreshTimer, &QTimer::timeout, this, &NativeAudioManager::refreshGraph);
     connect(&stateImpl_->mediaDevices, &QMediaDevices::audioInputsChanged, this, &NativeAudioManager::scheduleGraphRefresh);
     connect(&stateImpl_->mediaDevices, &QMediaDevices::audioOutputsChanged, this, &NativeAudioManager::scheduleGraphRefresh);
+#if defined(Q_OS_WIN)
+    stateImpl_->sessionRefreshTimer.setInterval(2000);
+    connect(&stateImpl_->sessionRefreshTimer, &QTimer::timeout, this, [this] {
+        // Rebuilding the compatibility graph invalidates native streams, so
+        // defer app-list churn while a route is actively carrying audio.
+        if (router_->ownedLinkCount() == 0) scheduleGraphRefresh();
+    });
+#endif
     if (bluetoothRegistry_ != nullptr) {
         connect(bluetoothRegistry_, &bluetooth::DeviceRegistry::deviceAdded, this, &NativeAudioManager::scheduleGraphRefresh);
         connect(bluetoothRegistry_, &bluetooth::DeviceRegistry::deviceUpdated, this, &NativeAudioManager::scheduleGraphRefresh);
@@ -521,6 +707,9 @@ bool NativeAudioManager::initialize()
     status_ = core::ServiceStatus::Initializing;
     emit statusChanged();
     refreshGraph();
+#if defined(Q_OS_WIN)
+    stateImpl_->sessionRefreshTimer.start();
+#endif
     status_ = core::ServiceStatus::Ready;
     emit statusChanged();
     emit connectionStateChanged();
@@ -535,6 +724,7 @@ void NativeAudioManager::shutdown()
     router_->handleConnectionState(PipeWireConnectionState::Stopping, false);
     router_->shutdown();
     stateImpl_->graphRefreshTimer.stop();
+    stateImpl_->sessionRefreshTimer.stop();
     stateImpl_->graphFingerprint.clear();
     stateImpl_->backend->clearDevices();
     endpoints_->clear();
@@ -567,11 +757,17 @@ bool NativeAudioManager::initialSyncComplete() const noexcept { return connected
 int NativeAudioManager::graphRevision() const noexcept { return graphRevision_; }
 QString NativeAudioManager::diagnosticsText() const
 {
-    return QStringLiteral("backend=%1 state=%2 inputs=%3 outputs=%4 mappedBt=%5 error=%6")
+    const int sourceCount =
+#if defined(Q_OS_WIN)
+        stateImpl_->sessions.size();
+#else
+        QMediaDevices::audioInputs().size();
+#endif
+    return QStringLiteral("backend=%1 state=%2 applicationSources=%3 outputs=%4 mappedBt=%5 error=%6")
         .arg(
             backendName(),
             connectionStateText(),
-            QString::number(QMediaDevices::audioInputs().size()),
+            QString::number(sourceCount),
             QString::number(QMediaDevices::audioOutputs().size()),
             QString::number(mappedBluetoothCount()),
             lastError_.isEmpty() ? QStringLiteral("none") : lastError_);
@@ -607,12 +803,25 @@ void NativeAudioManager::refreshGraph()
     }
     setLastError({});
 
-    QList<QAudioDevice> inputs = QMediaDevices::audioInputs();
+    QList<QAudioDevice> inputs;
+#if defined(Q_OS_WIN)
+    QString sessionError;
+    QVector<WindowsAudioSession> sessions = enumerateWindowsAudioSessions(&sessionError);
+    if (!sessionError.isEmpty()) setLastError(QStringLiteral("Unable to enumerate application audio sessions: %1").arg(sessionError));
+#else
+    inputs = QMediaDevices::audioInputs();
+#endif
     QList<QAudioDevice> outputs = QMediaDevices::audioOutputs();
+#if !defined(Q_OS_WIN)
     sortNativeDevices(inputs, QMediaDevices::defaultAudioInput());
+#endif
     sortNativeDevices(outputs, QMediaDevices::defaultAudioOutput());
 
-    const QByteArray fingerprint = nativeGraphFingerprint(inputs, outputs, bluetoothRegistry_);
+    QByteArray fingerprint = nativeGraphFingerprint(inputs, outputs, bluetoothRegistry_);
+#if defined(Q_OS_WIN)
+    fingerprint = QCryptographicHash::hash(
+        fingerprint + windowsAudioSessionFingerprint(sessions), QCryptographicHash::Sha256);
+#endif
     if (fingerprint == stateImpl_->graphFingerprint) {
         return;
     }
@@ -624,6 +833,16 @@ void NativeAudioManager::refreshGraph()
     stateImpl_->store->clear();
 
     quint32 nextId = 1;
+#if defined(Q_OS_WIN)
+    stateImpl_->sessions = sessions;
+    for (const WindowsAudioSession& session : sessions) {
+        const quint32 nodeId = nextId++;
+        const quint32 portId = nextId++;
+        stateImpl_->store->upsert(applicationSnapshot(nodeId, session));
+        stateImpl_->store->upsert(portSnapshot(portId, nodeId, true));
+        stateImpl_->backend->registerProcess(nodeId, session.processId);
+    }
+#else
     for (const QAudioDevice& input : inputs) {
         const quint32 nodeId = nextId++;
         const quint32 portId = nextId++;
@@ -637,6 +856,7 @@ void NativeAudioManager::refreshGraph()
         stateImpl_->store->upsert(portSnapshot(portId, nodeId, true));
         stateImpl_->backend->registerInput(nodeId, input);
     }
+#endif
 
     for (const QAudioDevice& output : outputs) {
         const quint32 nodeId = nextId++;
@@ -693,7 +913,13 @@ void NativeAudioManager::refreshGraph()
     ++graphRevision_;
     emit graphRevisionChanged();
     qCInfo(auralisAudio) << "Native audio graph refreshed backend=" << backendName()
-                         << "inputs=" << inputs.size() << "outputs=" << outputs.size();
+                         << "applicationSources="
+#if defined(Q_OS_WIN)
+                         << sessions.size()
+#else
+                         << inputs.size()
+#endif
+                         << "outputs=" << outputs.size();
 }
 
 void NativeAudioManager::setLastError(const QString& error)

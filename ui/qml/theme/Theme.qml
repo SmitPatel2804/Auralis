@@ -14,15 +14,21 @@ QtObject {
     readonly property color borderBright: "#2B6680"
     readonly property color text: "#F2F8FF"
     readonly property color textMuted: "#8AA2B8"
-    readonly property color textFaint: "#587086"
+    // Both secondary text levels remain above WCAG AA contrast on surfaces.
+    readonly property color textFaint: "#70889D"
     readonly property color accent: "#21D4FD"
-    readonly property color accentSecondary: "#8B5CF6"
+    readonly property color accentHover: "#67E8F9"
+    readonly property color accentSecondary: "#A78BFA"
     readonly property color accentSoft: "#164E63"
     readonly property color success: "#2DD4BF"
     readonly property color warning: "#FBBF24"
     readonly property color danger: "#FB7185"
     readonly property color info: "#38BDF8"
-    readonly property color focusRing: "#67E8F9"
+    readonly property color focusRing: accentHover
+    readonly property color backdropTop: "#071321"
+    readonly property color backdropBottom: "#080816"
+    readonly property color railTop: "#102338"
+    readonly property color railBottom: "#09131F"
     readonly property real disabledOpacity: 0.45
     readonly property int radius: 12
     readonly property int cardRadius: 16

@@ -55,7 +55,7 @@ Flickable {
 
         SectionCard {
             title: qsTr("Logging")
-            subtitle: qsTr("Local diagnostic capture")
+            subtitle: qsTr("A timestamped execution log is enabled by default")
             signalColor: Theme.accentSecondary
             CheckBox {
                 text: qsTr("Enable file logging")
@@ -67,16 +67,21 @@ Flickable {
                 }
             }
             Label {
-                text: qsTr("Changing the log path requires an application restart to take effect.")
+                text: qsTr("A new timestamped file is created for each default-configured run. Audio samples and secrets are never written to logs. Changing this path applies on the next restart.")
                 color: Theme.textMuted
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
+            }
+            Label {
+                text: qsTr("Log file path")
+                color: Theme.text
             }
             TextField {
                 Layout.fillWidth: true
                 text: config ? config.logFilePath : ""
                 enabled: config && !config.fileLoggingEnvLocked
                 placeholderText: qsTr("Log file path")
+                Accessible.name: qsTr("Log file path")
                 onEditingFinished: config.setLogFilePath(text)
                 leftPadding: Metrics.md
                 rightPadding: Metrics.md
@@ -89,6 +94,7 @@ Flickable {
         }
 
         SignalButton {
+            objectName: "settingsResetButton"
             text: qsTr("RESET TO DEFAULTS")
             danger: true
             onClicked: resetDialog.open()

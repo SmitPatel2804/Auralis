@@ -1,8 +1,12 @@
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
 
-#include <auralis/bluetooth/BluetoothButtonControlManager.h>
 #include <auralis/bluetooth/BlueZTypes.h>
+#include <auralis/bluetooth/DeviceButtonPolicy.h>
 #include <auralis/bluetooth/DeviceOperation.h>
+
+#if defined(Q_OS_LINUX)
+#include <auralis/bluetooth/BluetoothButtonControlManager.h>
+#endif
 
 namespace auralis::bluetooth {
 
@@ -32,6 +36,7 @@ BluetoothDeviceListModel::BluetoothDeviceListModel(DeviceRegistry* registry, QOb
 
 void BluetoothDeviceListModel::setButtonControlManager(BluetoothButtonControlManager* manager)
 {
+#if defined(Q_OS_LINUX)
     if (buttonControls_ == manager) {
         return;
     }
@@ -54,6 +59,10 @@ void BluetoothDeviceListModel::setButtonControlManager(BluetoothButtonControlMan
     if (rowCount() > 0) {
         emit dataChanged(index(0), index(rowCount() - 1));
     }
+#else
+    Q_UNUSED(manager);
+    buttonControls_ = nullptr;
+#endif
 }
 
 int BluetoothDeviceListModel::rowCount(const QModelIndex& parent) const
@@ -133,33 +142,73 @@ QVariant BluetoothDeviceListModel::data(const QModelIndex& index, int role) cons
     case CanUntrustRole:
         return canUntrust(device);
     case CanConnectRole:
+#if defined(Q_OS_LINUX)
         return canConnect(device);
+#else
+        // Qt's native desktop Bluetooth API can pair devices but does not
+        // expose profile connect/disconnect operations.
+        return false;
+#endif
     case CanDisconnectRole:
+#if defined(Q_OS_LINUX)
         return canDisconnect(device);
+#else
+        return false;
+#endif
     case CanForgetRole:
         return canForget(device);
     case CanReconnectRole:
+#if defined(Q_OS_LINUX)
         return canReconnect(device);
+#else
+        return false;
+#endif
     case CanCancelOperationRole:
         return canCancelOperation(device);
     case ButtonPolicyRole:
+#if defined(Q_OS_LINUX)
         return buttonControls_ != nullptr
             ? static_cast<int>(buttonControls_->policyForAddress(device.address))
             : static_cast<int>(DeviceButtonPolicy::Allow);
+#else
+        return static_cast<int>(DeviceButtonPolicy::Allow);
+#endif
     case ButtonPolicyTextRole:
+#if defined(Q_OS_LINUX)
         return buttonControls_ != nullptr
             ? deviceButtonPolicyText(buttonControls_->policyForAddress(device.address))
             : deviceButtonPolicyText(DeviceButtonPolicy::Allow);
+#else
+        return deviceButtonPolicyText(DeviceButtonPolicy::Allow);
+#endif
     case CanControlButtonsRole:
+#if defined(Q_OS_LINUX)
         return buttonControls_ != nullptr && buttonControls_->canControlButtonsForAddress(device.address);
+#else
+        return false;
+#endif
     case ButtonEffectiveStateRole:
+#if defined(Q_OS_LINUX)
         return buttonControls_ != nullptr
             ? static_cast<int>(buttonControls_->effectiveStateForAddress(device.address))
             : static_cast<int>(DeviceButtonEffectiveState::Allowed);
+#else
+        return static_cast<int>(DeviceButtonEffectiveState::Unsupported);
+#endif
     case ButtonEffectiveStatusRole:
+#if defined(Q_OS_LINUX)
         return buttonControls_ != nullptr
             ? buttonControls_->effectiveStatusTextForAddress(device.address)
             : deviceButtonEffectiveStateText(DeviceButtonEffectiveState::Allowed);
+#else
+#if defined(Q_OS_WIN)
+        return QStringLiteral("Not enforced on Windows: a signed per-device media-control component is required");
+#elif defined(Q_OS_MACOS)
+        return QStringLiteral("Not enforced on macOS: per-device media-button suppression is unavailable");
+#else
+        return deviceButtonEffectiveStateText(DeviceButtonEffectiveState::Unsupported);
+#endif
+#endif
     default:
         return {};
     }
@@ -246,6 +295,7 @@ void BluetoothDeviceListModel::onDeviceRemoved(int, const QString&)
 
 void BluetoothDeviceListModel::onButtonPolicyChanged(const QString& address)
 {
+#if defined(Q_OS_LINUX)
     if (registry_ == nullptr || address.isEmpty()) {
         return;
     }
@@ -263,6 +313,9 @@ void BluetoothDeviceListModel::onButtonPolicyChanged(const QString& address)
              ButtonEffectiveStateRole,
              ButtonEffectiveStatusRole});
     }
+#else
+    Q_UNUSED(address);
+#endif
 }
 
 } // namespace auralis::bluetooth

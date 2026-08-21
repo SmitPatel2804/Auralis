@@ -671,6 +671,46 @@ bool AudioRouter::validateSelection(const QString& sourceId, const QStringList& 
         }
         return false;
     }
+
+    // Windows process loopback captures a copy; it does not remove the
+    // application's original render path. Refuse to play that copy into the
+    // current OS default endpoint because doing so creates echo/comb filtering
+    // and unavoidable relative latency. A true virtual output endpoint will
+    // replace copy mode once the signed driver is installed.
+    const AudioSource* selectedSource = nullptr;
+    for (const AudioSource& source : sources_) {
+        if (source.id == sourceId) {
+            selectedSource = &source;
+            break;
+        }
+    }
+    const PipeWireNodeInfo* sourceNode = selectedSource != nullptr && store_ != nullptr
+        ? store_->node(selectedSource->pipeWireNodeId)
+        : nullptr;
+    const bool isCopyCapture = sourceNode != nullptr
+        && sourceNode->properties.value(QStringLiteral("auralis.capture.mode")) == QLatin1String("copy");
+    if (isCopyCapture && endpoints_ != nullptr && store_ != nullptr) {
+        for (const QString& destinationId : destinationIds) {
+            const AudioEndpoint* endpoint = endpoints_->findById(destinationId);
+            const PipeWireNodeInfo* destinationNode = endpoint != nullptr
+                ? store_->node(endpoint->pipeWireObjectId)
+                : nullptr;
+            if (destinationNode != nullptr
+                && destinationNode->properties.boolValue(QStringLiteral("device.default")).value_or(false)) {
+                if (error != nullptr) {
+                    *error = {
+                        RouteError::UnsupportedDirection,
+                        QStringLiteral(
+                            "Duplicate audio prevented: this application already plays to the selected Windows "
+                            "default output. Choose a different Windows output, remove this device from the "
+                            "Auralis session, or use Auralis Virtual Output when its signed driver is installed.")};
+                }
+                qCWarning(auralisAudio) << "AudioRouter DuplicatePlaybackPrevented source=" << sourceId
+                                        << "destination=" << destinationId;
+                return false;
+            }
+        }
+    }
     return true;
 }
 

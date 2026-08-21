@@ -44,6 +44,16 @@ Rectangle {
     signal reconnectRequested()
     signal showServicesRequested()
     signal buttonPolicyToggled(bool disallow)
+    signal manageInOsRequested()
+    signal manageInAppRequested()
+
+    readonly property string signalText: root.hasRssi
+        ? (root.rssi + " dBm")
+        : (root.connected
+           ? qsTr("LINK ACTIVE · RSSI N/A")
+           : (root.paired
+              ? qsTr("PAIRED · RSSI N/A")
+              : (root.transportHint === "BLE" ? qsTr("AWAITING ADVERTISEMENT") : qsTr("RSSI UNAVAILABLE"))))
 
     implicitHeight: content.implicitHeight + Metrics.md * 2
     radius: Theme.cardRadius
@@ -147,9 +157,9 @@ Rectangle {
                     }
                 }
                 Label {
-                    text: root.hasRssi ? (root.rssi + " dBm") : qsTr("NO SIGNAL")
+                    text: root.signalText
                     font.pixelSize: 9
-                    color: root.hasRssi ? Theme.accent : Theme.textFaint
+                    color: root.hasRssi || root.connected ? Theme.accent : Theme.textFaint
                     Layout.leftMargin: 3
                 }
             }
@@ -190,6 +200,7 @@ Rectangle {
         }
 
         RowLayout {
+            visible: root.paired || root.connected
             Layout.fillWidth: true
             spacing: Metrics.sm
             Label {
@@ -201,11 +212,15 @@ Rectangle {
             SignalButton {
                 text: root.buttonPolicyText === "DISALLOW" ? qsTr("ALLOW") : qsTr("DISALLOW")
                 compact: true
+                enabled: root.canControlButtons
+                ToolTip.visible: hovered && !enabled
+                ToolTip.text: qsTr("Per-device enforcement is unavailable on this operating system")
                 onClicked: root.buttonPolicyToggled(root.buttonPolicyText !== "DISALLOW")
             }
         }
         Label {
-            visible: root.buttonPolicyText === "DISALLOW" && root.buttonEffectiveStatus.length > 0
+            visible: (root.buttonPolicyText === "DISALLOW" && root.buttonEffectiveStatus.length > 0)
+                || (!root.canControlButtons && (root.paired || root.connected))
             text: root.buttonEffectiveStatus
             font.pixelSize: 11
             color: Theme.textMuted
@@ -226,6 +241,20 @@ Rectangle {
             SignalButton { text: qsTr("UNTRUST"); compact: true; visible: root.canUntrust; onClicked: root.untrustRequested() }
             SignalButton { text: qsTr("CONNECT"); compact: true; primary: true; visible: root.canConnect; onClicked: root.connectRequested() }
             SignalButton { text: qsTr("DISCONNECT"); compact: true; visible: root.canDisconnect; onClicked: root.disconnectRequested() }
+            SignalButton {
+                text: qsTr("MANAGE IN APP")
+                compact: true
+                primary: true
+                visible: root.paired || root.connected
+                onClicked: root.manageInAppRequested()
+            }
+            SignalButton {
+                text: qsTr("MANAGE IN OS")
+                compact: true
+                visible: root.connected && !root.canDisconnect
+                    && (Qt.platform.os === "windows" || Qt.platform.os === "osx")
+                onClicked: root.manageInOsRequested()
+            }
             SignalButton { text: qsTr("RECONNECT"); compact: true; visible: root.canReconnect; onClicked: root.reconnectRequested() }
             SignalButton { text: qsTr("FORGET"); compact: true; danger: true; visible: root.canForget; onClicked: root.forgetRequested() }
             SignalButton { text: qsTr("SERVICES"); compact: true; visible: root.uuids.length > 0; onClicked: root.showServicesRequested() }

@@ -246,9 +246,18 @@ private slots:
         monitor.injectSubscribedForTesting(true);
         QVERIFY(monitor.isSubscribed());
         monitor.notifySystemBusUnavailable();
+#if defined(Q_OS_LINUX)
         QVERIFY(!monitor.isSubscribed());
         monitor.notifySystemBusUnavailable();
         QVERIFY(!monitor.isSubscribed());
+#else
+        // Windows and macOS observe power events through process-local native
+        // APIs. Linux system-bus lifecycle notifications are compatibility
+        // no-ops and must not tear down the active native subscription.
+        QVERIFY(monitor.isSubscribed());
+        monitor.notifySystemBusUnavailable();
+        QVERIFY(monitor.isSubscribed());
+#endif
         monitor.shutdown();
     }
 
@@ -258,6 +267,7 @@ private slots:
         QVERIFY(monitor.initialize());
         monitor.injectSubscribedForTesting(true);
         monitor.notifySystemBusUnavailable();
+#if defined(Q_OS_LINUX)
         QVERIFY(!monitor.isSubscribed());
         // Return may or may not reach host logind; force subscribed seam after available notify path.
         monitor.notifySystemBusAvailable();
@@ -267,6 +277,12 @@ private slots:
         QVERIFY(monitor.isSubscribed());
         monitor.notifySystemBusAvailable();
         QVERIFY(monitor.isSubscribed());
+#else
+        // Native platform subscriptions are independent of Linux D-Bus.
+        QVERIFY(monitor.isSubscribed());
+        monitor.notifySystemBusAvailable();
+        QVERIFY(monitor.isSubscribed());
+#endif
         monitor.shutdown();
     }
 

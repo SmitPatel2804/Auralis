@@ -82,7 +82,7 @@ private:
     std::unique_ptr<QSettings> settings_;
     bool initialized_ = false;
     QString applicationName_{QStringLiteral("Auralis")};
-    bool fileLoggingEnabled_ = false;
+    bool fileLoggingEnabled_ = true;
     QString logFilePath_;
     bool showDeveloperStatus_ = true;
     bool restoreLastSession_ = false;

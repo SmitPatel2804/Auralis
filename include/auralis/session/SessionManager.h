@@ -110,6 +110,8 @@ public:
     Q_INVOKABLE QString commandResultText(int result) const;
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
     Q_INVOKABLE QString sessionStateLabel(const QString& sessionId) const;
+    Q_INVOKABLE int auralisRouteCountForDevice(const QString& deviceId) const;
+    Q_INVOKABLE SessionCommandResult releaseDeviceFromAuralis(const QString& deviceId);
 
     void refreshActiveSession();
 

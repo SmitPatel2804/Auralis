@@ -15,6 +15,7 @@ class AdapterManager;
 class BlueZAgent;
 class BluetoothButtonControlManager;
 class BluetoothDeviceListModel;
+class BluetoothTransportFilterModel;
 class DeviceLifecycleManager;
 class DeviceRegistry;
 class DiscoveryManager;
@@ -29,7 +30,10 @@ class BluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(bool canStartScan READ canStartScan NOTIFY scanningChanged)
     Q_PROPERTY(bool canStopScan READ canStopScan NOTIFY scanningChanged)
+    Q_PROPERTY(QString scanModeText READ scanModeText NOTIFY scanningChanged)
     Q_PROPERTY(int deviceCount READ deviceCount NOTIFY deviceCountChanged)
+    Q_PROPERTY(int classicDeviceCount READ classicDeviceCount NOTIFY deviceCountChanged)
+    Q_PROPERTY(int lowEnergyDeviceCount READ lowEnergyDeviceCount NOTIFY deviceCountChanged)
     Q_PROPERTY(int connectedDeviceCount READ connectedDeviceCount NOTIFY connectedDeviceCountChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorTextChanged)
@@ -37,6 +41,8 @@ class BluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(QString adapterAddress READ adapterAddress NOTIFY adapterChanged)
     Q_PROPERTY(bool adapterDiscovering READ adapterDiscovering NOTIFY adapterChanged)
     Q_PROPERTY(QAbstractItemModel* devices READ devices CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* classicDevices READ classicDevices CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* lowEnergyDevices READ lowEnergyDevices CONSTANT)
     Q_PROPERTY(QObject* pendingPairingRequest READ pendingPairingRequest NOTIFY pendingPairingRequestChanged)
     Q_PROPERTY(bool agentRegistered READ agentRegistered NOTIFY agentRegisteredChanged)
 
@@ -59,17 +65,23 @@ public:
     bool scanning() const noexcept;
     bool canStartScan() const;
     bool canStopScan() const;
+    QString scanModeText() const;
     int deviceCount() const;
+    int classicDeviceCount() const;
+    int lowEnergyDeviceCount() const;
     QString statusText() const;
     QString errorText() const;
     QString adapterName() const;
     QString adapterAddress() const;
     bool adapterDiscovering() const;
     QAbstractItemModel* devices() const;
+    QAbstractItemModel* classicDevices() const;
+    QAbstractItemModel* lowEnergyDevices() const;
     QObject* pendingPairingRequest() const;
     bool agentRegistered() const;
 
     Q_INVOKABLE void startScan();
+    Q_INVOKABLE void startLowEnergyScan();
     Q_INVOKABLE void stopScan();
     Q_INVOKABLE void refresh() override;
     Q_INVOKABLE void pairDevice(const QString& deviceId);
@@ -152,6 +164,8 @@ private:
     DiscoveryManager* discovery_ = nullptr;
     DeviceRegistry* registry_ = nullptr;
     BluetoothDeviceListModel* model_ = nullptr;
+    BluetoothTransportFilterModel* classicModel_ = nullptr;
+    BluetoothTransportFilterModel* lowEnergyModel_ = nullptr;
     BluetoothButtonControlManager* buttonControls_ = nullptr;
     DeviceLifecycleManager* lifecycle_ = nullptr;
     BlueZAgent* agent_ = nullptr;

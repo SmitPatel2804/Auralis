@@ -3,11 +3,13 @@
 #include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
+#include <auralis/bluetooth/NativeBluetoothManager.h>
 
 #include <QTest>
 #include <QAudioDevice>
 #include <QAudioFormat>
 #include <QMediaDevices>
+#include <QSet>
 
 #include <algorithm>
 
@@ -50,13 +52,27 @@ private slots:
         auto* endpoints = manager.endpointRegistry();
         QVERIFY(router != nullptr);
         QVERIFY(endpoints != nullptr);
-        QVERIFY2(!router->sourceList().isEmpty(), "No Windows audio capture source is available");
+        QVERIFY2(!router->sourceList().isEmpty(), "No native audio source is available");
 
+#if defined(Q_OS_WIN)
+        QSet<quint32> processIds;
+        for (const auralis::audio::AudioSource& source : router->sourceList()) {
+            qInfo() << "application source" << source.applicationName << source.description
+                    << "pid=" << source.processId.value_or(0);
+            QCOMPARE(
+                static_cast<int>(source.sourceType),
+                static_cast<int>(auralis::audio::AudioSourceType::ApplicationPlaybackStream));
+            QVERIFY(source.processId.has_value());
+            QVERIFY2(!processIds.contains(*source.processId), "Application audio session was duplicated across render endpoints");
+            processIds.insert(*source.processId);
+        }
+#else
         for (const QAudioDevice& input : QMediaDevices::audioInputs()) {
             const QAudioFormat format = input.preferredFormat();
             qInfo() << "native input" << input.description() << format.sampleRate()
                     << format.channelCount() << format.sampleFormat() << format.channelConfig();
         }
+#endif
         for (const QAudioDevice& output : QMediaDevices::audioOutputs()) {
             const QAudioFormat format = output.preferredFormat();
             qInfo() << "native output" << output.description() << format.sampleRate()
@@ -70,8 +86,10 @@ private slots:
             destinationIds.push_back(playback.at(index).id);
         }
 
+#if defined(Q_OS_WIN)
+        const QString sourceId = router->sourceList().constFirst().id;
+#else
         const QString defaultInputName = QMediaDevices::defaultAudioInput().description();
-        QCOMPARE(router->sourceList().constFirst().description, defaultInputName);
         QString sourceId;
         for (const auralis::audio::AudioSource& source : router->sourceList()) {
             if (source.description == defaultInputName) {
@@ -79,7 +97,8 @@ private slots:
                 break;
             }
         }
-        QVERIFY2(!sourceId.isEmpty(), "The default Windows capture input was not projected into the audio graph");
+#endif
+        QVERIFY2(!sourceId.isEmpty(), "The application audio session has no stable source ID");
 
         const QString routeId = router->createRoute(sourceId, destinationIds);
         QVERIFY2(!routeId.isEmpty(), qPrintable(router->lastErrorText()));
@@ -102,6 +121,54 @@ private slots:
         }
         QVERIFY(manager.lastError().isEmpty());
         manager.shutdown();
+    }
+
+    void liveBluetoothDeviceMapsToNativePlaybackEndpoint()
+    {
+        if (qEnvironmentVariableIntValue("AURALIS_RUN_NATIVE_DEVICE_MAPPING_INTEGRATION") != 1) {
+            QSKIP("Set AURALIS_RUN_NATIVE_DEVICE_MAPPING_INTEGRATION=1 to correlate real Bluetooth and audio devices");
+        }
+
+        const QString expectedAddress =
+            QString::fromLocal8Bit(qgetenv("AURALIS_EXPECT_DEVICE_ADDRESS")).trimmed().toUpper();
+        QVERIFY2(!expectedAddress.isEmpty(), "AURALIS_EXPECT_DEVICE_ADDRESS is required for native mapping validation");
+
+        auralis::bluetooth::NativeBluetoothManager bluetooth;
+        QVERIFY(bluetooth.initialize());
+        QVERIFY(bluetooth.available());
+        bluetooth.startScan();
+        QTRY_VERIFY_WITH_TIMEOUT(bluetooth.scanning(), 3000);
+
+        const auto expectedDeviceId = [&bluetooth, &expectedAddress]() {
+            for (const auto& device : bluetooth.deviceRegistry()->devices()) {
+                if (device.address.trimmed().toUpper() == expectedAddress) {
+                    return device.objectPath;
+                }
+            }
+            return QString();
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(!expectedDeviceId().isEmpty(), 12000);
+        bluetooth.stopScan();
+
+        auralis::audio::NativeAudioManager audio(bluetooth.deviceRegistry());
+        QVERIFY(audio.initialize());
+        QTRY_VERIFY_WITH_TIMEOUT(audio.mappedBluetoothCount() >= 1, 3000);
+
+        bool foundMappedPlayback = false;
+        for (const auto& endpoint : audio.endpointRegistry()->playbackEndpoints()) {
+            if (endpoint.bluetoothAddress.trimmed().toUpper() != expectedAddress) {
+                continue;
+            }
+            foundMappedPlayback = true;
+            QCOMPARE(endpoint.bluetoothDeviceId, expectedDeviceId());
+            QVERIFY(!endpoint.bluetoothDisplayName.trimmed().isEmpty());
+            QVERIFY(endpoint.name.contains(QStringLiteral("Smokin"), Qt::CaseInsensitive));
+        }
+        QVERIFY2(foundMappedPlayback, "The expected Bluetooth device was not mapped to a native playback endpoint");
+        QCOMPARE(audio.audioStatusForDevice(expectedDeviceId()), QStringLiteral("Available"));
+
+        audio.shutdown();
+        bluetooth.shutdown();
     }
 };
 

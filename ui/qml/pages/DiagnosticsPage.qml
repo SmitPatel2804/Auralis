@@ -142,14 +142,17 @@ Item {
         }
 
         RowLayout {
-            ComboBox {
+            SignalComboBox {
+                objectName: "diagnosticsSeveritySelector"
                 model: ["", "DEBUG", "INFO", "WARNING", "CRITICAL"]
+                Accessible.name: qsTr("Log severity filter")
                 displayText: currentIndex <= 0 ? qsTr("All severities") : currentText
                 onActivated: logs.severityFilter = currentIndex <= 0 ? "" : currentText
             }
             TextField {
                 Layout.fillWidth: true
                 placeholderText: qsTr("Filter category")
+                Accessible.name: qsTr("Log category filter")
                 onTextChanged: logs.categoryFilter = text
             }
             SignalButton {
@@ -178,6 +181,7 @@ Item {
                 border.color: Theme.border
             }
             delegate: Label {
+                required property int index
                 required property string timestamp
                 required property string severity
                 required property string category

@@ -57,6 +57,11 @@ struct BluetoothDeviceData {
     bool legacyPairing = false;
     QString modalias;
     bool bonded = false;
+    // Explicit transport capabilities are populated by native backends where
+    // the platform API exposes them. BlueZ data keeps using the legacy
+    // address/class inference when both values are false.
+    bool supportsClassic = false;
+    bool supportsLowEnergy = false;
 
     DeviceOperation operation = DeviceOperation::Idle;
     BluetoothError lastError = BluetoothError::None;

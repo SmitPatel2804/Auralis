@@ -110,6 +110,27 @@ private slots:
         QVERIFY(manager.addDevice(id, QStringLiteral("not-a-bluetooth-address")) == SessionCommandResult::MemberNotFound);
     }
 
+    void releaseDeviceFromAuralisDisablesEveryMembershipAndTearsDownRoutes()
+    {
+        ActiveHarness h;
+        h.addSource();
+        h.addMember(QStringLiteral("AA:BB:CC:DD:EE:01"), 2, 21, 22, QStringLiteral("dest-a"), true);
+        const QString first = h.manager.createSession(QStringLiteral("First"));
+        const QString second = h.manager.createSession(QStringLiteral("Second"));
+        QVERIFY(h.manager.addDevice(first, QStringLiteral("AA:BB:CC:DD:EE:01")) == SessionCommandResult::Accepted);
+        QVERIFY(h.manager.addDevice(second, QStringLiteral("AA:BB:CC:DD:EE:01")) == SessionCommandResult::Accepted);
+        QVERIFY(h.manager.setSource(first, QStringLiteral("src:7:Stream/Output/Audio")) == SessionCommandResult::Accepted);
+        QVERIFY(h.manager.activateSession(first) == SessionCommandResult::Accepted);
+        QTRY_COMPARE_WITH_TIMEOUT(h.manager.auralisRouteCountForDevice(QStringLiteral("AA:BB:CC:DD:EE:01")), 1, 2000);
+
+        QVERIFY(h.manager.releaseDeviceFromAuralis(QStringLiteral("/org/bluez/hci0/dev_AABBCCDDEE01"))
+                == SessionCommandResult::Accepted);
+        QCOMPARE(h.manager.auralisRouteCountForDevice(QStringLiteral("AA:BB:CC:DD:EE:01")), 0);
+        QVERIFY(!h.manager.sessionById(first)->devices.front().enabled);
+        QVERIFY(!h.manager.sessionById(second)->devices.front().enabled);
+        QVERIFY(h.manager.sessionById(first)->devices.front().runtime.routeId.isEmpty());
+    }
+
     void activateAndRetryGuardsMatchGuiToasts()
     {
         QTemporaryDir dir;

@@ -8,6 +8,7 @@
 #include <auralis/bluetooth/BlueZPropertyParser.h>
 #include <auralis/bluetooth/BluetoothButtonControlManager.h>
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
+#include <auralis/bluetooth/BluetoothTransportFilterModel.h>
 #include <auralis/bluetooth/DeviceLifecycleManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/bluetooth/DiscoveryManager.h>
@@ -73,6 +74,10 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     discovery_ = new DiscoveryManager(client_, adapters_, this);
     registry_ = new DeviceRegistry(this);
     model_ = new BluetoothDeviceListModel(registry_, this);
+    classicModel_ = new BluetoothTransportFilterModel(false, this);
+    lowEnergyModel_ = new BluetoothTransportFilterModel(true, this);
+    classicModel_->setSourceModel(model_);
+    lowEnergyModel_->setSourceModel(model_);
     buttonControls_ = new BluetoothButtonControlManager(this);
     model_->setButtonControlManager(buttonControls_);
     reconnect_ = new ReconnectPolicy(this);
@@ -264,6 +269,7 @@ void BluetoothManager::connectClientSignals()
         emit connectedDeviceCountChanged();
     });
     connect(registry_, &DeviceRegistry::deviceUpdated, this, [this]() {
+        emit deviceCountChanged();
         emit connectedDeviceCountChanged();
     });
     if (agent_ != nullptr) {
@@ -415,9 +421,24 @@ bool BluetoothManager::canStopScan() const
     return discovery_ != nullptr && discovery_->canStopScan();
 }
 
+QString BluetoothManager::scanModeText() const
+{
+    return scanning() ? QStringLiteral("Bluetooth") : QString();
+}
+
 int BluetoothManager::deviceCount() const
 {
     return registry_ != nullptr ? registry_->count() : 0;
+}
+
+int BluetoothManager::classicDeviceCount() const
+{
+    return classicModel_ != nullptr ? classicModel_->rowCount() : 0;
+}
+
+int BluetoothManager::lowEnergyDeviceCount() const
+{
+    return lowEnergyModel_ != nullptr ? lowEnergyModel_->rowCount() : 0;
 }
 
 QString BluetoothManager::statusText() const
@@ -450,11 +471,21 @@ QAbstractItemModel* BluetoothManager::devices() const
     return model_;
 }
 
+QAbstractItemModel* BluetoothManager::classicDevices() const { return classicModel_; }
+QAbstractItemModel* BluetoothManager::lowEnergyDevices() const { return lowEnergyModel_; }
+
 void BluetoothManager::startScan()
 {
     if (discovery_ != nullptr) {
         discovery_->startScan();
     }
+}
+
+void BluetoothManager::startLowEnergyScan()
+{
+    // BlueZ uses one discovery session. Results are still separated by their
+    // transport capability in the UI.
+    startScan();
 }
 
 void BluetoothManager::stopScan()

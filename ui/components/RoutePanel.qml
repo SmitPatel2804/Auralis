@@ -4,11 +4,17 @@ import QtQuick.Layouts
 
 ColumnLayout {
     id: root
+    objectName: "routePlanner"
 
     property var audio: null
     property bool showDeveloperDetail: false
 
     readonly property var router: audio ? audio.router : null
+    readonly property bool sourceSelected: router
+        && sourceCombo.currentValue !== undefined
+        && sourceCombo.currentValue !== ""
+    readonly property int selectedDestinationCount: selectedDestinations().length
+    readonly property bool canActivate: sourceSelected && selectedDestinationCount > 0
 
     spacing: 8
 
@@ -45,8 +51,9 @@ ColumnLayout {
         router.deactivateRoute(router.currentRouteId)
     }
 
-    ComboBox {
+    SignalComboBox {
         id: sourceCombo
+        objectName: "routeSourceSelector"
         Layout.fillWidth: true
         model: router ? router.sources : null
         textRole: "name"
@@ -101,6 +108,7 @@ ColumnLayout {
                 id: destRepeater
                 model: audio ? audio.endpoints : null
                 delegate: CheckBox {
+                    objectName: "routeDestinationOption"
                     required property string endpointId
                     required property string name
                     required property string direction
@@ -119,17 +127,28 @@ ColumnLayout {
         spacing: 12
 
         SignalButton {
+            objectName: "routePlannerActivate"
             text: "Activate"
             primary: true
-            enabled: router && sourceCombo.currentValue !== undefined && sourceCombo.currentValue !== ""
+            enabled: root.canActivate
             onClicked: root.activateClicked()
         }
 
         SignalButton {
+            objectName: "routePlannerDeactivate"
             text: "Deactivate"
             enabled: router && router.routeEnabled
             onClicked: root.deactivateClicked()
         }
+    }
+
+    Text {
+        visible: root.sourceSelected && root.selectedDestinationCount === 0
+        text: "Select at least one available playback destination to activate a route."
+        font.pixelSize: 12
+        color: Theme.textMuted
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
     }
 
     Text {

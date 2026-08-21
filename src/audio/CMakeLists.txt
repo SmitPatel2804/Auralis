@@ -48,6 +48,14 @@ else()
         NativeAudioManager.cpp
         "${CMAKE_SOURCE_DIR}/include/auralis/audio/NativeAudioManager.h"
     )
+    if(WIN32)
+        list(APPEND AURALIS_AUDIO_SOURCES
+            WindowsAudioSessions.cpp
+            WindowsAudioSessions.h
+            WindowsProcessLoopbackCapture.cpp
+            WindowsProcessLoopbackCapture.h
+        )
+    endif()
 endif()
 
 add_library(auralis-audio ${AURALIS_AUDIO_SOURCES})
@@ -72,6 +80,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(auralis-audio PUBLIC PkgConfig::PIPEWIRE)
 else()
     target_link_libraries(auralis-audio PUBLIC Qt6::Multimedia)
+    if(WIN32)
+        target_link_libraries(auralis-audio PRIVATE Ole32 Mmdevapi)
+        target_compile_definitions(auralis-audio PRIVATE _WIN32_WINNT=0x0A00)
+    endif()
 endif()
 
 auralis_apply_warnings(auralis-audio)

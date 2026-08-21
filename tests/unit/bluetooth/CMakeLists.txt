@@ -14,6 +14,11 @@ target_link_libraries(tst_DeviceRegistry PRIVATE auralis-bluetooth)
 auralis_add_test(tst_BluetoothDeviceListModel tst_BluetoothDeviceListModel.cpp)
 target_link_libraries(tst_BluetoothDeviceListModel PRIVATE auralis-bluetooth)
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    auralis_add_test(tst_NativeBluetoothManager tst_NativeBluetoothManager.cpp)
+    target_link_libraries(tst_NativeBluetoothManager PRIVATE auralis-bluetooth)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     auralis_add_test(tst_AdapterAndDiscovery tst_AdapterAndDiscovery.cpp)
     target_link_libraries(tst_AdapterAndDiscovery PRIVATE auralis-bluetooth)

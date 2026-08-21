@@ -45,8 +45,9 @@ private slots:
         QVERIFY(manager.initialize());
         QVERIFY(manager.isInitialized());
         QCOMPARE(manager.applicationName(), QStringLiteral("Auralis"));
-        QCOMPARE(manager.fileLoggingEnabled(), false);
-        QVERIFY(manager.logFilePath().isEmpty());
+        QCOMPARE(manager.fileLoggingEnabled(), true);
+        QVERIFY(manager.logFilePath().contains(QStringLiteral("logs"), Qt::CaseInsensitive));
+        QVERIFY(manager.logFilePath().endsWith(QStringLiteral(".log")));
         QCOMPARE(manager.showDeveloperStatus(), true);
     }
 
@@ -80,7 +81,7 @@ private slots:
 
         auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
         QVERIFY(manager.initialize());
-        QCOMPARE(manager.fileLoggingEnabled(), false);
+        QCOMPARE(manager.fileLoggingEnabled(), true);
         QCOMPARE(manager.showDeveloperStatus(), true);
     }
 
@@ -122,6 +123,91 @@ private slots:
         QCOMPARE(manager.showDeveloperStatus(), true);
     }
 
+    void legacyPathWithoutLoggingPreferenceMigratesToExecutionLog()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        auto settings = makeIsolatedSettings(dir);
+        const QString legacyPath = dir.filePath(QStringLiteral("legacy-fixed.log"));
+        settings->setValue(QStringLiteral("logging/filePath"), legacyPath);
+        settings->sync();
+
+        auralis::core::ConfigurationManager manager(std::move(settings));
+        QVERIFY(manager.initialize());
+        QVERIFY(manager.fileLoggingEnabled());
+        QVERIFY(manager.logFilePath() != legacyPath);
+        QVERIFY(manager.logFilePath().contains(QStringLiteral("logs"), Qt::CaseInsensitive));
+        QVERIFY(manager.logFilePath().contains(QStringLiteral("auralis-")));
+        QVERIFY(manager.logFilePath().endsWith(QStringLiteral(".log")));
+    }
+
+    void explicitLoggingPreferencePreservesCustomPath()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        auto settings = makeIsolatedSettings(dir);
+        const QString customPath = dir.filePath(QStringLiteral("custom.log"));
+        settings->setValue(QStringLiteral("logging/fileEnabled"), false);
+        settings->setValue(QStringLiteral("logging/filePath"), customPath);
+        settings->sync();
+
+        auralis::core::ConfigurationManager manager(std::move(settings));
+        QVERIFY(manager.initialize());
+        QVERIFY(!manager.fileLoggingEnabled());
+        QCOMPARE(manager.logFilePath(), customPath);
+    }
+
+    void settingCustomPathMarksLoggingPreferenceExplicit()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString customPath = dir.filePath(QStringLiteral("chosen.log"));
+
+        {
+            auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
+            QVERIFY(manager.initialize());
+            QVERIFY(manager.setLogFilePath(customPath));
+        }
+
+        auralis::core::ConfigurationManager reloaded(makeIsolatedSettings(dir));
+        QVERIFY(reloaded.initialize());
+        QVERIFY(reloaded.fileLoggingEnabled());
+        QCOMPARE(reloaded.logFilePath(), customPath);
+    }
+
+    void navigationAndWindowGeometryAreClampedAndPersisted()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        auto settings = makeIsolatedSettings(dir);
+        settings->setValue(QStringLiteral("ui/lastNavPage"), -99);
+        settings->setValue(QStringLiteral("ui/windowWidth"), 100);
+        settings->setValue(QStringLiteral("ui/windowHeight"), 100);
+        settings->sync();
+
+        auralis::core::ConfigurationManager manager(std::move(settings));
+        QVERIFY(manager.initialize());
+        QCOMPARE(manager.lastNavPage(), 0);
+        QCOMPARE(manager.windowWidth(), 880);
+        QCOMPARE(manager.windowHeight(), 600);
+
+        QVERIFY(manager.setLastNavPage(99));
+        QVERIFY(manager.setWindowWidth(1));
+        QVERIFY(manager.setWindowHeight(1));
+        QCOMPARE(manager.lastNavPage(), 5);
+        QCOMPARE(manager.windowWidth(), 880);
+        QCOMPARE(manager.windowHeight(), 600);
+
+        auralis::core::ConfigurationManager persisted(makeIsolatedSettings(dir));
+        QVERIFY(persisted.initialize());
+        QCOMPARE(persisted.lastNavPage(), 5);
+        QCOMPARE(persisted.windowWidth(), 880);
+        QCOMPARE(persisted.windowHeight(), 600);
+    }
+
     void fileLoggingToggleAppliesToLogger()
     {
 #ifdef AURALIS_ENABLE_FILE_LOGGING
@@ -157,6 +243,7 @@ private slots:
         QVERIFY(dir.isValid());
         auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
         QVERIFY(manager.initialize());
+        QVERIFY(manager.setFileLoggingEnabled(false));
         QVERIFY(manager.setLogFilePath(QString()));
 
         QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
@@ -182,6 +269,7 @@ private slots:
         QVERIFY(dir.isValid());
         auralis::core::ConfigurationManager manager(makeIsolatedSettings(dir));
         QVERIFY(manager.initialize());
+        QVERIFY(manager.setFileLoggingEnabled(false));
         const QString impossible = dir.filePath(QStringLiteral("missing-parent/auralis.log"));
         QVERIFY(manager.setLogFilePath(impossible));
 
@@ -216,7 +304,7 @@ private slots:
         QCOMPARE(manager.fileLoggingEnabled(), true);
         QVERIFY(auralis::core::Logger::isFileLoggingActive());
         QVERIFY(manager.lastErrorText().isEmpty());
-        QCOMPARE(enabledSpy.count(), 1);
+        QCOMPARE(enabledSpy.count(), 0);
 
         auralis::core::Logger::shutdown();
 #else
@@ -265,9 +353,9 @@ private slots:
 
         QSignalSpy enabledSpy(&manager, &auralis::core::ConfigurationManager::fileLoggingEnabledChanged);
         QVERIFY(manager.setFileLoggingEnabled(true));
-        QCOMPARE(enabledSpy.count(), 1);
+        QCOMPARE(enabledSpy.count(), 0);
         QVERIFY(manager.setFileLoggingEnabled(true));
-        QCOMPARE(enabledSpy.count(), 1);
+        QCOMPARE(enabledSpy.count(), 0);
         QCOMPARE(manager.fileLoggingEnabled(), true);
         QVERIFY(auralis::core::Logger::isFileLoggingActive());
 

@@ -4,6 +4,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 else()
     auralis_add_test(tst_NativeAudioManager tst_NativeAudioManager.cpp)
     target_link_libraries(tst_NativeAudioManager PRIVATE auralis-audio auralis-bluetooth)
+    if(WIN32)
+        add_executable(auralis-audio-fixture windows_audio_fixture.cpp)
+        target_link_libraries(auralis-audio-fixture PRIVATE Qt6::Core Qt6::Multimedia)
+        auralis_apply_warnings(auralis-audio-fixture)
+        auralis_add_test(tst_WindowsProcessLoopback tst_WindowsProcessLoopback.cpp)
+        target_link_libraries(tst_WindowsProcessLoopback PRIVATE auralis-audio)
+        target_include_directories(tst_WindowsProcessLoopback PRIVATE "${CMAKE_SOURCE_DIR}/src/audio")
+        target_compile_definitions(
+            tst_WindowsProcessLoopback
+            PRIVATE AURALIS_AUDIO_FIXTURE_PATH="$<TARGET_FILE:auralis-audio-fixture>")
+        add_dependencies(tst_WindowsProcessLoopback auralis-audio-fixture)
+    endif()
 endif()
 
 auralis_add_test(tst_PipeWireProperties tst_PipeWireProperties.cpp)

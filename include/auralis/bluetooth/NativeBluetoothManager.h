@@ -10,9 +10,12 @@
 
 #include <memory>
 
+class QBluetoothDeviceInfo;
+
 namespace auralis::bluetooth {
 
 class BluetoothDeviceListModel;
+class BluetoothTransportFilterModel;
 class DeviceRegistry;
 
 /// Windows/macOS Bluetooth facade backed by the host Qt/native Bluetooth
@@ -25,7 +28,10 @@ class NativeBluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(bool canStartScan READ canStartScan NOTIFY scanningChanged)
     Q_PROPERTY(bool canStopScan READ canStopScan NOTIFY scanningChanged)
+    Q_PROPERTY(QString scanModeText READ scanModeText NOTIFY scanningChanged)
     Q_PROPERTY(int deviceCount READ deviceCount NOTIFY deviceCountChanged)
+    Q_PROPERTY(int classicDeviceCount READ classicDeviceCount NOTIFY deviceCountChanged)
+    Q_PROPERTY(int lowEnergyDeviceCount READ lowEnergyDeviceCount NOTIFY deviceCountChanged)
     Q_PROPERTY(int connectedDeviceCount READ connectedDeviceCount NOTIFY connectedDeviceCountChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorTextChanged)
@@ -33,6 +39,8 @@ class NativeBluetoothManager final : public QObject, public IBluetoothManager {
     Q_PROPERTY(QString adapterAddress READ adapterAddress NOTIFY adapterChanged)
     Q_PROPERTY(bool adapterDiscovering READ scanning NOTIFY adapterChanged)
     Q_PROPERTY(QAbstractItemModel* devices READ devices CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* classicDevices READ classicDevices CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* lowEnergyDevices READ lowEnergyDevices CONSTANT)
     Q_PROPERTY(QObject* pendingPairingRequest READ pendingPairingRequest CONSTANT)
     Q_PROPERTY(bool agentRegistered READ agentRegistered CONSTANT)
 
@@ -54,17 +62,23 @@ public:
     bool scanning() const noexcept;
     bool canStartScan() const;
     bool canStopScan() const;
+    QString scanModeText() const;
     int deviceCount() const;
+    int classicDeviceCount() const;
+    int lowEnergyDeviceCount() const;
     int connectedDeviceCount() const;
     QString statusText() const;
     QString errorText() const;
     QString adapterName() const;
     QString adapterAddress() const;
     QAbstractItemModel* devices() const;
+    QAbstractItemModel* classicDevices() const;
+    QAbstractItemModel* lowEnergyDevices() const;
     QObject* pendingPairingRequest() const;
     bool agentRegistered() const;
 
     Q_INVOKABLE void startScan();
+    Q_INVOKABLE void startLowEnergyScan();
     Q_INVOKABLE void stopScan();
     Q_INVOKABLE void refresh() override;
     Q_INVOKABLE void pairDevice(const QString& deviceId);
@@ -83,8 +97,8 @@ public:
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
     Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
-    Q_INVOKABLE void setDeviceButtonPolicy(const QString&, bool) {}
-    Q_INVOKABLE QString deviceButtonPolicyText(const QString&) const { return QStringLiteral("ALLOW"); }
+    Q_INVOKABLE void setDeviceButtonPolicy(const QString& deviceId, bool disallow);
+    Q_INVOKABLE QString deviceButtonPolicyText(const QString&) const { return QStringLiteral("UNAVAILABLE"); }
     Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
     Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
 
@@ -112,12 +126,17 @@ signals:
 private:
     struct State;
     void updateDeviceConnectionState();
+    void preloadKnownDevices();
+    void upsertDiscoveredDevice(const QBluetoothDeviceInfo& nativeInfo);
+    void startScanMode(bool lowEnergy);
     void setError(const QString& text);
     void clearError();
 
     std::unique_ptr<State> stateImpl_;
     DeviceRegistry* registry_ = nullptr;
     BluetoothDeviceListModel* model_ = nullptr;
+    BluetoothTransportFilterModel* classicModel_ = nullptr;
+    BluetoothTransportFilterModel* lowEnergyModel_ = nullptr;
     ReconnectPolicy* reconnect_ = nullptr;
     core::ServiceStatus status_ = core::ServiceStatus::Uninitialized;
     QString errorText_;

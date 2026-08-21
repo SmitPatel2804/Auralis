@@ -10,6 +10,7 @@ Flickable {
     contentHeight: column.implicitHeight
     readonly property var audio: AppCore.audio
     readonly property var router: audio ? audio.router : null
+    property string pendingRemovalRouteId: ""
 
     ColumnLayout {
         id: column
@@ -19,6 +20,19 @@ Flickable {
         PageHeader { title: qsTr("Signal Graph"); subtitle: qsTr("Sources, destinations and active native audio routes") }
 
         ErrorBanner { text: router ? router.lastErrorText : "" }
+
+        SectionCard {
+            visible: Qt.platform.os === "windows"
+            title: qsTr("Windows capture mode")
+            subtitle: qsTr("Safe copy-mode routing")
+            signalColor: Theme.warning
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.textMuted
+                text: qsTr("Application capture is currently a copy of Windows playback. Auralis blocks routing that copy back into the same Windows default output because it causes delayed double audio. Select another Windows output or remove that default device from the Auralis route. A signed Auralis Virtual Output driver is the planned exclusive-routing mode.")
+            }
+        }
 
         SectionCard {
             title: qsTr("Sources")
@@ -107,6 +121,16 @@ Flickable {
                     RowLayout {
                         SignalButton { text: qsTr("ACTIVATE"); primary: true; compact: true; enabled: editable; onClicked: root.router.activateRoute(routeId) }
                         SignalButton { text: qsTr("DEACTIVATE"); compact: true; enabled: editable; onClicked: root.router.deactivateRoute(routeId) }
+                        SignalButton {
+                            text: qsTr("REMOVE")
+                            compact: true
+                            danger: true
+                            enabled: editable
+                            onClicked: {
+                                root.pendingRemovalRouteId = routeId
+                                removeRouteDialog.open()
+                            }
+                        }
                     }
                 }
             }
@@ -122,5 +146,18 @@ Flickable {
             audio: root.audio
             showDeveloperDetail: AppCore.showDeveloperStatus
         }
+    }
+
+    ConfirmDialog {
+        id: removeRouteDialog
+        title: qsTr("Remove route")
+        message: qsTr("Remove this manual signal route? Any active links owned by it will be stopped.")
+        confirmText: qsTr("Remove")
+        onConfirmed: {
+            if (root.router && root.pendingRemovalRouteId.length > 0)
+                root.router.removeRoute(root.pendingRemovalRouteId)
+            root.pendingRemovalRouteId = ""
+        }
+        onRejected: root.pendingRemovalRouteId = ""
     }
 }

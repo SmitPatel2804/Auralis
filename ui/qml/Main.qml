@@ -26,15 +26,27 @@ ApplicationWindow {
     palette.toolTipBase: Theme.surfaceRaised
     palette.toolTipText: Theme.text
 
-    onWidthChanged: if (AppCore.configuration) AppCore.configuration.setWindowWidth(width)
-    onHeightChanged: if (AppCore.configuration) AppCore.configuration.setWindowHeight(height)
+    onWidthChanged: geometrySave.restart()
+    onHeightChanged: geometrySave.restart()
+
+    Timer {
+        id: geometrySave
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (!AppCore.configuration)
+                return
+            AppCore.configuration.setWindowWidth(root.width)
+            AppCore.configuration.setWindowHeight(root.height)
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#071321" }
+            GradientStop { position: 0.0; color: Theme.backdropTop }
             GradientStop { position: 0.48; color: Theme.background }
-            GradientStop { position: 1.0; color: "#080816" }
+            GradientStop { position: 1.0; color: Theme.backdropBottom }
         }
     }
 

@@ -60,6 +60,14 @@ Item {
 
         PageHeader { title: qsTr("Session Orchestrator"); subtitle: qsTr("Compose, activate, and recover synchronized listening groups") }
 
+        Label {
+            visible: Qt.platform.os === "windows"
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            color: Theme.warning
+            text: qsTr("Windows safety: do not use the same headset as both the Windows default output and an Auralis session destination. Auralis now rejects that delayed duplicate path.")
+        }
+
         RowLayout {
             SignalButton {
                 text: qsTr("Create")
@@ -215,15 +223,16 @@ Item {
                         }
                         Label {
                             text: root.sourceCount === 0
-                                  ? qsTr("No sources yet. Start YouTube in Brave (leave it playing), then reopen this list.")
-                                  : qsTr("Pick a playing app (Brave). Entries marked (mic) are microphones — not YouTube.")
+                                  ? qsTr("No application audio sessions yet. Start playback in a browser or app; it will appear automatically.")
+                                  : qsTr("Choose the browser or application whose playback should be shared with this session.")
                             color: Theme.textMuted
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                             font.pixelSize: 12
                         }
-                        ComboBox {
+                        SignalComboBox {
                             id: sourceCombo
+                            objectName: "sessionSourceSelector"
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             Layout.minimumHeight: 36
@@ -277,8 +286,9 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
-                        ComboBox {
+                        SignalComboBox {
                             id: policyCombo
+                            objectName: "sessionPolicySelector"
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             model: [ "ReconnectAndRestore", "RestoreRoutesOnly", "None" ]
@@ -307,12 +317,22 @@ Item {
                                     required property bool endpointAvailable
                                     required property real volume
                                     required property bool muted
+                                    readonly property bool memberEnabled: model.enabled
                                     width: ListView.view.width
                                     Label { text: displayName; color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
-                                    StatusBadge { label: connected ? qsTr("Connected") : qsTr("Disconnected"); kind: connected ? "connected" : "warning" }
+                                    StatusBadge {
+                                        label: !memberEnabled ? qsTr("Released") : (connected ? qsTr("Connected") : qsTr("Disconnected"))
+                                        kind: !memberEnabled ? "idle" : (connected ? "connected" : "warning")
+                                    }
                                     Slider {
                                         from: 0; to: 1; value: volume
                                         onPressedChanged: if (!pressed) root.report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
+                                    }
+                                    SignalButton {
+                                        text: memberEnabled ? qsTr("Release") : qsTr("Enable")
+                                        compact: true
+                                        primary: !memberEnabled
+                                        onClicked: root.report(sessions.setDeviceEnabled(root.selectedId, deviceId, !memberEnabled))
                                     }
                                     SignalButton {
                                         text: qsTr("Remove")
@@ -329,11 +349,12 @@ Item {
                                 }
                             }
                         }
-                        ComboBox {
+                        SignalComboBox {
                             id: addDeviceCombo
+                            objectName: "sessionDeviceSelector"
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
-                            model: bluetooth ? bluetooth.devices : null
+                            model: bluetooth ? bluetooth.classicDevices : null
                             textRole: "displayName"
                             valueRole: "address"
                             displayText: qsTr("Add device")
@@ -360,7 +381,17 @@ Item {
         standardButtons: Dialog.Ok | Dialog.Cancel
         parent: Overlay.overlay
         anchors.centerIn: Overlay.overlay
-        TextField { id: createName; placeholderText: qsTr("Session name") }
+        contentItem: ColumnLayout {
+            spacing: Metrics.xs
+            Label { text: qsTr("Session name"); color: Theme.text }
+            TextField {
+                id: createName
+                Layout.fillWidth: true
+                placeholderText: qsTr("Enter a session name")
+                Accessible.name: qsTr("Session name")
+            }
+        }
+        onOpened: createName.forceActiveFocus()
         onAccepted: {
             const id = sessions.createSession(createName.text)
             if (id && id.length > 0) {
@@ -379,7 +410,17 @@ Item {
         standardButtons: Dialog.Ok | Dialog.Cancel
         parent: Overlay.overlay
         anchors.centerIn: Overlay.overlay
-        TextField { id: renameName; placeholderText: qsTr("New name") }
+        contentItem: ColumnLayout {
+            spacing: Metrics.xs
+            Label { text: qsTr("New session name"); color: Theme.text }
+            TextField {
+                id: renameName
+                Layout.fillWidth: true
+                placeholderText: qsTr("Enter a new name")
+                Accessible.name: qsTr("New session name")
+            }
+        }
+        onOpened: renameName.forceActiveFocus()
         onAccepted: {
             root.report(sessions.renameSession(root.selectedId, renameName.text))
             renameName.text = ""

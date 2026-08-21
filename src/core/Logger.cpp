@@ -254,6 +254,13 @@ bool Logger::isFileLoggingActive()
     return state.fileEnabled && state.file && state.file->isOpen();
 }
 
+QString Logger::activeFilePath()
+{
+    LoggerState& state = loggerState();
+    QMutexLocker locker(&state.mutex);
+    return state.fileEnabled && state.file && state.file->isOpen() ? state.filePath : QString();
+}
+
 void Logger::setRotationPolicy(qint64 maxFileBytes, int retainRotatedFiles)
 {
     LoggerState& state = loggerState();

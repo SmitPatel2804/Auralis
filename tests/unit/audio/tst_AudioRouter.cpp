@@ -85,6 +85,49 @@ private slots:
         QVERIFY(h.backend.owned.isEmpty());
     }
 
+    void copyCaptureToWindowsDefaultIsRejectedToPreventEcho()
+    {
+        Harness h;
+        h.store.upsert(makeNode(1, {
+            {QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+            {QStringLiteral("node.name"), QStringLiteral("browser")},
+            {QStringLiteral("object.serial"), QStringLiteral("7")},
+            {QStringLiteral("auralis.capture.mode"), QStringLiteral("copy")},
+        }));
+        h.store.upsert(makePort(11, 1, QStringLiteral("out")));
+        h.router.refreshSources();
+        h.store.upsert(makeNode(2, {
+            {QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+            {QStringLiteral("device.default"), QStringLiteral("true")},
+        }));
+        h.store.upsert(makePort(21, 2, QStringLiteral("in")));
+        h.endpoints.upsert(makePlaybackEndpoint(QStringLiteral("default-output"), 2));
+
+        QSignalSpy errorSpy(&h.router, &AudioRouter::routeError);
+        const QString routeId = h.router.createRoute(h.sourceId(), {QStringLiteral("default-output")});
+        QVERIFY(routeId.isEmpty());
+        QCOMPARE(errorSpy.count(), 1);
+        QVERIFY(errorSpy.front().at(1).value<RouteError>() == RouteError::UnsupportedDirection);
+        QVERIFY(errorSpy.front().at(2).toString().contains(QStringLiteral("Duplicate audio prevented")));
+        QCOMPARE(h.backend.createCalls, 0);
+    }
+
+    void nonCopyCaptureMayRouteToDefaultEndpoint()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.store.upsert(makeNode(2, {
+            {QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+            {QStringLiteral("device.default"), QStringLiteral("true")},
+        }));
+        h.store.upsert(makePort(21, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(22, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        h.endpoints.upsert(makePlaybackEndpoint(QStringLiteral("default-output"), 2));
+
+        const QString routeId = h.router.createRoute(h.sourceId(), {QStringLiteral("default-output")});
+        QVERIFY(!routeId.isEmpty());
+    }
+
     void rollbackDestroysPartialLinks()
     {
         Harness h;

@@ -49,6 +49,11 @@ endif()
 auralis_add_test(tst_SessionLifecycleIntegration tst_SessionLifecycleIntegration.cpp)
 target_link_libraries(tst_SessionLifecycleIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    auralis_add_test(tst_NativeSessionLiveIntegration tst_NativeSessionLiveIntegration.cpp)
+    target_link_libraries(tst_NativeSessionLiveIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     auralis_add_test(tst_SessionLiveIntegration tst_SessionLiveIntegration.cpp)
     target_link_libraries(tst_SessionLiveIntegration PRIVATE auralis-session auralis-audio auralis-bluetooth)

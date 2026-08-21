@@ -337,6 +337,7 @@ QVector<QString> SessionManager::takeManagedReconnectRequestsForTest()
 
 QString SessionManager::createSession(const QString& name)
 {
+    qCInfo(auralisSession) << "SessionCreateRequested name=" << name.trimmed();
     AuralisSession session;
     session.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     session.name = name.trimmed();
@@ -363,6 +364,7 @@ QString SessionManager::createSession(const QString& name)
 
 SessionCommandResult SessionManager::deleteSession(const QString& sessionId)
 {
+    qCInfo(auralisSession) << "SessionDeleteRequested id=" << sessionId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -391,6 +393,7 @@ SessionCommandResult SessionManager::deleteSession(const QString& sessionId)
 
 SessionCommandResult SessionManager::renameSession(const QString& sessionId, const QString& name)
 {
+    qCInfo(auralisSession) << "SessionRenameRequested id=" << sessionId << "name=" << name.trimmed();
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -408,6 +411,8 @@ SessionCommandResult SessionManager::renameSession(const QString& sessionId, con
 
 SessionCommandResult SessionManager::addDevice(const QString& sessionId, const QString& deviceId, const QString& role)
 {
+    qCInfo(auralisSession) << "SessionAddDeviceRequested session=" << sessionId
+                           << "device=" << deviceId << "role=" << role;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -445,6 +450,8 @@ SessionCommandResult SessionManager::addDevice(const QString& sessionId, const Q
 
 SessionCommandResult SessionManager::removeDevice(const QString& sessionId, const QString& deviceId)
 {
+    qCInfo(auralisSession) << "SessionRemoveDeviceRequested session=" << sessionId
+                           << "device=" << deviceId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -482,6 +489,8 @@ SessionCommandResult SessionManager::removeDevice(const QString& sessionId, cons
 
 SessionCommandResult SessionManager::setDeviceEnabled(const QString& sessionId, const QString& deviceId, bool enabled)
 {
+    qCInfo(auralisSession) << "SessionDeviceEnabledRequested session=" << sessionId
+                           << "device=" << deviceId << "enabled=" << enabled;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -555,6 +564,8 @@ SessionCommandResult SessionManager::setDeviceEnabled(const QString& sessionId, 
 
 SessionCommandResult SessionManager::setDeviceRole(const QString& sessionId, const QString& deviceId, const QString& role)
 {
+    qCInfo(auralisSession) << "SessionDeviceRoleRequested session=" << sessionId
+                           << "device=" << deviceId << "role=" << role;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -578,6 +589,7 @@ SessionCommandResult SessionManager::setDeviceRole(const QString& sessionId, con
 
 SessionCommandResult SessionManager::setSource(const QString& sessionId, const QString& sourceId)
 {
+    qCInfo(auralisSession) << "SessionSourceRequested session=" << sessionId << "source=" << sourceId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -605,6 +617,7 @@ SessionCommandResult SessionManager::setSource(const QString& sessionId, const Q
 
 SessionCommandResult SessionManager::activateSession(const QString& sessionId)
 {
+    qCInfo(auralisSession) << "SessionActivationRequested id=" << sessionId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -673,6 +686,7 @@ SessionCommandResult SessionManager::activateSession(const QString& sessionId)
 
 SessionCommandResult SessionManager::deactivateSession(const QString& sessionId)
 {
+    qCInfo(auralisSession) << "SessionDeactivationRequested id=" << sessionId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -688,6 +702,7 @@ SessionCommandResult SessionManager::deactivateSession(const QString& sessionId)
 
 SessionCommandResult SessionManager::retrySession(const QString& sessionId)
 {
+    qCInfo(auralisSession) << "SessionRetryRequested id=" << sessionId;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -710,6 +725,7 @@ SessionCommandResult SessionManager::retrySession(const QString& sessionId)
 
 SessionCommandResult SessionManager::setGroupVolume(const QString& sessionId, double value)
 {
+    qCInfo(auralisSession) << "SessionGroupVolumeRequested id=" << sessionId << "volume=" << value;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -731,6 +747,7 @@ SessionCommandResult SessionManager::setGroupVolume(const QString& sessionId, do
 
 SessionCommandResult SessionManager::setSessionMuted(const QString& sessionId, bool muted)
 {
+    qCInfo(auralisSession) << "SessionMuteRequested id=" << sessionId << "muted=" << muted;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -748,6 +765,8 @@ SessionCommandResult SessionManager::setSessionMuted(const QString& sessionId, b
 
 SessionCommandResult SessionManager::setDeviceVolume(const QString& sessionId, const QString& deviceId, double value)
 {
+    qCInfo(auralisSession) << "SessionDeviceVolumeRequested session=" << sessionId
+                           << "device=" << deviceId << "volume=" << value;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -774,6 +793,8 @@ SessionCommandResult SessionManager::setDeviceVolume(const QString& sessionId, c
 
 SessionCommandResult SessionManager::setDeviceMuted(const QString& sessionId, const QString& deviceId, bool muted)
 {
+    qCInfo(auralisSession) << "SessionDeviceMuteRequested session=" << sessionId
+                           << "device=" << deviceId << "muted=" << muted;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -796,6 +817,7 @@ SessionCommandResult SessionManager::setDeviceMuted(const QString& sessionId, co
 
 SessionCommandResult SessionManager::setAutoReconnect(const QString& sessionId, bool enabled)
 {
+    qCInfo(auralisSession) << "SessionAutoReconnectRequested id=" << sessionId << "enabled=" << enabled;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -820,6 +842,7 @@ SessionCommandResult SessionManager::setAutoReconnect(const QString& sessionId, 
 
 SessionCommandResult SessionManager::setRecoveryPolicy(const QString& sessionId, const QString& policy)
 {
+    qCInfo(auralisSession) << "SessionRecoveryPolicyRequested id=" << sessionId << "policy=" << policy;
     AuralisSession* session = mutableSession(sessionId);
     if (session == nullptr) {
         return SessionCommandResult::SessionNotFound;
@@ -870,6 +893,7 @@ SessionCommandResult SessionManager::setRecoveryPolicy(const QString& sessionId,
 
 SessionCommandResult SessionManager::restoreLastSession()
 {
+    qCInfo(auralisSession) << "SessionRestoreLastRequested";
     QString candidateId;
     QDateTime latest;
     for (const AuralisSession& session : sessions_) {
@@ -962,6 +986,59 @@ QString SessionManager::duplicateSession(const QString& sessionId)
     emit sessionsChanged();
     emitSessionUiSignals();
     return session.id;
+}
+
+int SessionManager::auralisRouteCountForDevice(const QString& deviceId) const
+{
+    const QString canonical = canonicalMemberDeviceId(deviceId);
+    if (canonical.isEmpty()) {
+        return 0;
+    }
+    int count = 0;
+    for (const AuralisSession& session : sessions_) {
+        for (const SessionDevice& device : session.devices) {
+            if (device.deviceId == canonical && !device.runtime.routeId.isEmpty()) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+SessionCommandResult SessionManager::releaseDeviceFromAuralis(const QString& deviceId)
+{
+    const QString canonical = canonicalMemberDeviceId(deviceId);
+    if (canonical.isEmpty()) {
+        qCWarning(auralisSession) << "AppDeviceReleaseRejected device=" << deviceId << "reason=unknown-device";
+        return SessionCommandResult::MemberNotFound;
+    }
+
+    QStringList sessionsToDisable;
+    for (const AuralisSession& session : sessions_) {
+        for (const SessionDevice& device : session.devices) {
+            if (device.deviceId == canonical && device.enabled) {
+                sessionsToDisable.push_back(session.id);
+                break;
+            }
+        }
+    }
+    if (sessionsToDisable.isEmpty()) {
+        qCInfo(auralisSession) << "AppDeviceReleaseNoOp device=" << canonical;
+        return SessionCommandResult::Accepted;
+    }
+
+    qCInfo(auralisSession) << "AppDeviceReleaseRequested device=" << canonical
+                           << "sessions=" << sessionsToDisable.size();
+    SessionCommandResult result = SessionCommandResult::Accepted;
+    for (const QString& sessionId : sessionsToDisable) {
+        const SessionCommandResult itemResult = setDeviceEnabled(sessionId, canonical, false);
+        if (itemResult != SessionCommandResult::Accepted) {
+            result = itemResult;
+        }
+    }
+    qCInfo(auralisSession) << "AppDeviceReleaseCompleted device=" << canonical
+                           << "result=" << toString(result);
+    return result;
 }
 
 void SessionManager::refreshActiveSession()

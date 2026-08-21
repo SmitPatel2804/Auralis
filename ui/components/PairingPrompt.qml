@@ -31,6 +31,12 @@ Dialog {
         passkeyField.text = ""
         if (request) {
             open()
+            Qt.callLater(function() {
+                if (request.requestType === Pairing.EnterPin)
+                    pinField.forceActiveFocus()
+                else if (request.requestType === Pairing.EnterPasskey)
+                    passkeyField.forceActiveFocus()
+            })
         } else {
             close()
         }
@@ -74,12 +80,25 @@ Dialog {
             color: Theme.text
         }
 
+        Label {
+            visible: needsInput && request && request.requestType === Pairing.EnterPin
+            text: qsTr("Pairing PIN")
+            color: Theme.text
+        }
+
         TextField {
             id: pinField
             Layout.fillWidth: true
             visible: needsInput && request && request.requestType === Pairing.EnterPin
             placeholderText: "Enter PIN"
             echoMode: TextInput.Password
+            Accessible.name: qsTr("Pairing PIN")
+        }
+
+        Label {
+            visible: needsInput && request && request.requestType === Pairing.EnterPasskey
+            text: qsTr("Pairing passkey")
+            color: Theme.text
         }
 
         TextField {
@@ -88,14 +107,27 @@ Dialog {
             visible: needsInput && request && request.requestType === Pairing.EnterPasskey
             placeholderText: "Enter passkey"
             inputMethodHints: Qt.ImhDigitsOnly
+            Accessible.name: qsTr("Pairing passkey")
+        }
+
+        Label {
+            visible: (pinField.visible && !pinValid) || (passkeyField.visible && !passkeyValid)
+            Layout.fillWidth: true
+            text: pinField.visible
+                  ? qsTr("Enter a PIN containing 1 to 16 characters.")
+                  : qsTr("Enter a numeric passkey containing at most 6 digits.")
+            color: Theme.danger
+            wrapMode: Text.WordWrap
+            Accessible.role: Accessible.AlertMessage
         }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
 
-            Button {
+            SignalButton {
                 text: needsInput ? "Submit" : "Accept"
+                primary: true
                 enabled: request && bluetooth && pinValid && passkeyValid
                 onClicked: {
                     if (!request || !bluetooth) {
@@ -111,8 +143,9 @@ Dialog {
                 }
             }
 
-            Button {
+            SignalButton {
                 text: "Reject"
+                danger: true
                 enabled: request && bluetooth
                 onClicked: {
                     if (request && bluetooth) {

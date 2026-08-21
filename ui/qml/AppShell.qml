@@ -24,9 +24,9 @@ Rectangle {
             Layout.preferredWidth: Metrics.railWidth
             Layout.fillHeight: true
             gradient: Gradient {
-                GradientStop { position: 0.0; color: "#102338" }
+                GradientStop { position: 0.0; color: Theme.railTop }
                 GradientStop { position: 0.48; color: Theme.surfaceAlt }
-                GradientStop { position: 1.0; color: "#09131F" }
+                GradientStop { position: 1.0; color: Theme.railBottom }
             }
 
             Rectangle {

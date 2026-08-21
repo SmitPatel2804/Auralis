@@ -20,6 +20,7 @@ set_source_files_properties(qml/components/PageHeader.qml PROPERTIES QT_RESOURCE
 set_source_files_properties(qml/components/KeyValueRow.qml PROPERTIES QT_RESOURCE_ALIAS KeyValueRow.qml)
 set_source_files_properties(qml/components/MetricTile.qml PROPERTIES QT_RESOURCE_ALIAS MetricTile.qml)
 set_source_files_properties(qml/components/SignalButton.qml PROPERTIES QT_RESOURCE_ALIAS SignalButton.qml)
+set_source_files_properties(qml/components/SignalComboBox.qml PROPERTIES QT_RESOURCE_ALIAS SignalComboBox.qml)
 set_source_files_properties(qml/pages/DashboardPage.qml PROPERTIES QT_RESOURCE_ALIAS DashboardPage.qml)
 set_source_files_properties(qml/pages/DevicesPage.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPage.qml)
 set_source_files_properties(qml/pages/SessionsPage.qml PROPERTIES QT_RESOURCE_ALIAS SessionsPage.qml)
@@ -55,6 +56,7 @@ qt_add_qml_module(auralis-ui
         qml/components/KeyValueRow.qml
         qml/components/MetricTile.qml
         qml/components/SignalButton.qml
+        qml/components/SignalComboBox.qml
         qml/pages/DashboardPage.qml
         qml/pages/DevicesPage.qml
         qml/pages/SessionsPage.qml
