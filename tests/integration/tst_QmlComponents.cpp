@@ -157,8 +157,11 @@ private slots:
         verifyProperties(
             audio,
             {"connectionStateText", "connected", "lastError", "endpointCount", "nodeCount",
-             "mappedBluetoothCount", "initialSyncComplete", "graphRevision", "diagnosticsText", "endpoints", "router"});
-        verifyMethods(audio, {"audioStatusForDevice(QString)"});
+             "mappedBluetoothCount", "initialSyncComplete", "graphRevision", "diagnosticsText",
+             "virtualOutputAvailable", "virtualOutputSelected", "virtualOutputStatus", "endpoints", "router"});
+        verifyMethods(
+            audio,
+            {"audioStatusForDevice(QString)", "refreshVirtualAudio()", "openWindowsSoundSettings()"});
         verifyRoles(
             modelProperty(audio, "endpoints"),
             {"endpointId", "name", "direction", "available", "transport", "profile", "codec",
@@ -200,7 +203,7 @@ private slots:
             {"sessionId", "name", "stateLabel", "active", "degraded", "deviceCount", "connectedDeviceCount"});
         verifyRoles(
             modelProperty(sessions, "sessionMembers"),
-            {"deviceId", "displayName", "connected", "endpointAvailable", "volume", "muted"});
+            {"deviceId", "displayName", "connected", "endpointAvailable", "volume", "muted", "memberEnabled"});
         verifyRoles(
             modelProperty(sessions, "currentMembers"),
             {"displayName", "connected", "recovering", "routeActive", "endpointAvailable"});

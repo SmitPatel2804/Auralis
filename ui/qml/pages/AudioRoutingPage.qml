@@ -23,14 +23,40 @@ Flickable {
 
         SectionCard {
             visible: Qt.platform.os === "windows"
-            title: qsTr("Windows capture mode")
-            subtitle: qsTr("Safe copy-mode routing")
-            signalColor: Theme.warning
+            title: qsTr("Auralis Virtual Output")
+            subtitle: audio && audio.virtualOutputAvailable
+                      ? (audio.virtualOutputSelected ? qsTr("Active Windows system-audio path")
+                                                     : qsTr("Ready — select it as the Windows output"))
+                      : qsTr("Signed driver required")
+            signalColor: audio && audio.virtualOutputSelected ? Theme.success : Theme.warning
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Metrics.md
+                StatusBadge {
+                    label: audio ? audio.virtualOutputStatus : qsTr("Checking…")
+                    kind: audio && audio.virtualOutputSelected ? "active"
+                          : (audio && audio.virtualOutputAvailable ? "ready" : "warning")
+                }
+                Item { Layout.fillWidth: true }
+                SignalButton {
+                    text: qsTr("REFRESH")
+                    compact: true
+                    onClicked: if (audio) audio.refreshVirtualAudio()
+                }
+                SignalButton {
+                    text: qsTr("WINDOWS SOUND")
+                    compact: true
+                    primary: audio && audio.virtualOutputAvailable && !audio.virtualOutputSelected
+                    onClicked: if (audio) audio.openWindowsSoundSettings()
+                }
+            }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.textMuted
-                text: qsTr("Application capture is currently a copy of Windows playback. Auralis blocks routing that copy back into the same Windows default output because it causes delayed double audio. Select another Windows output or remove that default device from the Auralis route. A signed Auralis Virtual Output driver is the planned exclusive-routing mode.")
+                text: audio && audio.virtualOutputAvailable
+                      ? qsTr("Choose Auralis Virtual Output in Windows, then select Auralis System Audio as the session source. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session.")
+                      : qsTr("The current application-capture fallback observes a copy after Windows has already sent audio to its selected device. A virtual endpoint removes that duplicate physical path, but Windows will only load an installed and trusted audio driver.")
             }
         }
 

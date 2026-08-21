@@ -317,7 +317,7 @@ Item {
                                     required property bool endpointAvailable
                                     required property real volume
                                     required property bool muted
-                                    readonly property bool memberEnabled: model.enabled
+                                    required property bool memberEnabled
                                     width: ListView.view.width
                                     Label { text: displayName; color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
                                     StatusBadge {

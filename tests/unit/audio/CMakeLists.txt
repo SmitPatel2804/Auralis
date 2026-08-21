@@ -15,8 +15,21 @@ else()
             tst_WindowsProcessLoopback
             PRIVATE AURALIS_AUDIO_FIXTURE_PATH="$<TARGET_FILE:auralis-audio-fixture>")
         add_dependencies(tst_WindowsProcessLoopback auralis-audio-fixture)
+        auralis_add_test(tst_WindowsEndpointLoopback tst_WindowsEndpointLoopback.cpp)
+        target_link_libraries(tst_WindowsEndpointLoopback PRIVATE auralis-audio Qt6::Multimedia)
+        target_include_directories(tst_WindowsEndpointLoopback PRIVATE "${CMAKE_SOURCE_DIR}/src/audio")
+        target_compile_definitions(
+            tst_WindowsEndpointLoopback
+            PRIVATE AURALIS_AUDIO_FIXTURE_PATH="$<TARGET_FILE:auralis-audio-fixture>")
+        add_dependencies(tst_WindowsEndpointLoopback auralis-audio-fixture)
+        auralis_add_test(tst_WindowsAudioRenderSink tst_WindowsAudioRenderSink.cpp)
+        target_link_libraries(tst_WindowsAudioRenderSink PRIVATE auralis-audio Qt6::Multimedia)
+        target_include_directories(tst_WindowsAudioRenderSink PRIVATE "${CMAKE_SOURCE_DIR}/src/audio")
     endif()
 endif()
+
+auralis_add_test(tst_VirtualAudioDevice tst_VirtualAudioDevice.cpp)
+target_link_libraries(tst_VirtualAudioDevice PRIVATE auralis-audio)
 
 auralis_add_test(tst_PipeWireProperties tst_PipeWireProperties.cpp)
 target_link_libraries(tst_PipeWireProperties PRIVATE auralis-audio)

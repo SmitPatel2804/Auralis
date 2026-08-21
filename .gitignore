@@ -58,6 +58,8 @@ ui_*.h
 *.dll
 *.dylib
 *.exe
+*.sys
+*.cat
 *.app
 *.dSYM
 
@@ -83,3 +85,18 @@ Thumbs.db
 # Temporary audit evidence dumps (host-specific logs; the Markdown audit is the deliverable)
 /audit-phase*/
 /logs_*/
+
+# Windows WDK/NuGet driver build products
+/drivers/windows/auralis-virtual-audio/**/obj/
+/drivers/windows/auralis-virtual-audio/**/bin/
+/drivers/windows/auralis-virtual-audio/**/x64/
+/drivers/windows/auralis-virtual-audio/**/Win32/
+/drivers/windows/auralis-virtual-audio/**/ARM64/
+/drivers/windows/auralis-virtual-audio/**/packages/
+*.tlog
+*.lastbuildstate
+*.unsuccessfulbuild
+*.iobj
+*.ipdb
+*.recipe
+*.nupkg

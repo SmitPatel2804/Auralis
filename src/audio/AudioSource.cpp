@@ -159,17 +159,18 @@ QVector<AudioSource> classifyAudioSources(const PipeWireObjectStore& store)
     std::sort(result.begin(), result.end(), [&defaultNodes](const AudioSource& left, const AudioSource& right) {
         auto rank = [](AudioSourceType type) {
             switch (type) {
-            case AudioSourceType::ApplicationPlaybackStream:
-                return 0;
-            case AudioSourceType::PhysicalAudioSource:
             case AudioSourceType::VirtualAudioSource:
+                return 0;
+            case AudioSourceType::ApplicationPlaybackStream:
                 return 1;
-            case AudioSourceType::SinkMonitor:
+            case AudioSourceType::PhysicalAudioSource:
                 return 2;
-            case AudioSourceType::Unknown:
+            case AudioSourceType::SinkMonitor:
                 return 3;
+            case AudioSourceType::Unknown:
+                return 4;
             }
-            return 3;
+            return 4;
         };
         const int leftRank = rank(left.sourceType);
         const int rightRank = rank(right.sourceType);

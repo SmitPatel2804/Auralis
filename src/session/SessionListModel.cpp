@@ -306,7 +306,9 @@ QHash<int, QByteArray> SessionMemberListModel::roleNames() const
         {DeviceIdRole, "deviceId"},
         {DisplayNameRole, "displayName"},
         {RoleNameRole, "roleName"},
-        {EnabledRole, "enabled"},
+        // "enabled" collides with QQuickItem::enabled in QML delegates. That
+        // disables the entire released row, including its Enable button.
+        {EnabledRole, "memberEnabled"},
         {ConnectedRole, "connected"},
         {EndpointAvailableRole, "endpointAvailable"},
         {RouteActiveRole, "routeActive"},

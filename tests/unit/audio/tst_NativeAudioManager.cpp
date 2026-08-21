@@ -59,6 +59,11 @@ private slots:
         for (const auralis::audio::AudioSource& source : router->sourceList()) {
             qInfo() << "application source" << source.applicationName << source.description
                     << "pid=" << source.processId.value_or(0);
+            if (source.sourceType == auralis::audio::AudioSourceType::VirtualAudioSource) {
+                QVERIFY(source.description.contains(QStringLiteral("Auralis"), Qt::CaseInsensitive));
+                QVERIFY(!source.processId.has_value());
+                continue;
+            }
             QCOMPARE(
                 static_cast<int>(source.sourceType),
                 static_cast<int>(auralis::audio::AudioSourceType::ApplicationPlaybackStream));
@@ -82,9 +87,23 @@ private slots:
         const auto playback = endpoints->playbackEndpoints();
         QVERIFY2(!playback.isEmpty(), "No Windows audio playback destination is available");
         QStringList destinationIds;
+#if defined(Q_OS_WIN)
+        // Native application capture is a copy of audio that Windows still
+        // sends to its default endpoint. Feeding that copy back to the same
+        // endpoint would create the delayed double playback this test is
+        // intended to guard against. NativeAudioManager sorts the current
+        // default first, so exercise every available non-default endpoint.
+        for (qsizetype index = 1; index < playback.size(); ++index) {
+            destinationIds.push_back(playback.at(index).id);
+        }
+        if (destinationIds.isEmpty()) {
+            QSKIP("Only the Windows default output is available; no safe copy-route destination can be tested");
+        }
+#else
         for (qsizetype index = 0; index < std::min<qsizetype>(2, playback.size()); ++index) {
             destinationIds.push_back(playback.at(index).id);
         }
+#endif
 
 #if defined(Q_OS_WIN)
         const QString sourceId = router->sourceList().constFirst().id;

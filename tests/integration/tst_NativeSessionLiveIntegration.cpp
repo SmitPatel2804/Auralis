@@ -66,7 +66,31 @@ private slots:
         QVERIFY(sessions.setGroupVolume(sessionId, 0.37) == Result::Accepted);
         QVERIFY(sessions.setDeviceVolume(sessionId, expectedAddress, 0.42) == Result::Accepted);
 
+        const auto playback = audio.endpointRegistry()->playbackEndpoints();
+        QVERIFY(!playback.isEmpty());
+        const bool bluetoothIsCurrentDefault =
+            playback.constFirst().bluetoothAddress.trimmed().toUpper() == expectedAddress;
+        QSignalSpy routeErrorSpy(audio.audioRouter(), &auralis::audio::AudioRouter::routeError);
         QVERIFY(sessions.activateSession(sessionId) == Result::Accepted);
+        if (bluetoothIsCurrentDefault) {
+            // Process loopback is a copy. If the selected Bluetooth device is
+            // also Windows' current default output, routing the copy back to it
+            // must be rejected instead of producing a delayed echo.
+            QTRY_VERIFY_WITH_TIMEOUT(
+                sessions.sessionById(sessionId).has_value()
+                    && sessions.sessionById(sessionId)->state == State::Failed,
+                5000);
+            QCOMPARE(audio.audioRouter()->ownedLinkCount(), 0);
+            QVERIFY(!routeErrorSpy.isEmpty());
+            QVERIFY(routeErrorSpy.constFirst().at(2).toString().contains(
+                QStringLiteral("Duplicate audio prevented"), Qt::CaseInsensitive));
+            QVERIFY(sessions.deleteSession(sessionId) == Result::Accepted);
+            QCOMPARE(sessions.sessionCount(), 0);
+            sessions.shutdown();
+            audio.shutdown();
+            bluetooth.shutdown();
+            return;
+        }
         QTRY_VERIFY_WITH_TIMEOUT(
             sessions.sessionById(sessionId).has_value()
                 && sessions.sessionById(sessionId)->state == State::Active,

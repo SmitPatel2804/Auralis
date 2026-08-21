@@ -15,6 +15,7 @@ set(AURALIS_AUDIO_SOURCES
     RoutePlanner.cpp
     RouteListModel.cpp
     VolumeController.cpp
+    VirtualAudioDevice.cpp
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioEndpoint.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioEndpointClassifier.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioEndpointListModel.h"
@@ -34,6 +35,7 @@ set(AURALIS_AUDIO_SOURCES
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RoutePlanner.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RouteListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/VolumeController.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/audio/VirtualAudioDevice.h"
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -52,6 +54,10 @@ else()
         list(APPEND AURALIS_AUDIO_SOURCES
             WindowsAudioSessions.cpp
             WindowsAudioSessions.h
+            WindowsAudioRenderSink.cpp
+            WindowsAudioRenderSink.h
+            WindowsEndpointLoopbackCapture.cpp
+            WindowsEndpointLoopbackCapture.h
             WindowsProcessLoopbackCapture.cpp
             WindowsProcessLoopbackCapture.h
         )

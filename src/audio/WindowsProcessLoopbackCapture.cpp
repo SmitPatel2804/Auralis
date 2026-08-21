@@ -258,10 +258,17 @@ bool WindowsProcessLoopbackCapture::start(
 
     impl_->isRunning = true;
     impl_->thread = std::thread([state = impl_.get()] { state->run(); });
+    UINT32 bufferFrames = 0;
+    const HRESULT bufferResult = impl_->client->GetBufferSize(&bufferFrames);
+    const double bufferMilliseconds = SUCCEEDED(bufferResult) && audioFormat.sampleRate() > 0
+        ? static_cast<double>(bufferFrames) * 1000.0 / audioFormat.sampleRate()
+        : -1.0;
     qCInfo(auralisAudio) << "WindowsProcessCaptureStarted pid=" << processId
                          << "rate=" << audioFormat.sampleRate()
                          << "channels=" << audioFormat.channelCount()
-                         << "sampleFormat=" << static_cast<int>(audioFormat.sampleFormat());
+                         << "sampleFormat=" << static_cast<int>(audioFormat.sampleFormat())
+                         << "engineBufferFrames=" << bufferFrames
+                         << "engineBufferMs=" << bufferMilliseconds;
     return true;
 }
 
