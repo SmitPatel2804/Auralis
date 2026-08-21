@@ -83,6 +83,8 @@ public:
     Q_INVOKABLE QString serviceFriendlyName(const QString& uuid) const;
     Q_INVOKABLE bool userDisconnectRequestedForDevice(const QString& deviceId) const;
     Q_INVOKABLE QString deviceDisplayName(const QString& deviceId) const;
+    Q_INVOKABLE void setDeviceButtonPolicy(const QString&, bool) {}
+    Q_INVOKABLE QString deviceButtonPolicyText(const QString&) const { return QStringLiteral("ALLOW"); }
     Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
     Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
 

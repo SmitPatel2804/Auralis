@@ -74,8 +74,11 @@ set_tests_properties(tst_ServiceRecoveryIntegration PROPERTIES LABELS "integrati
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     auralis_add_test(tst_Phase8RecoveryHarness tst_Phase8RecoveryHarness.cpp)
-    target_link_libraries(tst_Phase8RecoveryHarness PRIVATE auralis-recovery auralis-core auralis-bluetooth auralis-audio)
-    target_include_directories(tst_Phase8RecoveryHarness PRIVATE "${CMAKE_SOURCE_DIR}/tests/unit/bluetooth")
+    target_link_libraries(tst_Phase8RecoveryHarness PRIVATE auralis-recovery auralis-core auralis-bluetooth auralis-audio auralis-session)
+    target_include_directories(tst_Phase8RecoveryHarness PRIVATE
+        "${CMAKE_SOURCE_DIR}/tests/unit/bluetooth"
+        "${CMAKE_SOURCE_DIR}/tests/unit/audio"
+    )
     set_tests_properties(tst_Phase8RecoveryHarness PROPERTIES LABELS "integration;recovery")
 
     auralis_add_test(tst_Phase8Stress tst_Phase8Stress.cpp)

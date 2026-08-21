@@ -29,6 +29,9 @@ Rectangle {
     property bool canCancelOperation: false
     property var uuids: []
     property string audioStatus: ""
+    property string buttonPolicyText: "ALLOW"
+    property bool canControlButtons: false
+    property string buttonEffectiveStatus: ""
 
     signal pairRequested()
     signal cancelPairingRequested()
@@ -40,6 +43,7 @@ Rectangle {
     signal forgetRequested()
     signal reconnectRequested()
     signal showServicesRequested()
+    signal buttonPolicyToggled(bool disallow)
 
     implicitHeight: content.implicitHeight + Metrics.md * 2
     radius: Theme.cardRadius
@@ -181,6 +185,30 @@ Rectangle {
             text: "!  " + root.lastErrorMessage
             color: Theme.danger
             font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Metrics.sm
+            Label {
+                text: qsTr("Device buttons: %1").arg(root.buttonPolicyText)
+                font.pixelSize: 11
+                color: Theme.textMuted
+                Layout.fillWidth: true
+            }
+            SignalButton {
+                text: root.buttonPolicyText === "DISALLOW" ? qsTr("ALLOW") : qsTr("DISALLOW")
+                compact: true
+                onClicked: root.buttonPolicyToggled(root.buttonPolicyText !== "DISALLOW")
+            }
+        }
+        Label {
+            visible: root.buttonPolicyText === "DISALLOW" && root.buttonEffectiveStatus.length > 0
+            text: root.buttonEffectiveStatus
+            font.pixelSize: 11
+            color: Theme.textMuted
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }

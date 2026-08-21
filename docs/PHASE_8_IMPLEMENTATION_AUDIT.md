@@ -232,3 +232,29 @@ Fix: conflict semantics are **input exclusivity only**; never clear owned/peer A
 Post-fix CTest: **47/47 PASS** (~10.3s). Stress: PASS. ASAN smoke on fan-out tests: PASS.
 
 Software exit gate unchanged; hardware multi-headset validation still **PENDING**.
+
+---
+
+## Enforcement closure (software blockers 1–9)
+
+| Blocker | Status | Evidence |
+|---------|--------|----------|
+| 1 SystemPowerMonitor bus loss/return | Fixed | `notifySystemBusUnavailable/Available` + Desktop wiring + recovery unit tests |
+| 2–4 BlueZ generation fence + stale snapshot bookkeeping + host isolation | Fixed | All async completions + signal epoch; stale snapshot does not clear newer in-flight; override mode skips host watchers |
+| 5 Dependency-gated session reconcile | Fixed | `runReconcile` refreshes session only when bus+BlueZ+PW connected+graph ready |
+| 6–7 Real harness rebind/churn | Fixed | `tst_Phase8RecoveryHarness` Session/Routing/FakePW/FakeBlueZ; bypass removed |
+| 8 Stress env contract | Fixed | unset→100; `AURALIS_RUN_STRESS=1`→1000; optional `AURALIS_STRESS_ITERATIONS` |
+| 9 Host D-Bus isolation | Fixed | `isolateFromHostBus()` when probe override active |
+
+Post-enforcement CTest: **48/48 PASS** (~11.4s) including `tst_BluetoothButtonControlManager`. Stress label + `AURALIS_RUN_STRESS=1`: PASS. ASAN (`detect_leaks=0`): **48/48 PASS** (~24s). Package DEB rebuild: PASS. Contact/license pending unchanged.
+
+```text
+PHASE 8 SOFTWARE EXIT GATE: PASS
+PHASE 8 HARDWARE EXIT GATE: PENDING
+```
+
+---
+
+## Per-device button ALLOW/DISALLOW
+
+Phase A audit: [`docs/BLUETOOTH_BUTTON_EVENT_PATH.md`](BLUETOOTH_BUTTON_EVENT_PATH.md) — Backend B (evdev) when address-correlated input nodes exist; otherwise honest **Unsupported on this transport**. Default policy **ALLOW**. DISALLOW never blocks A2DP/routing.

@@ -25,11 +25,30 @@ namespace {
 
 int stressIterations()
 {
-    const int env = qEnvironmentVariableIntValue("AURALIS_RUN_STRESS");
-    if (env > 0) {
-        return env;
-    }
-    return 100;
+    static const int resolved = []() {
+        constexpr int kDefaultModest = 100;
+        constexpr int kExtended = 1000;
+        constexpr int kMin = 1;
+        constexpr int kMax = 100000;
+
+        int iterations = kDefaultModest;
+        if (qEnvironmentVariableIsSet("AURALIS_RUN_STRESS")
+            && qEnvironmentVariableIntValue("AURALIS_RUN_STRESS") != 0) {
+            // AURALIS_RUN_STRESS=1 means "run extended stress", not "1 iteration".
+            iterations = kExtended;
+        }
+        if (qEnvironmentVariableIsSet("AURALIS_STRESS_ITERATIONS")) {
+            iterations = qEnvironmentVariableIntValue("AURALIS_STRESS_ITERATIONS");
+        }
+        if (iterations < kMin) {
+            iterations = kMin;
+        } else if (iterations > kMax) {
+            iterations = kMax;
+        }
+        qInfo("Phase8Stress iterations=%d", iterations);
+        return iterations;
+    }();
+    return resolved;
 }
 
 PipeWireClientEvent stateEvent(PipeWireConnectionState state)

@@ -23,11 +23,15 @@ public:
 
     /// Linux system-bus lifecycle hooks. Other platforms treat these as no-op
     /// compatibility entry points because their power observer is process-local.
+    /// Invalidate logind subscription when system D-Bus disappears at runtime.
     void notifySystemBusUnavailable();
+    /// Retry / recreate logind subscription after system bus becomes available.
     void notifySystemBusAvailable();
 
     void setSubscribeRetryIntervalMsForTesting(int ms);
     void attemptSubscribeForTesting();
+    /// Test seam: mark subscribed without touching host logind.
+    void injectSubscribedForTesting(bool subscribed);
 
 public slots:
     void injectTransportAvailability(bool available);
@@ -40,6 +44,7 @@ signals:
 
 private:
     bool trySubscribeLogind();
+    void invalidateLogindSubscription();
     void setSuspended(bool value);
     void startSubscribeRetryTimer();
     void stopSubscribeRetryTimer();
@@ -48,6 +53,7 @@ private:
     bool initialized_ = false;
     bool suspended_ = false;
     bool subscribed_ = false;
+    bool busAvailable_ = true;
     int subscribeRetryIntervalMs_ = 2000;
 };
 

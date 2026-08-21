@@ -10,6 +10,8 @@ set(AURALIS_BLUETOOTH_SOURCES
     UuidCatalog.cpp
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/AgentCapability.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothDeviceListModel.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BluetoothButtonControlManager.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceButtonPolicy.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/BlueZPropertyParser.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceReconnectMetadata.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/bluetooth/DeviceRegistry.h"
@@ -23,6 +25,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         AdapterManager.cpp
         BlueZAgent.cpp
         BlueZAgentAdaptor.cpp
+        BluetoothButtonControlManager.cpp
         BluetoothDbusError.cpp
         BluetoothManager.cpp
         BlueZDbusClient.cpp

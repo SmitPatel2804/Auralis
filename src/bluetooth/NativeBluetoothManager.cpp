@@ -393,6 +393,9 @@ QVariantMap NativeBluetoothManager::deviceDetails(const QString& id) const
     result.insert(QStringLiteral("servicesResolved"), device->servicesResolved);
     result.insert(QStringLiteral("uuids"), device->uuids);
     result.insert(QStringLiteral("transport"), device->transportHint());
+    result.insert(QStringLiteral("buttonPolicy"), QStringLiteral("ALLOW"));
+    result.insert(QStringLiteral("canControlButtons"), false);
+    result.insert(QStringLiteral("buttonEffectiveStatus"), QStringLiteral("Unsupported on this transport"));
     return result;
 }
 

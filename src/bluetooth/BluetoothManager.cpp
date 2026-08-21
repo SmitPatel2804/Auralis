@@ -6,6 +6,7 @@
 #include <auralis/bluetooth/BlueZConstants.h>
 #include <auralis/bluetooth/BlueZDbusClient.h>
 #include <auralis/bluetooth/BlueZPropertyParser.h>
+#include <auralis/bluetooth/BluetoothButtonControlManager.h>
 #include <auralis/bluetooth/BluetoothDeviceListModel.h>
 #include <auralis/bluetooth/DeviceLifecycleManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
@@ -72,6 +73,8 @@ BluetoothManager::BluetoothManager(IBlueZClient* client, QObject* parent)
     discovery_ = new DiscoveryManager(client_, adapters_, this);
     registry_ = new DeviceRegistry(this);
     model_ = new BluetoothDeviceListModel(registry_, this);
+    buttonControls_ = new BluetoothButtonControlManager(this);
+    model_->setButtonControlManager(buttonControls_);
     reconnect_ = new ReconnectPolicy(this);
     agent_ = new BlueZAgent(client_, defaultAgentCapability(), this);
     lifecycle_ = new DeviceLifecycleManager(client_, registry_, adapters_, agent_, reconnect_, discovery_, this);
@@ -176,6 +179,17 @@ QVariantMap BluetoothManager::deviceDetails(const QString& objectPath) const
     details.insert(QStringLiteral("transport"), device->transportHint());
     details.insert(QStringLiteral("icon"), device->icon);
     details.insert(QStringLiteral("uuids"), device->uuids);
+    if (buttonControls_ != nullptr) {
+        details.insert(
+            QStringLiteral("buttonPolicy"),
+            ::auralis::bluetooth::deviceButtonPolicyText(buttonControls_->policyForAddress(device->address)));
+        details.insert(
+            QStringLiteral("canControlButtons"),
+            buttonControls_->canControlButtonsForAddress(device->address));
+        details.insert(
+            QStringLiteral("buttonEffectiveStatus"),
+            buttonControls_->effectiveStatusTextForAddress(device->address));
+    }
     return details;
 }
 
@@ -317,6 +331,9 @@ bool BluetoothManager::initialize()
     qCInfo(auralisBluetooth) << "BluetoothSubsystemInitializing";
     connectClientSignals();
     client_->initialize();
+    if (buttonControls_ != nullptr) {
+        buttonControls_->initialize();
+    }
     if (agent_ != nullptr) {
         agent_->initialize();
     }
@@ -334,6 +351,9 @@ void BluetoothManager::shutdown()
 
     if (discovery_ != nullptr) {
         discovery_->shutdown();
+    }
+    if (buttonControls_ != nullptr) {
+        buttonControls_->shutdown();
     }
     if (lifecycle_ != nullptr) {
         lifecycle_->shutdown();
@@ -459,6 +479,9 @@ void BluetoothManager::handleBlueZAvailable(bool available)
     }
     if (!available) {
         pauseManagedReconnect();
+        if (buttonControls_ != nullptr) {
+            buttonControls_->releaseAll();
+        }
         if (registry_ != nullptr) {
             registry_->clear();
         }
@@ -468,6 +491,9 @@ void BluetoothManager::handleBlueZAvailable(bool available)
     } else {
         resumeManagedReconnect();
         // Snapshot is owned by BlueZDbusClient::onBlueZRegistered — avoid duplicate GetManagedObjects.
+        if (buttonControls_ != nullptr) {
+            buttonControls_->reapplyAll();
+        }
     }
     if (discovery_ != nullptr) {
         discovery_->onBlueZAvailabilityChanged(available);
@@ -542,6 +568,7 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
         lifecycle_->applyStoredMetadataToRegistry();
         lifecycle_->onSnapshotApplied();
     }
+    syncButtonPoliciesFromRegistry();
     emit adapterChanged();
     updateStatusText();
     refreshDisplayedError();
@@ -562,6 +589,7 @@ void BluetoothManager::handleInterfacesAdded(const QString& objectPath, const QV
         if (lifecycle_ != nullptr) {
             lifecycle_->applyStoredMetadataToRegistry();
         }
+        syncButtonPolicyForAddress(parsed.device.address, parsed.device.connected);
         qCInfo(auralisBluetooth) << "DeviceAdded" << objectPath << parsed.device.displayName();
     }
 }
@@ -603,6 +631,11 @@ void BluetoothManager::handlePropertiesChanged(
         registry_->applyPropertyChanges(objectPath, changed, invalidated);
         if (lifecycle_ != nullptr) {
             lifecycle_->onDevicePropertiesChanged(objectPath, changed, invalidated);
+        }
+        if (changed.contains(bluez::kPropConnected.toString()) || invalidated.contains(bluez::kPropConnected.toString())) {
+            if (const BluetoothDeviceData* device = registry_->findByObjectPath(objectPath)) {
+                syncButtonPolicyForAddress(device->address, device->connected);
+            }
         }
     }
 }
@@ -661,8 +694,63 @@ void BluetoothManager::disconnectDevice(const QString& deviceId)
 
 void BluetoothManager::forgetDevice(const QString& deviceId)
 {
+    QString address;
+    if (registry_ != nullptr) {
+        if (const BluetoothDeviceData* device = registry_->findByObjectPath(deviceId)) {
+            address = device->address;
+        }
+    }
     if (lifecycle_ != nullptr) {
         lifecycle_->forgetDevice(deviceId);
+    }
+    if (buttonControls_ != nullptr && !address.isEmpty()) {
+        buttonControls_->clearPolicyForAddress(address);
+    }
+}
+
+void BluetoothManager::setDeviceButtonPolicy(const QString& deviceId, bool disallow)
+{
+    if (buttonControls_ == nullptr || registry_ == nullptr) {
+        return;
+    }
+    const BluetoothDeviceData* device = registry_->findByObjectPath(deviceId);
+    if (device == nullptr || device->address.trimmed().isEmpty()) {
+        return;
+    }
+    buttonControls_->setPolicyForAddress(
+        device->address,
+        disallow ? DeviceButtonPolicy::Disallow : DeviceButtonPolicy::Allow);
+    syncButtonPolicyForAddress(device->address, device->connected);
+}
+
+QString BluetoothManager::deviceButtonPolicyText(const QString& deviceId) const
+{
+    if (buttonControls_ == nullptr || registry_ == nullptr) {
+        return ::auralis::bluetooth::deviceButtonPolicyText(DeviceButtonPolicy::Allow);
+    }
+    const BluetoothDeviceData* device = registry_->findByObjectPath(deviceId);
+    if (device == nullptr) {
+        return ::auralis::bluetooth::deviceButtonPolicyText(DeviceButtonPolicy::Allow);
+    }
+    return ::auralis::bluetooth::deviceButtonPolicyText(buttonControls_->policyForAddress(device->address));
+}
+
+void BluetoothManager::syncButtonPolicyForAddress(const QString& address, bool connected)
+{
+    if (buttonControls_ == nullptr || address.trimmed().isEmpty()) {
+        return;
+    }
+    buttonControls_->syncDevice(address, connected);
+}
+
+void BluetoothManager::syncButtonPoliciesFromRegistry()
+{
+    if (buttonControls_ == nullptr || registry_ == nullptr) {
+        return;
+    }
+    for (int i = 0; i < registry_->count(); ++i) {
+        const BluetoothDeviceData device = registry_->at(i);
+        buttonControls_->syncDevice(device.address, device.connected);
     }
 }
 

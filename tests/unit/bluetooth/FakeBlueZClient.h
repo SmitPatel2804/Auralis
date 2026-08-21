@@ -223,8 +223,13 @@ public:
 
     void setBlueZAvailable(bool available)
     {
+        const bool wasAvailable = blueZAvailable_;
         blueZAvailable_ = available;
         emit blueZAvailableChanged(available);
+        // Mirror BlueZDbusClient::onBlueZRegistered — one authoritative snapshot on return.
+        if (available && !wasAvailable) {
+            requestSnapshot();
+        }
     }
 
     void setStartResult(bool succeeds, const QString& errorName = {}, const QString& errorMessage = {})

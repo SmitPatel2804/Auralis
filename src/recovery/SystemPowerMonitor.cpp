@@ -15,8 +15,10 @@ SystemPowerMonitor::SystemPowerMonitor(QObject* parent)
 {
     subscribeRetryTimer_.setSingleShot(false);
     connect(&subscribeRetryTimer_, &QTimer::timeout, this, [this]() {
-        if (!initialized_ || subscribed_) {
-            stopSubscribeRetryTimer();
+        if (!initialized_ || subscribed_ || !busAvailable_) {
+            if (!busAvailable_) {
+                stopSubscribeRetryTimer();
+            }
             return;
         }
         if (trySubscribeLogind()) {
@@ -38,10 +40,13 @@ bool SystemPowerMonitor::initialize()
         return true;
     }
     initialized_ = true;
-    subscribed_ = trySubscribeLogind();
+    busAvailable_ = QDBusConnection::systemBus().isConnected();
+    subscribed_ = busAvailable_ && trySubscribeLogind();
     if (!subscribed_) {
         qCInfo(auralisPower) << "SystemPowerMonitor: logind PrepareForSleep unavailable; will retry";
-        startSubscribeRetryTimer();
+        if (busAvailable_) {
+            startSubscribeRetryTimer();
+        }
     } else {
         qCInfo(auralisPower) << "SystemPowerMonitor: subscribed to logind PrepareForSleep";
     }
@@ -54,16 +59,7 @@ void SystemPowerMonitor::shutdown()
         return;
     }
     stopSubscribeRetryTimer();
-    if (subscribed_) {
-        QDBusConnection::systemBus().disconnect(
-            QStringLiteral("org.freedesktop.login1"),
-            QStringLiteral("/org/freedesktop/login1"),
-            QStringLiteral("org.freedesktop.login1.Manager"),
-            QStringLiteral("PrepareForSleep"),
-            this,
-            SLOT(injectPrepareForSleep(bool)));
-        subscribed_ = false;
-    }
+    invalidateLogindSubscription();
     initialized_ = false;
 }
 
@@ -77,9 +73,27 @@ bool SystemPowerMonitor::isSubscribed() const noexcept
     return subscribed_;
 }
 
+void SystemPowerMonitor::notifySystemBusUnavailable()
+{
+    if (!initialized_) {
+        return;
+    }
+    busAvailable_ = false;
+    stopSubscribeRetryTimer();
+    if (!subscribed_) {
+        return;
+    }
+    invalidateLogindSubscription();
+    qCInfo(auralisPower) << "SystemPowerMonitor: system bus lost — logind subscription invalidated";
+}
+
 void SystemPowerMonitor::notifySystemBusAvailable()
 {
-    if (!initialized_ || subscribed_) {
+    if (!initialized_) {
+        return;
+    }
+    busAvailable_ = true;
+    if (subscribed_) {
         return;
     }
     if (trySubscribeLogind()) {
@@ -89,23 +103,6 @@ void SystemPowerMonitor::notifySystemBusAvailable()
     } else {
         startSubscribeRetryTimer();
     }
-}
-
-void SystemPowerMonitor::notifySystemBusUnavailable()
-{
-    if (!initialized_ || !subscribed_) {
-        return;
-    }
-    stopSubscribeRetryTimer();
-    QDBusConnection::systemBus().disconnect(
-        QStringLiteral("org.freedesktop.login1"),
-        QStringLiteral("/org/freedesktop/login1"),
-        QStringLiteral("org.freedesktop.login1.Manager"),
-        QStringLiteral("PrepareForSleep"),
-        this,
-        SLOT(injectPrepareForSleep(bool)));
-    subscribed_ = false;
-    qCInfo(auralisPower) << "SystemPowerMonitor: system bus unavailable; logind subscription invalidated";
 }
 
 void SystemPowerMonitor::setSubscribeRetryIntervalMsForTesting(int ms)
@@ -118,13 +115,27 @@ void SystemPowerMonitor::setSubscribeRetryIntervalMsForTesting(int ms)
 
 void SystemPowerMonitor::attemptSubscribeForTesting()
 {
-    if (!initialized_ || subscribed_) {
+    if (!initialized_ || subscribed_ || !busAvailable_) {
         return;
     }
     if (trySubscribeLogind()) {
         subscribed_ = true;
         stopSubscribeRetryTimer();
     }
+}
+
+void SystemPowerMonitor::injectSubscribedForTesting(bool subscribed)
+{
+    if (!initialized_) {
+        return;
+    }
+    if (subscribed) {
+        busAvailable_ = true;
+        subscribed_ = true;
+        stopSubscribeRetryTimer();
+        return;
+    }
+    subscribed_ = false;
 }
 
 void SystemPowerMonitor::injectPrepareForSleep(bool sleeping)
@@ -150,6 +161,9 @@ bool SystemPowerMonitor::trySubscribeLogind()
     if (subscribed_) {
         return true;
     }
+    if (!busAvailable_) {
+        return false;
+    }
 
     QDBusConnection bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) {
@@ -174,6 +188,21 @@ bool SystemPowerMonitor::trySubscribeLogind()
         SLOT(injectPrepareForSleep(bool)));
 }
 
+void SystemPowerMonitor::invalidateLogindSubscription()
+{
+    if (!subscribed_) {
+        return;
+    }
+    QDBusConnection::systemBus().disconnect(
+        QStringLiteral("org.freedesktop.login1"),
+        QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"),
+        QStringLiteral("PrepareForSleep"),
+        this,
+        SLOT(injectPrepareForSleep(bool)));
+    subscribed_ = false;
+}
+
 void SystemPowerMonitor::setSuspended(bool value)
 {
     if (suspended_ == value) {
@@ -185,7 +214,7 @@ void SystemPowerMonitor::setSuspended(bool value)
 
 void SystemPowerMonitor::startSubscribeRetryTimer()
 {
-    if (!initialized_ || subscribed_) {
+    if (!initialized_ || subscribed_ || !busAvailable_) {
         return;
     }
     subscribeRetryTimer_.setInterval(subscribeRetryIntervalMs_);

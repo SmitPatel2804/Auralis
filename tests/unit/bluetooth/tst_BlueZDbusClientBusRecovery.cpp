@@ -152,6 +152,126 @@ private slots:
         client.shutdown();
         client.shutdown();
     }
+
+    void overrideModeIsolatesFromHostBus()
+    {
+        BlueZDbusClient client;
+        client.setSystemBusConnectedOverrideForTesting(true);
+        QVERIFY(client.initialize());
+        QVERIFY(client.isolateFromHostBusForTesting());
+        client.shutdown();
+    }
+
+    void stalePairCompletionIsIgnored()
+    {
+        BlueZDbusClient client;
+        client.setSystemBusConnectedOverrideForTesting(true);
+        QVERIFY(client.initialize());
+        const quint64 staleGen = static_cast<quint64>(client.busAttachGenerationForTesting());
+
+        client.setSystemBusConnectedOverrideForTesting(false);
+        client.pollSystemBusHealthForTesting();
+        client.setSystemBusConnectedOverrideForTesting(true);
+        client.pollSystemBusHealthForTesting();
+
+        QSignalSpy pairSpy(&client, &BlueZDbusClient::pairDeviceFinished);
+        client.injectPairDeviceFinishedForTesting(
+            staleGen,
+            QStringLiteral("/org/bluez/hci0/dev_AA"),
+            true);
+        QCOMPARE(pairSpy.count(), 0);
+
+        client.injectPairDeviceFinishedForTesting(
+            static_cast<quint64>(client.busAttachGenerationForTesting()),
+            QStringLiteral("/org/bluez/hci0/dev_AA"),
+            true);
+        QCOMPARE(pairSpy.count(), 1);
+        client.shutdown();
+    }
+
+    void staleInterfacesAddedIsIgnored()
+    {
+        BlueZDbusClient client;
+        client.setSystemBusConnectedOverrideForTesting(true);
+        QVERIFY(client.initialize());
+        const quint64 staleGen = static_cast<quint64>(client.busAttachGenerationForTesting());
+
+        client.setSystemBusConnectedOverrideForTesting(false);
+        client.pollSystemBusHealthForTesting();
+        client.setSystemBusConnectedOverrideForTesting(true);
+        client.pollSystemBusHealthForTesting();
+
+        QSignalSpy addedSpy(&client, &BlueZDbusClient::interfacesAdded);
+        client.injectInterfacesAddedForTesting(staleGen, QStringLiteral("/org/bluez/hci0/dev_AA"), {});
+        QCOMPARE(addedSpy.count(), 0);
+
+        client.injectInterfacesAddedForTesting(
+            static_cast<quint64>(client.busAttachGenerationForTesting()),
+            QStringLiteral("/org/bluez/hci0/dev_AA"),
+            {});
+        QCOMPARE(addedSpy.count(), 1);
+        client.shutdown();
+    }
+
+    void staleSnapshotDoesNotClearNewerInFlight()
+    {
+        BlueZDbusClient client;
+        client.setSystemBusConnectedOverrideForTesting(true);
+        QVERIFY(client.initialize());
+        client.setBlueZAvailableForTesting(true);
+
+        client.requestSnapshot();
+        QVERIFY(client.snapshotInFlightForTesting());
+        const quint64 staleGen = static_cast<quint64>(client.busAttachGenerationForTesting());
+
+        client.setSystemBusConnectedOverrideForTesting(false);
+        client.pollSystemBusHealthForTesting();
+        client.setSystemBusConnectedOverrideForTesting(true);
+        client.pollSystemBusHealthForTesting();
+        client.setBlueZAvailableForTesting(true);
+
+        client.requestSnapshot();
+        QVERIFY(client.snapshotInFlightForTesting());
+        const quint64 freshGen = static_cast<quint64>(client.busAttachGenerationForTesting());
+        QVERIFY(freshGen > staleGen);
+
+        QSignalSpy snapSpy(&client, &BlueZDbusClient::snapshotReceived);
+        QVariantMap objects;
+        objects.insert(QStringLiteral("/stale"), QVariantMap{});
+        client.injectSnapshotFinishedForTesting(staleGen, objects);
+        QCOMPARE(snapSpy.count(), 0);
+        QVERIFY(client.snapshotInFlightForTesting());
+
+        objects.insert(QStringLiteral("/fresh"), QVariantMap{});
+        client.injectSnapshotFinishedForTesting(freshGen, objects);
+        QCOMPARE(snapSpy.count(), 1);
+        QVERIFY(!client.snapshotInFlightForTesting());
+        client.shutdown();
+    }
+
+    void staleSnapshotFinishDoesNotAbortCurrentInFlight()
+    {
+        BlueZDbusClient client;
+        client.setSystemBusConnectedOverrideForTesting(true);
+        QVERIFY(client.initialize());
+        client.setBlueZAvailableForTesting(true);
+
+        client.requestSnapshot();
+        QVERIFY(client.snapshotInFlightForTesting());
+        const quint64 gen = static_cast<quint64>(client.busAttachGenerationForTesting());
+
+        QSignalSpy snapSpy(&client, &BlueZDbusClient::snapshotReceived);
+        QVariantMap objects;
+        objects.insert(QStringLiteral("/x"), QVariantMap{});
+        client.injectSnapshotFinishedForTesting(gen - 1, objects);
+        QCOMPARE(snapSpy.count(), 0);
+        QVERIFY(client.snapshotInFlightForTesting());
+
+        client.injectSnapshotFinishedForTesting(gen, objects);
+        QCOMPARE(snapSpy.count(), 1);
+        QVERIFY(!client.snapshotInFlightForTesting());
+        client.shutdown();
+    }
 };
 
 QTEST_GUILESS_MAIN(TstBlueZDbusClientBusRecovery)

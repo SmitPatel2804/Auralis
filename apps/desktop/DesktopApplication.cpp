@@ -150,6 +150,8 @@ void wireRecoveryOrchestration(auralis::core::ApplicationCore& core)
                 SLOT(injectTransportAvailability(bool)));
             if (bluetooth->transportConnected()) {
                 power->notifySystemBusAvailable();
+            } else {
+                power->notifySystemBusUnavailable();
             }
         }
         recovery->synchronizeBluetoothHealth();

@@ -105,7 +105,18 @@ void SystemPowerMonitor::notifySystemBusUnavailable() {}
 void SystemPowerMonitor::notifySystemBusAvailable() {}
 void SystemPowerMonitor::setSubscribeRetryIntervalMsForTesting(int ms) { subscribeRetryIntervalMs_ = qMax(1, ms); }
 void SystemPowerMonitor::attemptSubscribeForTesting() {}
+void SystemPowerMonitor::injectSubscribedForTesting(bool subscribed)
+{
+    if (!initialized_) {
+        return;
+    }
+    subscribed_ = subscribed;
+    if (subscribed) {
+        busAvailable_ = true;
+    }
+}
 void SystemPowerMonitor::injectTransportAvailability(bool) {}
+void SystemPowerMonitor::invalidateLogindSubscription() {}
 
 void SystemPowerMonitor::injectPrepareForSleep(bool sleeping)
 {
