@@ -118,13 +118,14 @@ ColumnLayout {
     RowLayout {
         spacing: 12
 
-        Button {
+        SignalButton {
             text: "Activate"
+            primary: true
             enabled: router && sourceCombo.currentValue !== undefined && sourceCombo.currentValue !== ""
             onClicked: root.activateClicked()
         }
 
-        Button {
+        SignalButton {
             text: "Deactivate"
             enabled: router && router.routeEnabled
             onClicked: root.deactivateClicked()

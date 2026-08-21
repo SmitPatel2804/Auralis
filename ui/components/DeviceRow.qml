@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Column {
+Rectangle {
     id: root
 
     property string displayName
@@ -41,123 +41,166 @@ Column {
     signal reconnectRequested()
     signal showServicesRequested()
 
-    spacing: 6
-
-    Text {
-        text: root.displayName
-        font.pixelSize: 16
-        font.bold: true
-        color: Theme.text
+    implicitHeight: content.implicitHeight + Metrics.md * 2
+    radius: Theme.cardRadius
+    border.width: 1
+    border.color: Theme.alpha(root.connected ? Theme.success : (root.paired ? Theme.accent : Theme.borderBright), 0.38)
+    gradient: Gradient {
+        GradientStop { position: 0.0; color: Theme.alpha(root.connected ? Theme.success : Theme.accent, root.connected ? 0.085 : 0.04) }
+        GradientStop { position: 0.3; color: Theme.surfaceAlt }
+        GradientStop { position: 1.0; color: Theme.surface }
     }
 
-    Text {
-        text: root.address.length > 0 ? root.address : "Address unknown"
-        font.pixelSize: 13
-        color: Theme.textMuted
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 3
+        radius: 2
+        color: root.connected ? Theme.success : (root.paired ? Theme.accent : Theme.textFaint)
+        opacity: root.connected || root.paired ? 0.9 : 0.35
     }
 
-    Text {
-        text: (root.addressType.length > 0 ? root.addressType : "type unknown")
-              + " / " + (root.transportHint.length > 0 ? root.transportHint : "Unknown")
-        font.pixelSize: 13
-        color: Theme.textMuted
-    }
+    ColumnLayout {
+        id: content
+        anchors.fill: parent
+        anchors.margins: Metrics.md
+        spacing: Metrics.sm
 
-    Text {
-        text: root.hasRssi ? ("RSSI: " + root.rssi + " dBm") : "Signal: Unknown"
-        font.pixelSize: 13
-        color: Theme.textMuted
-    }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Metrics.sm
 
-    Text {
-        visible: root.paired || root.connected || root.trusted || root.servicesResolved
-        text: (root.paired ? "Paired" : "")
-              + (root.paired && (root.connected || root.trusted || root.servicesResolved) ? " · " : "")
-              + (root.connected ? "Connected" : "")
-              + (root.connected && (root.trusted || root.servicesResolved) ? " · " : "")
-              + (root.trusted ? "Trusted" : "")
-              + ((root.trusted || root.connected || root.paired) && root.servicesResolved ? " · " : "")
-              + (root.servicesResolved ? "Services resolved" : "")
-        font.pixelSize: 12
-        color: Theme.textMuted
-    }
+            Rectangle {
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                radius: 14
+                color: Theme.alpha(root.connected ? Theme.success : Theme.accent, 0.11)
+                border.color: Theme.alpha(root.connected ? Theme.success : Theme.accent, 0.42)
+                Label {
+                    anchors.centerIn: parent
+                    text: "BT"
+                    color: root.connected ? Theme.success : Theme.accent
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+            }
 
-    Text {
-        visible: root.audioStatus.length > 0
-        text: "Audio: " + root.audioStatus
-        font.pixelSize: 12
-        color: root.audioStatus === "Available" ? Theme.success : Theme.accent
-    }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Label {
+                    text: root.displayName
+                    font.pixelSize: 15
+                    font.weight: Font.DemiBold
+                    color: Theme.text
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                Label {
+                    text: root.address.length > 0 ? root.address : qsTr("Address unavailable")
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.55
+                    color: Theme.textMuted
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+            }
 
-    Text {
-        visible: root.operationText.length > 0
-        text: root.operationText
-        font.pixelSize: 12
-        color: Theme.accent
-    }
+            StatusBadge {
+                label: root.connected ? qsTr("Connected") : (root.paired ? qsTr("Paired") : qsTr("Nearby"))
+                kind: root.connected ? "connected" : (root.paired ? "busy" : "idle")
+            }
+        }
 
-    Text {
-        visible: root.lastErrorMessage.length > 0
-        text: root.lastErrorMessage
-        font.pixelSize: 12
-        color: Theme.danger
-        wrapMode: Text.WordWrap
-        width: parent.width
-    }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Metrics.md
 
-    Flow {
-        width: parent.width
-        spacing: 8
+            Label {
+                text: (root.addressType.length > 0 ? root.addressType : qsTr("Unknown type"))
+                      + "  //  " + (root.transportHint.length > 0 ? root.transportHint : qsTr("Unknown transport"))
+                color: Theme.textMuted
+                font.pixelSize: 10
+                font.letterSpacing: 0.45
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
 
-        Button {
-            text: "Pair"
-            visible: root.canPair
-            onClicked: root.pairRequested()
+            RowLayout {
+                spacing: 3
+                Repeater {
+                    model: 4
+                    Rectangle {
+                        required property int index
+                        Layout.preferredWidth: 4
+                        Layout.preferredHeight: 6 + index * 3
+                        radius: 2
+                        color: root.hasRssi && root.rssi >= (-90 + index * 12)
+                               ? Theme.accent
+                               : Theme.alpha(Theme.textMuted, 0.22)
+                    }
+                }
+                Label {
+                    text: root.hasRssi ? (root.rssi + " dBm") : qsTr("NO SIGNAL")
+                    font.pixelSize: 9
+                    color: root.hasRssi ? Theme.accent : Theme.textFaint
+                    Layout.leftMargin: 3
+                }
+            }
         }
-        Button {
-            text: "Cancel"
-            visible: root.canCancelPairing
-            onClicked: root.cancelPairingRequested()
+
+        RowLayout {
+            visible: root.trusted || root.servicesResolved || root.audioStatus.length > 0 || root.operationText.length > 0
+            Layout.fillWidth: true
+            spacing: Metrics.xs
+
+            StatusBadge { visible: root.trusted; label: qsTr("Trusted"); kind: "ready" }
+            StatusBadge { visible: root.servicesResolved; label: qsTr("Services ready"); kind: "ready" }
+            StatusBadge {
+                visible: root.audioStatus.length > 0
+                label: qsTr("Audio %1").arg(root.audioStatus)
+                kind: root.audioStatus === "Available" ? "ready" : "busy"
+            }
+            Label {
+                visible: root.operationText.length > 0
+                text: root.operationText.toUpperCase()
+                color: Theme.accent
+                font.pixelSize: 9
+                font.bold: true
+                font.letterSpacing: 0.6
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+            Item { Layout.fillWidth: true }
         }
-        Button {
-            text: "Stop"
-            visible: root.canCancelOperation
-            onClicked: root.cancelOperationRequested()
+
+        Label {
+            visible: root.lastErrorMessage.length > 0
+            text: "!  " + root.lastErrorMessage
+            color: Theme.danger
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
-        Button {
-            text: "Trust"
-            visible: root.canTrust
-            onClicked: root.trustRequested()
-        }
-        Button {
-            text: "Untrust"
-            visible: root.canUntrust
-            onClicked: root.untrustRequested()
-        }
-        Button {
-            text: "Connect"
-            visible: root.canConnect
-            onClicked: root.connectRequested()
-        }
-        Button {
-            text: "Disconnect"
-            visible: root.canDisconnect
-            onClicked: root.disconnectRequested()
-        }
-        Button {
-            text: "Reconnect"
-            visible: root.canReconnect
-            onClicked: root.reconnectRequested()
-        }
-        Button {
-            text: "Forget"
-            visible: root.canForget
-            onClicked: root.forgetRequested()
-        }
-        Button {
-            text: "Services"
-            visible: root.uuids.length > 0
-            onClicked: root.showServicesRequested()
+
+        Flow {
+            id: actions
+            Layout.fillWidth: true
+            Layout.preferredHeight: childrenRect.height
+            spacing: 7
+
+            SignalButton { text: qsTr("PAIR"); compact: true; primary: true; visible: root.canPair; onClicked: root.pairRequested() }
+            SignalButton { text: qsTr("CANCEL"); compact: true; visible: root.canCancelPairing; onClicked: root.cancelPairingRequested() }
+            SignalButton { text: qsTr("STOP"); compact: true; danger: true; visible: root.canCancelOperation; onClicked: root.cancelOperationRequested() }
+            SignalButton { text: qsTr("TRUST"); compact: true; visible: root.canTrust; onClicked: root.trustRequested() }
+            SignalButton { text: qsTr("UNTRUST"); compact: true; visible: root.canUntrust; onClicked: root.untrustRequested() }
+            SignalButton { text: qsTr("CONNECT"); compact: true; primary: true; visible: root.canConnect; onClicked: root.connectRequested() }
+            SignalButton { text: qsTr("DISCONNECT"); compact: true; visible: root.canDisconnect; onClicked: root.disconnectRequested() }
+            SignalButton { text: qsTr("RECONNECT"); compact: true; visible: root.canReconnect; onClicked: root.reconnectRequested() }
+            SignalButton { text: qsTr("FORGET"); compact: true; danger: true; visible: root.canForget; onClicked: root.forgetRequested() }
+            SignalButton { text: qsTr("SERVICES"); compact: true; visible: root.uuids.length > 0; onClicked: root.showServicesRequested() }
         }
     }
 }

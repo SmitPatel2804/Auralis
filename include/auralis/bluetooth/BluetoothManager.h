@@ -49,7 +49,11 @@ public:
     auralis::core::ServiceStatus status() const noexcept override;
     QObject* uiObject() override;
 
-    bool available() const noexcept;
+    QString backendName() const override;
+
+    bool available() const noexcept override;
+    bool transportConnected() const noexcept override;
+    bool adapterPresent() const noexcept override;
     bool adapterPowered() const;
     bool scanning() const noexcept;
     bool canStartScan() const;
@@ -66,7 +70,7 @@ public:
 
     Q_INVOKABLE void startScan();
     Q_INVOKABLE void stopScan();
-    Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refresh() override;
     Q_INVOKABLE void pairDevice(const QString& deviceId);
     Q_INVOKABLE void cancelPairing(const QString& deviceId);
     Q_INVOKABLE void trustDevice(const QString& deviceId);
@@ -77,10 +81,10 @@ public:
     Q_INVOKABLE void reconnectDevice(const QString& deviceId);
     /// Schedule reconnect through ReconnectPolicy (backoff/attempts). Prefer this over
     /// reconnectDevice() for session recovery intent so Phase 3 owns retry timing.
-    void requestManagedReconnect(const QString& deviceId);
-    void cancelManagedReconnect(const QString& deviceId);
-    void suppressAutoReconnect(const QString& deviceId);
-    void unsuppressAutoReconnect(const QString& deviceId);
+    void requestManagedReconnect(const QString& deviceId) override;
+    void cancelManagedReconnect(const QString& deviceId) override;
+    void suppressAutoReconnect(const QString& deviceId) override;
+    void unsuppressAutoReconnect(const QString& deviceId) override;
     bool isAutoReconnectSuppressed(const QString& objectPath) const;
     Q_INVOKABLE void cancelDeviceOperation(const QString& deviceId);
     Q_INVOKABLE void acceptPairingRequest(const QString& requestId);
@@ -94,16 +98,19 @@ public:
     Q_INVOKABLE bool hasDevice(const QString& objectPath) const;
     Q_INVOKABLE QVariantMap deviceDetails(const QString& objectPath) const;
 
-    DeviceRegistry* deviceRegistry() const noexcept;
+    DeviceRegistry* deviceRegistry() const noexcept override;
     ReconnectPolicy* reconnectPolicy() const noexcept;
     void setReconnectPolicyConfig(const ReconnectPolicyConfig& config);
 
     /// Pause/resume managed device reconnect during service loss or suspend (Phase 8).
-    void pauseManagedReconnect();
-    void resumeManagedReconnect();
+    void pauseManagedReconnect() override;
+    void resumeManagedReconnect() override;
     bool systemBusConnected() const;
 
 signals:
+    /// Platform-neutral transport health signal. On Linux this mirrors the
+    /// system D-Bus connection; native backends emit their equivalent.
+    void transportConnectedChanged(bool connected);
     void systemBusConnectedChanged(bool connected);
     void availableChanged();
     void adapterChanged();

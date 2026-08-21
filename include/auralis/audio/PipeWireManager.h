@@ -50,10 +50,13 @@ public:
     auralis::core::ServiceStatus status() const noexcept override;
     QObject* uiObject() override;
 
+    QString backendName() const override;
+
     PipeWireConnectionState connectionState() const noexcept;
     QString connectionStateText() const;
-    bool connected() const noexcept;
-    QString lastError() const;
+    bool connected() const noexcept override;
+    bool graphReady() const noexcept override;
+    QString lastError() const override;
     int endpointCount() const;
     int deviceCount() const;
     int nodeCount() const;
@@ -63,16 +66,16 @@ public:
     QString diagnosticsText() const;
     QAbstractItemModel* endpoints() const;
     QObject* router() const;
-    AudioRouter* audioRouter() const noexcept;
-    AudioEndpointRegistry* endpointRegistry() const noexcept;
+    AudioRouter* audioRouter() const noexcept override;
+    AudioEndpointRegistry* endpointRegistry() const noexcept override;
     const PipeWireObjectStore* objectStore() const noexcept;
 
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
 
     /// Bounded reconnect after daemon loss. RecoveryManager observes; does not schedule a second retry.
-    void setAutoReconnectEnabled(bool enabled);
+    void setAutoReconnectEnabled(bool enabled) override;
     bool autoReconnectEnabled() const noexcept;
-    void requestReconnect();
+    void requestReconnect() override;
     int reconnectAttempt() const noexcept;
     int maxReconnectAttempts() const noexcept;
     void setMaxReconnectAttemptsForTesting(int maxAttempts);

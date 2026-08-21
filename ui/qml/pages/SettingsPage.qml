@@ -15,12 +15,14 @@ Flickable {
         width: root.width
         spacing: Metrics.md
 
-        PageHeader { title: qsTr("Settings"); subtitle: qsTr("Persisted through ConfigurationManager") }
+        PageHeader { title: qsTr("Control Parameters"); subtitle: qsTr("Persistent interface, recovery and telemetry preferences") }
 
         ErrorBanner { text: config ? config.lastErrorText : "" }
 
         SectionCard {
             title: qsTr("Interface")
+            subtitle: qsTr("Startup and resilience behavior")
+            signalColor: Theme.accent
             CheckBox {
                 text: qsTr("Show developer diagnostics")
                 checked: config ? config.showDeveloperStatus : false
@@ -53,6 +55,8 @@ Flickable {
 
         SectionCard {
             title: qsTr("Logging")
+            subtitle: qsTr("Local diagnostic capture")
+            signalColor: Theme.accentSecondary
             CheckBox {
                 text: qsTr("Enable file logging")
                 checked: config ? config.fileLoggingEnabled : false
@@ -74,11 +78,19 @@ Flickable {
                 enabled: config && !config.fileLoggingEnvLocked
                 placeholderText: qsTr("Log file path")
                 onEditingFinished: config.setLogFilePath(text)
+                leftPadding: Metrics.md
+                rightPadding: Metrics.md
+                background: Rectangle {
+                    radius: 11
+                    color: Theme.surfaceRaised
+                    border.color: parent.activeFocus ? Theme.accent : Theme.border
+                }
             }
         }
 
-        Button {
-            text: qsTr("Reset to defaults")
+        SignalButton {
+            text: qsTr("RESET TO DEFAULTS")
+            danger: true
             onClicked: resetDialog.open()
         }
     }

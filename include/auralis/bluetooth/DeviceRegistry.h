@@ -47,6 +47,9 @@ public:
     bool setUserDisconnectRequested(const QString& objectPath, bool requested);
     bool setAutoReconnectEnabled(const QString& objectPath, bool enabled);
     bool setReconnectAttempt(const QString& objectPath, int attempt);
+    /// Platform-neutral state mutation used by native backends after an OS
+    /// callback. Emits the same model update notifications as BlueZ changes.
+    bool updateDevice(const QString& objectPath, const std::function<void(BluetoothDeviceData&)>& mutator);
 
 signals:
     void deviceAboutToBeAdded(int index);

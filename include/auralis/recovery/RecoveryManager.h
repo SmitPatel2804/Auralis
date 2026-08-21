@@ -30,6 +30,8 @@ public:
         std::function<bool()> isPipeWireConnected;
         std::function<bool()> isPipeWireGraphReady;
         std::function<bool()> isSystemBusConnected;
+        std::function<bool()> isAdapterPresent;
+        std::function<QString()> audioLastError;
     };
 
     explicit RecoveryManager(QObject* parent = nullptr);
@@ -52,6 +54,7 @@ public:
     quint64 generation() const noexcept;
     quint64 suspendEpoch() const noexcept;
 
+public slots:
     void notifyBlueZAvailable(bool available);
     void notifySystemBusConnected(bool connected);
     void notifyPipeWireConnected(bool connected, bool graphReady);
@@ -60,7 +63,11 @@ public:
     void notifyPipeWireReconnectExhausted(const QString& reason);
     void notifyAdapterPresent(bool present);
     void onPreparingForSleep(bool sleeping);
+    void refreshObservedHealth();
+    void synchronizeBluetoothHealth();
+    void synchronizeAudioHealth();
 
+public:
     /// Test seam: advance coalesced reconcile without waiting for the timer.
     void flushPendingReconcileForTesting();
 
@@ -75,7 +82,6 @@ private:
     void scheduleCoalescedReconcile();
     void runReconcile();
     void emitStatus();
-    void refreshObservedHealth();
 
     HostHooks hooks_;
     RecoveryStatus status_;

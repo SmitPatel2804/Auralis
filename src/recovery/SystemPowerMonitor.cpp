@@ -91,6 +91,23 @@ void SystemPowerMonitor::notifySystemBusAvailable()
     }
 }
 
+void SystemPowerMonitor::notifySystemBusUnavailable()
+{
+    if (!initialized_ || !subscribed_) {
+        return;
+    }
+    stopSubscribeRetryTimer();
+    QDBusConnection::systemBus().disconnect(
+        QStringLiteral("org.freedesktop.login1"),
+        QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"),
+        QStringLiteral("PrepareForSleep"),
+        this,
+        SLOT(injectPrepareForSleep(bool)));
+    subscribed_ = false;
+    qCInfo(auralisPower) << "SystemPowerMonitor: system bus unavailable; logind subscription invalidated";
+}
+
 void SystemPowerMonitor::setSubscribeRetryIntervalMsForTesting(int ms)
 {
     subscribeRetryIntervalMs_ = std::max(1, ms);
@@ -117,6 +134,15 @@ void SystemPowerMonitor::injectPrepareForSleep(bool sleeping)
     }
     setSuspended(sleeping);
     emit preparingForSleep(sleeping);
+}
+
+void SystemPowerMonitor::injectTransportAvailability(bool available)
+{
+    if (available) {
+        notifySystemBusAvailable();
+    } else {
+        notifySystemBusUnavailable();
+    }
 }
 
 bool SystemPowerMonitor::trySubscribeLogind()

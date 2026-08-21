@@ -16,6 +16,11 @@ Dialog {
 
     width: dialogWidth
     standardButtons: Dialog.NoButton
+    background: Rectangle {
+        radius: Theme.cardRadius
+        color: Theme.surfaceAlt
+        border.color: Theme.alpha(Theme.accent, 0.48)
+    }
 
     contentItem: Label {
         width: root.dialogWidth - root.leftPadding - root.rightPadding
@@ -25,13 +30,14 @@ Dialog {
     }
 
     footer: DialogButtonBox {
-        Button {
-            text: qsTr("Cancel")
+        SignalButton {
+            text: qsTr("CANCEL")
             DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             onClicked: root.reject()
         }
-        Button {
+        SignalButton {
             text: root.confirmText
+            primary: true
             DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
             onClicked: {
                 root.confirmed()

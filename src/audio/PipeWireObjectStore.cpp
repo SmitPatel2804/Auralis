@@ -77,16 +77,16 @@ bool PipeWireObjectStore::upsert(const PipeWireObjectSnapshot& snapshot)
 
 bool PipeWireObjectStore::remove(quint32 globalId)
 {
-    if (devices_.remove(globalId) > 0) {
+    if (devices_.remove(globalId)) {
         return true;
     }
-    if (nodes_.remove(globalId) > 0) {
+    if (nodes_.remove(globalId)) {
         return true;
     }
-    if (ports_.remove(globalId) > 0) {
+    if (ports_.remove(globalId)) {
         return true;
     }
-    if (links_.remove(globalId) > 0) {
+    if (links_.remove(globalId)) {
         return true;
     }
     const auto it = extras_.constFind(globalId);

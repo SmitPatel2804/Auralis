@@ -91,6 +91,24 @@ private slots:
         QVERIFY(!classifyAudioSource(*store.node(15), store).has_value());
         QCOMPARE(classifyAudioSources(store).size(), 0);
     }
+
+    void operatingSystemDefaultSourceComesFirst()
+    {
+        PipeWireObjectStore store;
+        store.upsert(makeNode(20, {{QStringLiteral("media.class"), QStringLiteral("Audio/Source")},
+                                   {QStringLiteral("node.name"), QStringLiteral("alphabetical-first")},
+                                   {QStringLiteral("node.description"), QStringLiteral("A microphone")}}));
+        store.upsert(makePort(200, 20, QStringLiteral("out")));
+        store.upsert(makeNode(21, {{QStringLiteral("media.class"), QStringLiteral("Audio/Source")},
+                                   {QStringLiteral("node.name"), QStringLiteral("system-default")},
+                                   {QStringLiteral("node.description"), QStringLiteral("Z microphone")},
+                                   {QStringLiteral("device.default"), QStringLiteral("true")}}));
+        store.upsert(makePort(210, 21, QStringLiteral("out")));
+
+        const QVector sources = classifyAudioSources(store);
+        QCOMPARE(sources.size(), 2);
+        QCOMPARE(sources.constFirst().pipeWireNodeId, static_cast<quint32>(21));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioSources)

@@ -3,11 +3,11 @@
 #include <auralis/session/SessionManager.h>
 
 #include <auralis/audio/AudioEndpointRegistry.h>
+#include <auralis/audio/IAudioManager.h>
 #include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioRouter.h>
-#include <auralis/audio/PipeWireManager.h>
 #include <auralis/bluetooth/BlueZTypes.h>
-#include <auralis/bluetooth/BluetoothManager.h>
+#include <auralis/bluetooth/IBluetoothManager.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
 #include <auralis/core/LoggingCategories.h>
 #include <auralis/session/SessionStateMachine.h>
@@ -42,19 +42,19 @@ SessionManager::SessionManager(QObject* parent)
 }
 
 SessionManager::SessionManager(
-    auralis::bluetooth::BluetoothManager* bluetooth,
-    auralis::audio::PipeWireManager* pipeWire,
+    auralis::bluetooth::IBluetoothManager* bluetooth,
+    auralis::audio::IAudioManager* audio,
     const QString& persistencePath,
     QObject* parent)
     : QObject(parent)
     , bluetooth_(bluetooth)
-    , pipeWire_(pipeWire)
+    , audio_(audio)
     , persistence_(std::make_unique<SessionPersistence>(
           persistencePath.isEmpty() ? defaultPersistencePath() : persistencePath))
 {
-    if (pipeWire_ != nullptr) {
-        router_ = pipeWire_->audioRouter();
-        endpoints_ = pipeWire_->endpointRegistry();
+    if (audio_ != nullptr) {
+        router_ = audio_->audioRouter();
+        endpoints_ = audio_->endpointRegistry();
     }
     if (bluetooth_ != nullptr) {
         deviceRegistry_ = bluetooth_->deviceRegistry();
@@ -66,7 +66,7 @@ SessionManager::SessionManager(
     auralis::audio::AudioRouter* router,
     auralis::audio::AudioEndpointRegistry* endpoints,
     auralis::bluetooth::DeviceRegistry* devices,
-    auralis::bluetooth::BluetoothManager* bluetooth,
+    auralis::bluetooth::IBluetoothManager* bluetooth,
     const QString& persistencePath,
     QObject* parent)
     : QObject(parent)
@@ -92,9 +92,9 @@ bool SessionManager::initialize()
     }
     status_ = auralis::core::ServiceStatus::Initializing;
 
-    if (pipeWire_ != nullptr) {
-        router_ = pipeWire_->audioRouter();
-        endpoints_ = pipeWire_->endpointRegistry();
+    if (audio_ != nullptr) {
+        router_ = audio_->audioRouter();
+        endpoints_ = audio_->endpointRegistry();
     }
     if (bluetooth_ != nullptr) {
         deviceRegistry_ = bluetooth_->deviceRegistry();
@@ -120,25 +120,29 @@ bool SessionManager::initialize()
             }
         });
     }
-    if (pipeWire_ != nullptr) {
-        connect(pipeWire_, &auralis::audio::PipeWireManager::graphRevisionChanged, this, &SessionManager::handleExternalGraphChanged);
+    if (audio_ != nullptr && audio_->uiObject() != nullptr) {
+        QObject::connect(
+            audio_->uiObject(),
+            SIGNAL(graphRevisionChanged()),
+            this,
+            SLOT(handleExternalGraphChanged()));
     }
     if (deviceRegistry_ != nullptr) {
         connect(deviceRegistry_, &auralis::bluetooth::DeviceRegistry::deviceUpdated, this, &SessionManager::handleDeviceRegistryChanged);
         connect(deviceRegistry_, &auralis::bluetooth::DeviceRegistry::deviceRemoved, this, &SessionManager::handleDeviceRegistryChanged);
         connect(deviceRegistry_, &auralis::bluetooth::DeviceRegistry::deviceAdded, this, &SessionManager::handleDeviceRegistryChanged);
     }
-    if (bluetooth_ != nullptr) {
-        connect(
-            bluetooth_,
-            &auralis::bluetooth::BluetoothManager::managedReconnectExhausted,
+    if (bluetooth_ != nullptr && bluetooth_->uiObject() != nullptr) {
+        QObject::connect(
+            bluetooth_->uiObject(),
+            SIGNAL(managedReconnectExhausted(QString,int,QString)),
             this,
-            &SessionManager::handleManagedReconnectExhausted);
-        connect(
-            bluetooth_,
-            &auralis::bluetooth::BluetoothManager::managedReconnectTerminalFailure,
+            SLOT(handleManagedReconnectExhausted(QString,int,QString)));
+        QObject::connect(
+            bluetooth_->uiObject(),
+            SIGNAL(managedReconnectTerminalFailure(QString,int,QString)),
             this,
-            &SessionManager::handleManagedReconnectTerminalFailure);
+            SLOT(handleManagedReconnectTerminalFailure(QString,int,QString)));
     }
 
     recoverySweep_.setInterval(1000);

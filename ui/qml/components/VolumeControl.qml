@@ -32,6 +32,35 @@ RowLayout {
             if (!pressed)
                 root.volumeCommitted(value)
         }
+        background: Rectangle {
+            x: slider.leftPadding
+            y: slider.topPadding + slider.availableHeight / 2 - height / 2
+            implicitWidth: 200
+            implicitHeight: 5
+            width: slider.availableWidth
+            height: implicitHeight
+            radius: 3
+            color: Theme.surfaceRaised
+            Rectangle {
+                width: slider.visualPosition * parent.width
+                height: parent.height
+                radius: 3
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Theme.accentSecondary }
+                    GradientStop { position: 1.0; color: Theme.accent }
+                }
+            }
+        }
+        handle: Rectangle {
+            x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
+            y: slider.topPadding + slider.availableHeight / 2 - height / 2
+            implicitWidth: 17
+            implicitHeight: 17
+            radius: 9
+            color: Theme.text
+            border.color: Theme.accent
+            border.width: 3
+        }
     }
     Label {
         text: Math.round(slider.value * 100) + "%"

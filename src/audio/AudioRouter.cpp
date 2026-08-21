@@ -310,7 +310,7 @@ void AudioRouter::activateRoute(const QString& routeId)
     }
     lastActivateAttemptMs_.insert(routeId, nowMs);
     if (connectionState_ != PipeWireConnectionState::Connected || !initialSyncComplete_) {
-        setError(*route, RouteError::PipeWireDisconnected, QStringLiteral("PipeWire is not connected"));
+        setError(*route, RouteError::PipeWireDisconnected, QStringLiteral("Audio backend is not connected"));
         setState(*route, RouteState::Failed);
         return;
     }
@@ -493,7 +493,7 @@ void AudioRouter::handleGraphChanged()
                     rollback(
                         route,
                         RouteError::LinkCreationFailed,
-                        QStringLiteral("Link creation rejected by PipeWire"),
+                        QStringLiteral("Link creation rejected by the audio backend"),
                         true);
                     continue;
                 }
@@ -549,7 +549,7 @@ void AudioRouter::handleConnectionState(PipeWireConnectionState state, bool init
             stopActivationTimeout(route.id);
             invalidateOwnedLinks(route);
             if (route.enabled) {
-                setError(route, RouteError::PipeWireDisconnected, QStringLiteral("PipeWire disconnected"));
+                setError(route, RouteError::PipeWireDisconnected, QStringLiteral("Audio backend disconnected"));
                 setState(route, RouteState::Degraded);
             }
         }
@@ -693,7 +693,7 @@ void AudioRouter::beginActivation(AudioRoute& route, quint64 generation)
             rollback(
                 route,
                 RouteError::PartialActivationFailed,
-                QStringLiteral("Only part of the route could be adopted from existing PipeWire links"),
+                QStringLiteral("Only part of the route could be adopted from existing audio links"),
                 true);
             return;
         }

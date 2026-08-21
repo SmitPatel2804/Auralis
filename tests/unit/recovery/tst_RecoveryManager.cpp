@@ -218,6 +218,9 @@ private slots:
         manager.setHooks(std::move(hooks));
         QVERIFY(manager.initialize());
         manager.shutdown();
+        const quint64 generationAfterShutdown = manager.generation();
+        manager.shutdown();
+        QCOMPARE(manager.generation(), generationAfterShutdown);
         manager.notifyBlueZAvailable(false);
         QCOMPARE(pauseCount, 0);
     }

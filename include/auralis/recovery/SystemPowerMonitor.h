@@ -5,7 +5,8 @@
 
 namespace auralis::recovery {
 
-/// Observes systemd-logind PrepareForSleep. Does not block suspend.
+/// Platform power observer. Linux uses systemd-logind, Windows uses native
+/// power broadcasts, and macOS uses workspace sleep/wake notifications.
 class SystemPowerMonitor final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool suspended READ suspended NOTIFY suspendedChanged)
@@ -20,13 +21,16 @@ public:
     bool suspended() const noexcept;
     bool isSubscribed() const noexcept;
 
-    /// Retry logind subscription after system bus becomes available.
+    /// Linux system-bus lifecycle hooks. Other platforms treat these as no-op
+    /// compatibility entry points because their power observer is process-local.
+    void notifySystemBusUnavailable();
     void notifySystemBusAvailable();
 
     void setSubscribeRetryIntervalMsForTesting(int ms);
     void attemptSubscribeForTesting();
 
 public slots:
+    void injectTransportAvailability(bool available);
     /// Test seam / logind callback: inject prepare-for-sleep without blocking.
     void injectPrepareForSleep(bool sleeping);
 

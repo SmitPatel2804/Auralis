@@ -23,7 +23,9 @@ ApplicationCore::ApplicationCore(ApplicationServices services, QObject* parent)
     , services_(std::move(services))
     , notifications_(this)
     , diagnostics_(this)
+    , platform_(this)
 {
+    platform_.configure(services_.bluetooth.get(), services_.pipeWire.get());
 }
 
 ApplicationCore::~ApplicationCore()
@@ -81,17 +83,17 @@ bool ApplicationCore::initialize()
     }
 
     if (!services_.bluetooth->initialize()) {
-        qCCritical(auralisCore) << "Bluetooth service skeleton initialization failed";
+        qCCritical(auralisCore) << "Bluetooth service initialization failed";
         rollbackInitializedServices();
         setStatus(ServiceStatus::Error);
         return false;
     }
-    qCInfo(auralisCore) << "Bluetooth service skeleton initialized";
+    qCInfo(auralisCore) << "Bluetooth service initialized backend=" << services_.bluetooth->backendName();
 
     if (!services_.pipeWire->initialize()) {
-        qCWarning(auralisCore) << "PipeWire service failed to start; continuing without a live audio graph";
+        qCWarning(auralisCore) << "Audio service failed to start; continuing without a live audio graph";
     } else {
-        qCInfo(auralisCore) << "PipeWire service initialized";
+        qCInfo(auralisCore) << "Audio service initialized backend=" << services_.pipeWire->backendName();
     }
     if (QObject* audioUi = services_.pipeWire->uiObject()) {
         QObject::connect(audioUi, SIGNAL(statusChanged()), this, SIGNAL(statusChanged()));
@@ -272,6 +274,21 @@ recovery::RecoveryManager* ApplicationCore::recoveryManager() const noexcept
 recovery::SystemPowerMonitor* ApplicationCore::powerMonitor() const noexcept
 {
     return services_.powerMonitor.get();
+}
+
+QObject* ApplicationCore::platform() const
+{
+    return const_cast<PlatformCapabilities*>(&platform_);
+}
+
+bluetooth::IBluetoothManager* ApplicationCore::bluetoothService() const noexcept
+{
+    return services_.bluetooth.get();
+}
+
+audio::IAudioManager* ApplicationCore::audioService() const noexcept
+{
+    return services_.pipeWire.get();
 }
 
 QString ApplicationCore::recoveryStatus() const

@@ -34,6 +34,7 @@ docs/
 | [../README.md](../README.md) | Build, run, test, and Phase 6 status |
 | [architecture/overview.md](architecture/overview.md) | Modules, BlueZ, PipeWire, AudioRouter, sessions, QML |
 | [architecture/session-engine.md](architecture/session-engine.md) | Session engine architecture and policies |
+| [architecture/cross-platform-backends.md](architecture/cross-platform-backends.md) | Cross-platform backend contracts, selection, and validation gates |
 | [validation/phase-1.md](validation/phase-1.md) | Phase 1 foundation checklist |
 | [validation/phase-2.md](validation/phase-2.md) | Phase 2 discovery validation |
 | [validation/phase-3.md](validation/phase-3.md) | Phase 3 device management validation |

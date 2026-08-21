@@ -102,6 +102,11 @@ QObject* BluetoothManager::uiObject()
     return this;
 }
 
+QString BluetoothManager::backendName() const
+{
+    return QStringLiteral("BlueZ");
+}
+
 DeviceRegistry* BluetoothManager::deviceRegistry() const noexcept
 {
     return registry_;
@@ -360,6 +365,16 @@ bool BluetoothManager::available() const noexcept
     return available_;
 }
 
+bool BluetoothManager::transportConnected() const noexcept
+{
+    return systemBusConnected();
+}
+
+bool BluetoothManager::adapterPresent() const noexcept
+{
+    return adapters_ != nullptr && adapters_->hasAdapter();
+}
+
 bool BluetoothManager::adapterPowered() const
 {
     return adapters_ != nullptr && adapters_->selected().powered;
@@ -475,6 +490,7 @@ void BluetoothManager::handleSystemBusStateChanged(bool connected)
     updateStatusText();
     refreshDisplayedError();
     emit systemBusConnectedChanged(connected);
+    emit transportConnectedChanged(connected);
     if (!connected) {
         qCWarning(auralisBluetooth) << "SystemBusUnavailable";
         pauseManagedReconnect();

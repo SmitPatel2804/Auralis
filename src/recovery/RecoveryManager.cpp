@@ -48,7 +48,7 @@ bool RecoveryManager::initialize()
 
 void RecoveryManager::shutdown()
 {
-    if (!initialized_ && !shuttingDown_) {
+    if (!initialized_) {
         return;
     }
     shuttingDown_ = true;
@@ -142,12 +142,48 @@ void RecoveryManager::refreshObservedHealth()
     if (hooks_.isSystemBusConnected) {
         systemBusConnected_ = hooks_.isSystemBusConnected();
     }
+    if (hooks_.isAdapterPresent) {
+        adapterPresent_ = hooks_.isAdapterPresent();
+    }
     if (hooks_.isPipeWireConnected) {
         pipeWireConnected_ = hooks_.isPipeWireConnected();
     }
     if (hooks_.isPipeWireGraphReady) {
         pipeWireGraphReady_ = hooks_.isPipeWireGraphReady();
     }
+}
+
+void RecoveryManager::synchronizeBluetoothHealth()
+{
+    if (shuttingDown_) {
+        return;
+    }
+    if (hooks_.isSystemBusConnected) {
+        notifySystemBusConnected(hooks_.isSystemBusConnected());
+    }
+    if (hooks_.isBlueZAvailable) {
+        notifyBlueZAvailable(hooks_.isBlueZAvailable());
+    }
+    if (hooks_.isAdapterPresent) {
+        notifyAdapterPresent(hooks_.isAdapterPresent());
+    }
+}
+
+void RecoveryManager::synchronizeAudioHealth()
+{
+    if (shuttingDown_) {
+        return;
+    }
+    const bool connected = hooks_.isPipeWireConnected && hooks_.isPipeWireConnected();
+    const bool ready = hooks_.isPipeWireGraphReady && hooks_.isPipeWireGraphReady();
+    if (!connected && hooks_.audioLastError) {
+        const QString error = hooks_.audioLastError();
+        if (!error.isEmpty()) {
+            notifyPipeWireError(error);
+            return;
+        }
+    }
+    notifyPipeWireConnected(connected, ready);
 }
 
 void RecoveryManager::notifyBlueZAvailable(bool available)

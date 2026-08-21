@@ -24,7 +24,7 @@ Item {
         anchors.fill: parent
         spacing: Metrics.md
 
-        PageHeader { title: qsTr("Diagnostics"); subtitle: qsTr("Live backend state without a terminal") }
+        PageHeader { title: qsTr("Telemetry Console"); subtitle: qsTr("Live subsystem state and event intelligence") }
 
         ScrollView {
             Layout.fillWidth: true
@@ -35,23 +35,33 @@ Item {
                 spacing: Metrics.md
                 SectionCard {
                     title: qsTr("System")
+                    subtitle: qsTr("Cross-platform services and runtime health")
+                    signalColor: Theme.accent
                     KeyValueRow { label: qsTr("Core"); value: AppCore.coreStatus }
+                    KeyValueRow { label: qsTr("Operating system"); value: AppCore.platform.operatingSystem }
+                    KeyValueRow { label: qsTr("Bluetooth backend"); value: AppCore.platform.bluetoothBackend }
+                    KeyValueRow { label: qsTr("Audio backend"); value: AppCore.platform.audioBackend }
+                    KeyValueRow { label: qsTr("Power backend"); value: AppCore.platform.powerBackend }
                     KeyValueRow { label: qsTr("Recovery"); value: AppCore.recoveryStatus }
                     KeyValueRow { label: qsTr("Bluetooth"); value: AppCore.bluetoothStatus }
-                    KeyValueRow { label: qsTr("PipeWire"); value: audio ? audio.connectionStateText : AppCore.pipeWireStatus }
+                    KeyValueRow { label: AppCore.platform.audioBackend; value: audio ? audio.connectionStateText : AppCore.audioStatus }
                     KeyValueRow { label: qsTr("Session"); value: sessions ? sessions.sessionStateText : "" }
                     KeyValueRow { label: qsTr("Devices"); value: bluetooth ? String(bluetooth.deviceCount) : "0" }
                     KeyValueRow { label: qsTr("Endpoints"); value: audio ? String(audio.endpointCount) : "0" }
                 }
                 SectionCard {
                     title: qsTr("Bluetooth")
+                    subtitle: qsTr("Radio adapter and discovery state")
+                    signalColor: Theme.accentSecondary
                     KeyValueRow { label: qsTr("Adapter"); value: bluetooth ? bluetooth.adapterName : "" }
                     KeyValueRow { label: qsTr("Powered"); value: bluetooth && bluetooth.adapterPowered ? qsTr("Yes") : qsTr("No") }
                     KeyValueRow { label: qsTr("Discovering"); value: bluetooth && bluetooth.scanning ? qsTr("Yes") : qsTr("No") }
                     KeyValueRow { label: qsTr("Error"); value: bluetooth ? bluetooth.errorText : "" }
                 }
                 SectionCard {
-                    title: qsTr("PipeWire")
+                    title: AppCore.platform.audioBackend
+                    subtitle: qsTr("Native audio graph and mapped endpoints")
+                    signalColor: Theme.info
                     KeyValueRow { label: qsTr("Nodes"); value: audio ? String(audio.nodeCount) : "0" }
                     KeyValueRow { label: qsTr("Mapped BT"); value: audio ? String(audio.mappedBluetoothCount) : "0" }
                     Label {
@@ -64,6 +74,7 @@ Item {
                 }
                 SectionCard {
                     title: qsTr("Devices")
+                    signalColor: Theme.success
                     Repeater {
                         model: bluetooth ? bluetooth.devices : null
                         delegate: KeyValueRow {
@@ -85,6 +96,7 @@ Item {
                 }
                 SectionCard {
                     title: qsTr("Routes")
+                    signalColor: Theme.accentSecondary
                     Repeater {
                         model: router ? router.routes : null
                         delegate: KeyValueRow {
@@ -105,6 +117,7 @@ Item {
                 }
                 SectionCard {
                     title: qsTr("Current session members")
+                    signalColor: Theme.warning
                     Repeater {
                         model: sessions ? sessions.currentMembers : null
                         delegate: KeyValueRow {
@@ -139,8 +152,9 @@ Item {
                 placeholderText: qsTr("Filter category")
                 onTextChanged: logs.categoryFilter = text
             }
-            Button {
+            SignalButton {
                 text: qsTr("Copy visible")
+                primary: true
                 onClicked: {
                     if (logs.copyVisibleToClipboard())
                         AppCore.notifications.postInfo(qsTr("Diagnostics"), qsTr("Visible log copied to clipboard"))
@@ -155,6 +169,14 @@ Item {
             Layout.fillHeight: true
             clip: true
             model: logs
+            spacing: 2
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                radius: Theme.cardRadius
+                color: Theme.alpha(Theme.backgroundElevated, 0.82)
+                border.color: Theme.border
+            }
             delegate: Label {
                 required property string timestamp
                 required property string severity
@@ -165,6 +187,14 @@ Item {
                 color: Theme.textMuted
                 wrapMode: Text.WrapAnywhere
                 font.pixelSize: 11
+                leftPadding: Metrics.sm
+                rightPadding: Metrics.sm
+                topPadding: 4
+                bottomPadding: 4
+                background: Rectangle {
+                    radius: 6
+                    color: index % 2 === 0 ? Theme.alpha(Theme.surfaceRaised, 0.28) : "transparent"
+                }
             }
         }
     }

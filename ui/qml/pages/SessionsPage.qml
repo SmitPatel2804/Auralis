@@ -58,20 +58,21 @@ Item {
         anchors.fill: parent
         spacing: Metrics.md
 
-        PageHeader { title: qsTr("Sessions"); subtitle: qsTr("Create, activate, and recover multi-device sessions") }
+        PageHeader { title: qsTr("Session Orchestrator"); subtitle: qsTr("Compose, activate, and recover synchronized listening groups") }
 
         RowLayout {
-            Button {
+            SignalButton {
                 text: qsTr("Create")
+                primary: true
                 Accessible.name: qsTr("Create session")
                 onClicked: createDialog.open()
             }
-            Button {
+            SignalButton {
                 text: qsTr("Rename")
                 enabled: root.selectedId.length > 0
                 onClicked: renameDialog.open()
             }
-            Button {
+            SignalButton {
                 text: qsTr("Duplicate")
                 enabled: root.selectedId.length > 0
                 Accessible.name: qsTr("Duplicate session")
@@ -84,12 +85,13 @@ Item {
                     }
                 }
             }
-            Button {
+            SignalButton {
                 text: qsTr("Delete")
+                danger: true
                 enabled: root.selectedId.length > 0
                 onClicked: deleteDialog.open()
             }
-            Button {
+            SignalButton {
                 text: qsTr("Restore last session")
                 Accessible.name: qsTr("Restore last session")
                 onClicked: {
@@ -103,10 +105,26 @@ Item {
         SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            handle: Rectangle {
+                implicitWidth: 5
+                color: Theme.alpha(Theme.accent, SplitHandle.hovered || SplitHandle.pressed ? 0.55 : 0.15)
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 1
+                    height: 54
+                    color: Theme.alpha(Theme.accent, 0.65)
+                }
+            }
 
             Frame {
                 SplitView.preferredWidth: 280
                 SplitView.minimumWidth: 200
+                padding: Metrics.xs
+                background: Rectangle {
+                    radius: Theme.cardRadius
+                    color: Theme.alpha(Theme.surface, 0.9)
+                    border.color: Theme.alpha(Theme.accentSecondary, 0.24)
+                }
                 ListView {
                     id: list
                     anchors.fill: parent
@@ -126,6 +144,16 @@ Item {
                         width: ListView.view.width
                         text: name
                         highlighted: root.selectedId === sessionId
+                        hoverEnabled: true
+                        background: Rectangle {
+                            radius: 10
+                            color: highlighted
+                                   ? Theme.alpha(Theme.accentSecondary, 0.18)
+                                   : (parent.hovered ? Theme.surfaceHover : "transparent")
+                            border.color: highlighted
+                                          ? Theme.alpha(Theme.accentSecondary, 0.55)
+                                          : "transparent"
+                        }
                         onClicked: root.selectedId = sessionId
                         Component.onCompleted: {
                             if (index === 0)
@@ -153,6 +181,12 @@ Item {
             Frame {
                 SplitView.fillWidth: true
                 SplitView.minimumWidth: 320
+                padding: 0
+                background: Rectangle {
+                    radius: Theme.cardRadius
+                    color: Theme.alpha(Theme.surface, 0.82)
+                    border.color: Theme.alpha(Theme.accent, 0.2)
+                }
 
                 EmptyState {
                     visible: !selected || !selected.exists
@@ -211,17 +245,18 @@ Item {
                         }
 
                         RowLayout {
-                            Button {
+                            SignalButton {
                                 text: qsTr("Activate")
+                                primary: true
                                 enabled: root.canActivate
                                 onClicked: root.report(sessions.activateSession(root.selectedId))
                             }
-                            Button {
+                            SignalButton {
                                 text: qsTr("Deactivate")
                                 enabled: root.canDeactivate
                                 onClicked: root.report(sessions.deactivateSession(root.selectedId))
                             }
-                            Button {
+                            SignalButton {
                                 text: qsTr("Retry")
                                 enabled: root.canRetry
                                 onClicked: root.report(sessions.retrySession(root.selectedId))
@@ -255,6 +290,12 @@ Item {
                         Frame {
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(120, Math.min(220, 48 * Math.max(1, root.memberCount)))
+                            padding: Metrics.sm
+                            background: Rectangle {
+                                radius: 12
+                                color: Theme.alpha(Theme.backgroundElevated, 0.68)
+                                border.color: Theme.border
+                            }
                             ListView {
                                 anchors.fill: parent
                                 clip: true
@@ -273,7 +314,12 @@ Item {
                                         from: 0; to: 1; value: volume
                                         onPressedChanged: if (!pressed) root.report(sessions.setDeviceVolume(root.selectedId, deviceId, value))
                                     }
-                                    Button { text: qsTr("Remove"); onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId)) }
+                                    SignalButton {
+                                        text: qsTr("Remove")
+                                        compact: true
+                                        danger: true
+                                        onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId))
+                                    }
                                 }
                                 EmptyState {
                                     visible: root.memberCount === 0

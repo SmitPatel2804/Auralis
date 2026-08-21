@@ -1,8 +1,9 @@
 #pragma once
 
-#include <auralis/audio/IPipeWireManager.h>
+#include <auralis/audio/IAudioManager.h>
 #include <auralis/bluetooth/IBluetoothManager.h>
 #include <auralis/core/ConfigurationManager.h>
+#include <auralis/core/PlatformCapabilities.h>
 #include <auralis/core/ServiceStatus.h>
 #include <auralis/devices/IDeviceManager.h>
 #include <auralis/recovery/RecoveryManager.h>
@@ -21,7 +22,7 @@ namespace auralis::core {
 struct ApplicationServices {
     std::unique_ptr<ConfigurationManager> configuration;
     std::unique_ptr<bluetooth::IBluetoothManager> bluetooth;
-    std::unique_ptr<audio::IPipeWireManager> pipeWire;
+    std::unique_ptr<audio::IAudioManager> pipeWire;
     std::unique_ptr<devices::IDeviceManager> devices;
     std::unique_ptr<session::ISessionManager> sessions;
     std::unique_ptr<recovery::RecoveryManager> recovery;
@@ -44,6 +45,7 @@ class ApplicationCore final : public QObject {
     Q_PROPERTY(QObject* notifications READ notifications CONSTANT)
     Q_PROPERTY(QObject* diagnostics READ diagnostics CONSTANT)
     Q_PROPERTY(QObject* recovery READ recovery CONSTANT)
+    Q_PROPERTY(QObject* platform READ platform CONSTANT)
     Q_PROPERTY(QString recoveryStatus READ recoveryStatus NOTIFY recoveryStatusChanged)
     Q_PROPERTY(int currentPage READ currentPage WRITE setCurrentPage NOTIFY currentPageChanged)
     Q_PROPERTY(int warningCount READ warningCount NOTIFY warningCountChanged)
@@ -75,8 +77,11 @@ public:
     QObject* notifications() const;
     QObject* diagnostics() const;
     QObject* recovery() const;
+    QObject* platform() const;
     recovery::RecoveryManager* recoveryManager() const noexcept;
     recovery::SystemPowerMonitor* powerMonitor() const noexcept;
+    bluetooth::IBluetoothManager* bluetoothService() const noexcept;
+    audio::IAudioManager* audioService() const noexcept;
     QString recoveryStatus() const;
     int currentPage() const;
     void setCurrentPage(int page);
@@ -111,6 +116,7 @@ private:
     QString activeSessionId_;
     ui::NotificationController notifications_;
     ui::DiagnosticsLogModel diagnostics_;
+    PlatformCapabilities platform_;
 };
 
 } // namespace auralis::core

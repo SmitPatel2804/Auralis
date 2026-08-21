@@ -1,19 +1,11 @@
 #pragma once
 
-#include <auralis/core/ServiceStatus.h>
-
-class QObject;
+#include <auralis/audio/IAudioManager.h>
 
 namespace auralis::audio {
 
-class IPipeWireManager {
-public:
-    virtual ~IPipeWireManager() = default;
-
-    virtual bool initialize() = 0;
-    virtual void shutdown() = 0;
-    virtual auralis::core::ServiceStatus status() const noexcept = 0;
-    virtual QObject* uiObject() { return nullptr; }
-};
+// Compatibility alias retained while downstream code and persisted diagnostics
+// migrate from the Linux implementation name to the platform-neutral contract.
+using IPipeWireManager = IAudioManager;
 
 } // namespace auralis::audio

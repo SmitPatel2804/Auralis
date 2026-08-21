@@ -1,6 +1,6 @@
 #pragma once
 
-#include <auralis/audio/IPipeWireManager.h>
+#include <auralis/audio/IAudioManager.h>
 #include <auralis/bluetooth/IBluetoothManager.h>
 #include <auralis/core/ConfigurationManager.h>
 #include <auralis/core/ServiceStatus.h>
@@ -93,7 +93,7 @@ private:
 };
 
 using FakeBluetoothManager = FakeService<bluetooth::IBluetoothManager>;
-using FakePipeWireManager = FakeService<audio::IPipeWireManager>;
+using FakePipeWireManager = FakeService<audio::IAudioManager>;
 using FakeDeviceManager = FakeService<devices::IDeviceManager>;
 using FakeSessionManager = FakeService<session::ISessionManager>;
 

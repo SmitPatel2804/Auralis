@@ -2,6 +2,8 @@
 
 #include <auralis/audio/PipeWireObjectStore.h>
 
+#include <QSet>
+
 #include <algorithm>
 
 namespace auralis::audio {
@@ -143,13 +145,18 @@ std::optional<AudioSource> classifyAudioSource(const PipeWireNodeInfo& node, con
 QVector<AudioSource> classifyAudioSources(const PipeWireObjectStore& store)
 {
     QVector<AudioSource> result;
+    QSet<quint32> defaultNodes;
     for (const PipeWireNodeInfo& node : store.nodes()) {
+        if (node.properties.boolValue(QStringLiteral("device.default")).value_or(false)) {
+            defaultNodes.insert(node.globalId);
+        }
         if (auto source = classifyAudioSource(node, store)) {
             result.push_back(*source);
         }
     }
     // App playback first (what sessions usually want), then mics, then sink monitors.
-    std::sort(result.begin(), result.end(), [](const AudioSource& left, const AudioSource& right) {
+    // Within a source type, keep the operating system's default device first.
+    std::sort(result.begin(), result.end(), [&defaultNodes](const AudioSource& left, const AudioSource& right) {
         auto rank = [](AudioSourceType type) {
             switch (type) {
             case AudioSourceType::ApplicationPlaybackStream:
@@ -168,6 +175,11 @@ QVector<AudioSource> classifyAudioSources(const PipeWireObjectStore& store)
         const int rightRank = rank(right.sourceType);
         if (leftRank != rightRank) {
             return leftRank < rightRank;
+        }
+        const bool leftIsDefault = defaultNodes.contains(left.pipeWireNodeId);
+        const bool rightIsDefault = defaultNodes.contains(right.pipeWireNodeId);
+        if (leftIsDefault != rightIsDefault) {
+            return leftIsDefault;
         }
         return left.description < right.description;
     });

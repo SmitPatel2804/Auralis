@@ -17,3 +17,6 @@ target_link_libraries(tst_NotificationController PRIVATE auralis-core)
 auralis_add_test(tst_DiagnosticsLogModel tst_DiagnosticsLogModel.cpp)
 target_link_libraries(tst_DiagnosticsLogModel PRIVATE auralis-core)
 
+auralis_add_test(tst_PlatformCapabilities tst_PlatformCapabilities.cpp)
+target_link_libraries(tst_PlatformCapabilities PRIVATE auralis-core)
+

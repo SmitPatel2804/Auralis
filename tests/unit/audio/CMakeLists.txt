@@ -1,5 +1,10 @@
-auralis_add_test(tst_PipeWireManager tst_PipeWireManager.cpp)
-target_link_libraries(tst_PipeWireManager PRIVATE auralis-audio)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    auralis_add_test(tst_PipeWireManager tst_PipeWireManager.cpp)
+    target_link_libraries(tst_PipeWireManager PRIVATE auralis-audio)
+else()
+    auralis_add_test(tst_NativeAudioManager tst_NativeAudioManager.cpp)
+    target_link_libraries(tst_NativeAudioManager PRIVATE auralis-audio auralis-bluetooth)
+endif()
 
 auralis_add_test(tst_PipeWireProperties tst_PipeWireProperties.cpp)
 target_link_libraries(tst_PipeWireProperties PRIVATE auralis-audio)

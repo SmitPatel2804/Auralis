@@ -1,6 +1,8 @@
 # Auralis
 
-Auralis is a Linux desktop application for managing multiple Bluetooth/hearing audio devices and routing audio via BlueZ and PipeWire.
+Auralis is a cross-platform desktop application for managing multiple Bluetooth/hearing audio devices and routing one audio source to multiple outputs. Linux uses BlueZ and PipeWire; Windows and macOS use Qt's native Bluetooth and multimedia integrations.
+
+The Qt/QML UI, device model, session persistence, route planner, volume controls, recovery policy, and diagnostics are shared on Linux, Windows, and macOS. Platform selection occurs only in the desktop composition and backend build targets.
 
 This repository currently contains **Phase 8**: reliability orchestration, service recovery, suspend/resume coordination, log rotation, automated failure-injection tests, and `.deb` packaging on top of Phases 0–7.
 
@@ -18,15 +20,15 @@ Phase 7: Implemented (GUI + hardened file logging)
 Phase 8: Software exit PASS (hardware validation pending)
 ```
 
-`Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for BlueZ/adapter/scan state.
+`Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for adapter and scan state.
 
-`PipeWire Connected` means Auralis attached to the user PipeWire server and is watching the registry. An **Active** route in the Audio Routing panel means Auralis-owned links exist for the current selection.
+`Audio Connected` means Auralis attached to the selected platform audio backend and completed endpoint discovery. An **Active** route means Auralis owns the links or native streams for the current selection.
 
-Licensing terms are **not yet selected** (`LICENSE`). Package maintainer contact is also pending. Local `.deb` builds are for engineering validation; public redistribution remains blocked until the owner approves a license and contact metadata.
+Licensing terms are **not yet selected** (`LICENSE`). Package maintainer contact is also pending. Local packages are for engineering validation; public redistribution remains blocked until the owner approves a license and contact metadata.
 
 ## Requirements
 
-Validated development baseline:
+Linux reference baseline:
 
 | Component | Baseline |
 |---|---|
@@ -42,6 +44,8 @@ Validated development baseline:
 
 Hardware-independent tests do not require a Bluetooth adapter. The desktop scan UI does.
 
+Windows and macOS builds require Qt 6.8 or newer with Bluetooth (`qtconnectivity`) and Multimedia. Windows specifically requires the **MSVC 2022 64-bit Qt kit and compiler**: Qt 6 does not provide a functional Windows Bluetooth backend in its MinGW builds. CMake rejects Windows+MinGW so a build cannot silently fall back to Qt's dummy Bluetooth backend. Linux additionally requires Qt DBus and the `libpipewire-0.3` development package. The cross-platform CI workflow builds and tests all three desktop families.
+
 ## Build
 
 ```bash
@@ -49,12 +53,23 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-Configure fails if Qt 6 DBus or `libpipewire-0.3` development files are missing.
+On Windows, run these commands from an **x64 Native Tools Command Prompt for VS 2022** (or another shell initialized with `vcvars64.bat`) and point CMake at the MSVC Qt kit when it is not already discoverable:
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=C:/Qt/6.11.2/msvc2022_64
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Do not configure the Windows application against `mingw_64`; that Qt build uses a non-functional Bluetooth dummy backend.
+
+On Linux, configure fails if Qt DBus or `libpipewire-0.3` development files are missing. Windows and macOS do not compile or link either Linux dependency.
 
 ## Run
 
 ```bash
-./build/apps/desktop/auralis-desktop
+./build/apps/desktop/auralis-desktop       # Linux/macOS build tree
+# build\\apps\\desktop\\auralis-desktop.exe  # Windows build tree
 ```
 
 If no display server is available:
@@ -63,13 +78,11 @@ If no display server is available:
 QT_QPA_PLATFORM=offscreen ./build/apps/desktop/auralis-desktop
 ```
 
-In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, and per-device **Pair / Trust / Connect / Disconnect / Reconnect / Forget** actions. Pairing prompts appear when BlueZ invokes the exported Agent1.
+In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, and per-device **Pair / Trust / Connect / Disconnect / Reconnect / Forget** actions. Linux pairing prompts are handled by the BlueZ Agent1 integration; Windows and macOS use the operating system's pairing UI and policy.
 
-The **Audio Endpoints** list shows classified PipeWire sinks/sources. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
+The **Audio Endpoints** list shows platform playback devices. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
-The **Audio Routing** panel selects a playback source and one or more playback endpoints, then Activate/Deactivate. Volume/mute appear when the destinations support `SPA_PROP_volume`.
-
-Configure fails if Qt 6 DBus or `libpipewire-0.3` development files are missing.
+The **Audio Routing** panel selects a source and one or more playback endpoints, then Activate/Deactivate. Linux routes playback streams through PipeWire. Windows/macOS fan out a selected native capture source through Qt Multimedia over WASAPI/Core Audio.
 
 Optional AddressSanitizer/UBSan build:
 
@@ -79,13 +92,15 @@ cmake --build build-asan
 ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-asan --output-on-failure
 ```
 
-## Package (`.deb`)
+## Package
 
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build
-cd build && cpack -G DEB
+cd build && cpack
 ```
+
+The default artifact is a DEB on Linux, an NSIS installer plus ZIP on Windows when NSIS is installed (otherwise ZIP), and a DMG on macOS.
 
 Install validation (no root required for extract/launch smoke):
 
@@ -149,17 +164,17 @@ ctest --test-dir build -R tst_SessionLiveIntegration --output-on-failure
 | Module | Target | Current role |
 |---|---|---|
 | `auralis-core` | Lifecycle, logging, configuration, `ApplicationCore` | Implemented |
-| `auralis-bluetooth` | BlueZ D-Bus discovery + device lifecycle (QtDBus / system bus) | Phase 3 |
-| `auralis-audio` | Native PipeWire graph + additive routing (`AudioRouter`) | Phase 5 |
+| `auralis-bluetooth` | BlueZ D-Bus on Linux; native Qt Bluetooth on Windows/macOS | Platform-selected |
+| `auralis-audio` | PipeWire on Linux; Qt Multimedia over WASAPI/Core Audio on Windows/macOS | Platform-selected |
 | `auralis-devices` | Future high-level device model | Lifecycle stub |
 | `auralis-session` | Multi-device session engine (`SessionManager`) | Phase 6 |
-| `auralis-recovery` | Service recovery orchestration + logind power monitor | Phase 8 |
+| `auralis-recovery` | Shared recovery + logind/Windows/NSWorkspace power monitoring | Phase 8 |
 | `auralis-ui` | QML resources | Status + discovery + device actions + endpoints + routing |
 | `auralis-desktop` | Process entry point | Thin bootstrap |
 
-QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` (including `AppCore.audio.router`) for PipeWire status, endpoints, and routing. QML never talks D-Bus or native PipeWire.
+QML uses `AppCore.bluetooth` for scan controls and the device list, and `AppCore.audio` (including `AppCore.audio.router`) for status, endpoints, and routing. QML never calls D-Bus, PipeWire, WASAPI, or Core Audio directly.
 
-See [docs/architecture/overview.md](docs/architecture/overview.md). The full documentation map is in [docs/README.md](docs/README.md).
+See [docs/architecture/overview.md](docs/architecture/overview.md) and [docs/architecture/cross-platform-backends.md](docs/architecture/cross-platform-backends.md). The full documentation map is in [docs/README.md](docs/README.md).
 
 ## Documentation
 

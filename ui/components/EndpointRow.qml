@@ -49,7 +49,7 @@ Column {
 
     Text {
         visible: root.showDeveloperDetail
-        text: "PW Node ID: " + root.pipeWireObjectId
+        text: qsTr("Audio node ID: %1").arg(root.pipeWireObjectId)
               + (root.bluetoothAddress.length > 0 ? (" · " + root.bluetoothAddress) : "")
               + (root.codec.length > 0 ? (" · " + root.codec) : "")
         font.pixelSize: 11

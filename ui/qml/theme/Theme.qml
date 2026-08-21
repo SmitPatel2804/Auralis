@@ -2,22 +2,36 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    readonly property color background: "#0f1419"
-    readonly property color surface: "#1a222c"
-    readonly property color surfaceAlt: "#232d3a"
-    readonly property color border: "#334155"
-    readonly property color text: "#e8eef5"
-    readonly property color textMuted: "#94a3b8"
-    readonly property color accent: "#3b82f6"
-    readonly property color success: "#22c55e"
-    readonly property color warning: "#f59e0b"
-    readonly property color danger: "#ef4444"
-    readonly property color info: "#38bdf8"
-    readonly property color focusRing: "#93c5fd"
+    // Deep-space neutrals keep dense routing information readable while the
+    // cyan/violet signal colors make live state feel immediate.
+    readonly property color background: "#050912"
+    readonly property color backgroundElevated: "#08111D"
+    readonly property color surface: "#0B1624"
+    readonly property color surfaceAlt: "#0E1D2E"
+    readonly property color surfaceRaised: "#13263A"
+    readonly property color surfaceHover: "#173149"
+    readonly property color border: "#1B354B"
+    readonly property color borderBright: "#2B6680"
+    readonly property color text: "#F2F8FF"
+    readonly property color textMuted: "#8AA2B8"
+    readonly property color textFaint: "#587086"
+    readonly property color accent: "#21D4FD"
+    readonly property color accentSecondary: "#8B5CF6"
+    readonly property color accentSoft: "#164E63"
+    readonly property color success: "#2DD4BF"
+    readonly property color warning: "#FBBF24"
+    readonly property color danger: "#FB7185"
+    readonly property color info: "#38BDF8"
+    readonly property color focusRing: "#67E8F9"
     readonly property real disabledOpacity: 0.45
-    readonly property int radius: 10
-    readonly property int controlHeight: 36
-    readonly property int duration: 120
+    readonly property int radius: 12
+    readonly property int cardRadius: 16
+    readonly property int controlHeight: 40
+    readonly property int duration: 180
+
+    function alpha(color, amount) {
+        return Qt.rgba(color.r, color.g, color.b, amount)
+    }
 
     function statusColor(kind) {
         switch (kind) {

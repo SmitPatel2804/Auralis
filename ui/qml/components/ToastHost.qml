@@ -23,9 +23,9 @@ Item {
                 required property string title
                 required property string message
                 Layout.fillWidth: true
-                radius: Theme.radius
-                color: Theme.surfaceAlt
-                border.color: Theme.statusColor(severity === "error" ? "error" : (severity === "warning" ? "warning" : "info"))
+                radius: Theme.cardRadius
+                color: Theme.surfaceRaised
+                border.color: Theme.alpha(Theme.statusColor(severity === "error" ? "error" : (severity === "warning" ? "warning" : "info")), 0.7)
                 implicitHeight: inner.implicitHeight + Metrics.sm * 2
 
                 RowLayout {

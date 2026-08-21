@@ -4,6 +4,15 @@
 /cmake-build-*/
 /out/
 
+# CPack artifacts (when cpack is run from the source root)
+/_CPack_Packages/
+/*.zip
+/*.deb
+/*.dmg
+/*.msi
+/*.tar.gz
+/*.tgz
+
 # Secrets / local env
 .env
 .env.*
@@ -15,6 +24,8 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 CMakeUserPresets.json
+CPackConfig.cmake
+CPackSourceConfig.cmake
 compile_commands.json
 install_manifest.txt
 DartConfiguration.tcl
@@ -36,12 +47,19 @@ ui_*.h
 
 # Compiled objects and libraries
 *.o
+*.obj
 *.a
+*.lib
+*.exp
+*.pdb
+*.ilk
 *.so
 *.so.*
 *.dll
 *.dylib
 *.exe
+*.app
+*.dSYM
 
 # Coverage
 *.gcda
@@ -55,7 +73,9 @@ ui_*.h
 *.swp
 *~
 .DS_Store
+Thumbs.db
 .idea/
+.vs/
 .cache/
 .clangd/
 .vscode/

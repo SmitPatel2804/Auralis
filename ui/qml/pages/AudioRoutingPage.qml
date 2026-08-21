@@ -16,12 +16,14 @@ Flickable {
         width: root.width
         spacing: Metrics.md
 
-        PageHeader { title: qsTr("Audio Routing"); subtitle: qsTr("Sources, destinations, and active routes") }
+        PageHeader { title: qsTr("Signal Graph"); subtitle: qsTr("Sources, destinations and active native audio routes") }
 
         ErrorBanner { text: router ? router.lastErrorText : "" }
 
         SectionCard {
             title: qsTr("Sources")
+            subtitle: qsTr("Capture nodes available to the routing engine")
+            signalColor: Theme.accent
             Repeater {
                 model: router ? router.sources : null
                 delegate: RowLayout {
@@ -43,6 +45,8 @@ Flickable {
 
         SectionCard {
             title: qsTr("Endpoints")
+            subtitle: qsTr("Playback destinations correlated with your devices")
+            signalColor: Theme.accentSecondary
             Repeater {
                 model: audio ? audio.endpoints : null
                 delegate: Item {
@@ -79,6 +83,8 @@ Flickable {
 
         SectionCard {
             title: qsTr("Routes")
+            subtitle: qsTr("Owned signal paths and activation state")
+            signalColor: Theme.success
             Repeater {
                 model: router ? router.routes : null
                 delegate: ColumnLayout {
@@ -99,8 +105,8 @@ Flickable {
                     Label { text: qsTr("%1 destinations").arg(destinationCount); color: Theme.textMuted }
                     Label { visible: errorText.length > 0; text: errorText; color: Theme.danger; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
-                        Button { text: qsTr("Activate"); enabled: editable; onClicked: root.router.activateRoute(routeId) }
-                        Button { text: qsTr("Deactivate"); enabled: editable; onClicked: root.router.deactivateRoute(routeId) }
+                        SignalButton { text: qsTr("ACTIVATE"); primary: true; compact: true; enabled: editable; onClicked: root.router.activateRoute(routeId) }
+                        SignalButton { text: qsTr("DEACTIVATE"); compact: true; enabled: editable; onClicked: root.router.deactivateRoute(routeId) }
                     }
                 }
             }

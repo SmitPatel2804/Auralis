@@ -6,18 +6,28 @@ Label {
     property string kind: "idle"
     property string label: ""
 
-    text: root.label
+    text: "  " + root.label.toUpperCase()
     color: Theme.statusColor(root.kind)
-    font.pixelSize: Metrics.caption
+    font.pixelSize: 9
     font.bold: true
-    leftPadding: 8
-    rightPadding: 8
-    topPadding: 3
-    bottomPadding: 3
+    font.letterSpacing: 0.55
+    leftPadding: 9
+    rightPadding: 10
+    topPadding: 5
+    bottomPadding: 5
     background: Rectangle {
         radius: 999
-        color: Qt.rgba(Theme.statusColor(root.kind).r, Theme.statusColor(root.kind).g, Theme.statusColor(root.kind).b, 0.16)
-        border.color: Theme.statusColor(root.kind)
+        color: Theme.alpha(Theme.statusColor(root.kind), 0.11)
+        border.color: Theme.alpha(Theme.statusColor(root.kind), 0.48)
         border.width: 1
+
+        Rectangle {
+            width: 5
+            height: 5
+            radius: 3
+            x: 7
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.statusColor(root.kind)
+        }
     }
 }

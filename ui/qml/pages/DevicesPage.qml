@@ -37,7 +37,7 @@ Item {
         spacing: Metrics.md
 
         PageHeader {
-            title: qsTr("Devices")
+            title: qsTr("Device Matrix")
             subtitle: bluetooth && bluetooth.adapterName.length > 0
                       ? (bluetooth.adapterName + " · " + bluetooth.adapterAddress)
                       : qsTr("No Bluetooth adapter")
@@ -47,13 +47,14 @@ Item {
 
         RowLayout {
             spacing: Metrics.sm
-            Button {
+            SignalButton {
                 text: bluetooth && bluetooth.scanning ? qsTr("Stop Scan") : qsTr("Start Scan")
+                primary: true
                 enabled: bluetooth && (bluetooth.scanning ? bluetooth.canStopScan : bluetooth.canStartScan)
                 Accessible.name: text
                 onClicked: bluetooth.scanning ? bluetooth.stopScan() : bluetooth.startScan()
             }
-            Button {
+            SignalButton {
                 text: qsTr("Refresh")
                 enabled: !!bluetooth
                 Accessible.name: qsTr("Refresh Bluetooth")
@@ -73,6 +74,14 @@ Item {
                 placeholderText: qsTr("Search")
                 text: root.query
                 onTextChanged: root.query = text
+                leftPadding: Metrics.md
+                rightPadding: Metrics.md
+                background: Rectangle {
+                    radius: 11
+                    color: Theme.alpha(Theme.surfaceRaised, 0.72)
+                    border.color: parent.activeFocus ? Theme.accent : Theme.border
+                    border.width: 1
+                }
             }
         }
 
@@ -84,12 +93,14 @@ Item {
                     { id: "known", label: qsTr("Known") },
                     { id: "connected", label: qsTr("Connected") }
                 ]
-                delegate: Button {
+                delegate: SignalButton {
                     required property string id
                     required property string label
                     text: label
                     checkable: true
                     checked: root.filter === id
+                    compact: true
+                    primary: checked
                     onClicked: root.filter = id
                 }
             }
@@ -99,10 +110,27 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
+            handle: Rectangle {
+                implicitWidth: 10
+                implicitHeight: 10
+                color: "transparent"
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 1
+                    height: parent.height * 0.42
+                    color: Theme.alpha(Theme.accent, 0.34)
+                }
+            }
 
             Frame {
                 SplitView.preferredWidth: parent.width * 0.58
                 SplitView.fillHeight: true
+                padding: Metrics.sm
+                background: Rectangle {
+                    radius: Theme.cardRadius
+                    color: Theme.alpha(Theme.surface, 0.68)
+                    border.color: Theme.alpha(Theme.borderBright, 0.3)
+                }
                 ListView {
                     id: deviceList
                     anchors.fill: parent
@@ -227,10 +255,22 @@ Item {
 
             Frame {
                 SplitView.fillHeight: true
+                padding: 0
+                background: Rectangle {
+                    radius: Theme.cardRadius
+                    color: Theme.alpha(Theme.surfaceAlt, 0.72)
+                    border.color: Theme.alpha(Theme.accentSecondary, 0.28)
+                }
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Metrics.sm
-                    Label { text: qsTr("Details"); color: Theme.text; font.bold: true }
+                    Label {
+                        text: qsTr("DEVICE TELEMETRY")
+                        color: Theme.accentSecondary
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1.2
+                    }
                     Label {
                         visible: root.selectedPath.length === 0
                         text: qsTr("Select a device to inspect technical details.")
@@ -322,7 +362,7 @@ Item {
         property string devicePath: ""
         property string deviceName: ""
         title: qsTr("Forget device")
-        message: qsTr("Remove %1 from BlueZ? This cannot be undone from Auralis.").arg(deviceName)
+        message: qsTr("Remove %1 from the operating system's paired devices? This cannot be undone from Auralis.").arg(deviceName)
         confirmText: qsTr("Forget")
         onConfirmed: bluetooth.forgetDevice(devicePath)
     }

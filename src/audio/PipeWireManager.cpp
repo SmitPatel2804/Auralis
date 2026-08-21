@@ -72,6 +72,11 @@ QObject* PipeWireManager::uiObject()
     return this;
 }
 
+QString PipeWireManager::backendName() const
+{
+    return QStringLiteral("PipeWire");
+}
+
 auralis::core::ServiceStatus PipeWireManager::status() const noexcept
 {
     return status_;
@@ -90,6 +95,11 @@ QString PipeWireManager::connectionStateText() const
 bool PipeWireManager::connected() const noexcept
 {
     return connectionState_ == PipeWireConnectionState::Connected;
+}
+
+bool PipeWireManager::graphReady() const noexcept
+{
+    return connected() && initialSyncComplete();
 }
 
 QString PipeWireManager::lastError() const

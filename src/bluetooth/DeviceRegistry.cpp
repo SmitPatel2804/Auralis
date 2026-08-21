@@ -254,4 +254,11 @@ bool DeviceRegistry::setReconnectAttempt(const QString& objectPath, int attempt)
     return mutateDevice(objectPath, [attempt](BluetoothDeviceData& device) { device.reconnectAttempt = attempt; });
 }
 
+bool DeviceRegistry::updateDevice(
+    const QString& objectPath,
+    const std::function<void(BluetoothDeviceData&)>& mutator)
+{
+    return mutateDevice(objectPath, mutator);
+}
+
 } // namespace auralis::bluetooth

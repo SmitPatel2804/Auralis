@@ -1,7 +1,4 @@
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
-
-add_library(auralis-audio
+set(AURALIS_AUDIO_SOURCES
     AudioEndpoint.cpp
     AudioEndpointClassifier.cpp
     AudioEndpointListModel.cpp
@@ -12,8 +9,6 @@ add_library(auralis-audio
     AudioSourceListModel.cpp
     EndpointResolver.cpp
     LinkManager.cpp
-    PipeWireConnection.cpp
-    PipeWireManager.cpp
     PipeWireObjectStore.cpp
     PipeWireProperties.cpp
     PipeWireTypes.cpp
@@ -29,11 +24,10 @@ add_library(auralis-audio
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioSource.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioSourceListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/EndpointResolver.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/audio/IAudioManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/IPipeWireLinkBackend.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/IPipeWireManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/LinkManager.h"
-    "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireConnection.h"
-    "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireObjectStore.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireProperties.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireTypes.h"
@@ -41,6 +35,22 @@ add_library(auralis-audio
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RouteListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/VolumeController.h"
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND AURALIS_AUDIO_SOURCES
+        PipeWireConnection.cpp
+        PipeWireManager.cpp
+        "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireConnection.h"
+        "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireManager.h"
+    )
+else()
+    list(APPEND AURALIS_AUDIO_SOURCES
+        NativeAudioManager.cpp
+        "${CMAKE_SOURCE_DIR}/include/auralis/audio/NativeAudioManager.h"
+    )
+endif()
+
+add_library(auralis-audio ${AURALIS_AUDIO_SOURCES})
 
 add_library(Auralis::Audio ALIAS auralis-audio)
 
@@ -54,7 +64,14 @@ target_link_libraries(auralis-audio
         auralis-core
         auralis-bluetooth
         Qt6::Core
-        PkgConfig::PIPEWIRE
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+    target_link_libraries(auralis-audio PUBLIC PkgConfig::PIPEWIRE)
+else()
+    target_link_libraries(auralis-audio PUBLIC Qt6::Multimedia)
+endif()
 
 auralis_apply_warnings(auralis-audio)

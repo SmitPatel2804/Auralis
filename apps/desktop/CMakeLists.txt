@@ -25,6 +25,25 @@ set_target_properties(auralis-desktop PROPERTIES
     OUTPUT_NAME "auralis-desktop"
 )
 
+if(WIN32)
+    set_target_properties(auralis-desktop PROPERTIES WIN32_EXECUTABLE TRUE)
+elseif(APPLE)
+    set_target_properties(auralis-desktop PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "Auralis"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.auralis.Auralis"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/AuralisInfo.plist.in"
+    )
+endif()
+
+# The application QML lives in the linked auralis-ui static module rather than
+# beside this executable target. Tell Qt's deployment scanner where those QML
+# sources are so packaged builds include transitive imports such as QtQuick,
+# QtQuick.Controls, and QtQuick.Layouts on every desktop platform.
+set_property(TARGET auralis-desktop PROPERTY
+    QT_QML_IMPORT_SCANNER_EXTRA_ROOT_PATHS "${CMAKE_SOURCE_DIR}/ui"
+)
+
 qt_import_qml_plugins(auralis-desktop)
 
 auralis_apply_warnings(auralis-desktop)
@@ -33,24 +52,49 @@ include(GNUInstallDirs)
 
 install(TARGETS auralis-desktop
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION .
 )
 
-install(FILES
-    "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.desktop"
-    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
+    )
 
-install(FILES
-    "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.metainfo.xml"
-    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo"
-)
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/data/io.github.auralis.Auralis.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo"
+    )
 
-install(FILES
-    "${CMAKE_SOURCE_DIR}/data/icons/hicolor/scalable/apps/io.github.auralis.Auralis.svg"
-    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
-)
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/data/icons/hicolor/scalable/apps/io.github.auralis.Auralis.svg"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
+    )
+endif()
 
 install(FILES
     "${CMAKE_SOURCE_DIR}/LICENSE"
     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/auralis"
 )
+
+set(AURALIS_DEPLOY_OPTIONS
+    NO_UNSUPPORTED_PLATFORM_ERROR
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+)
+if(MSVC)
+    # The ZIP carries app-local MSVC runtime DLLs via
+    # InstallRequiredSystemLibraries. Do not add vc_redist.x64.exe: merely
+    # placing the installer beside the application does not make a portable
+    # extracted build runnable on a clean machine.
+    list(APPEND AURALIS_DEPLOY_OPTIONS NO_COMPILER_RUNTIME)
+endif()
+if(APPLE)
+    list(APPEND AURALIS_DEPLOY_OPTIONS MACOS_BUNDLE_POST_BUILD)
+endif()
+
+qt_generate_deploy_qml_app_script(
+    TARGET auralis-desktop
+    OUTPUT_SCRIPT auralis_deploy_script
+    ${AURALIS_DEPLOY_OPTIONS}
+)
+install(SCRIPT ${auralis_deploy_script})

@@ -21,12 +21,12 @@
 #include <optional>
 
 namespace auralis::audio {
+class IAudioManager;
 class AudioRouter;
-class PipeWireManager;
 }
 
 namespace auralis::bluetooth {
-class BluetoothManager;
+class IBluetoothManager;
 class DeviceRegistry;
 }
 
@@ -52,15 +52,15 @@ class SessionManager final : public QObject, public ISessionManager {
 public:
     SessionManager(QObject* parent = nullptr);
     SessionManager(
-        auralis::bluetooth::BluetoothManager* bluetooth,
-        auralis::audio::PipeWireManager* pipeWire,
+        auralis::bluetooth::IBluetoothManager* bluetooth,
+        auralis::audio::IAudioManager* audio,
         const QString& persistencePath,
         QObject* parent = nullptr);
     SessionManager(
         auralis::audio::AudioRouter* router,
         auralis::audio::AudioEndpointRegistry* endpoints,
         auralis::bluetooth::DeviceRegistry* devices,
-        auralis::bluetooth::BluetoothManager* bluetooth,
+        auralis::bluetooth::IBluetoothManager* bluetooth,
         const QString& persistencePath,
         QObject* parent = nullptr);
     ~SessionManager() override;
@@ -167,8 +167,8 @@ private:
     SessionCommandResult validateVolume(double value) const;
     void setupUiModels();
 
-    auralis::bluetooth::BluetoothManager* bluetooth_ = nullptr;
-    auralis::audio::PipeWireManager* pipeWire_ = nullptr;
+    auralis::bluetooth::IBluetoothManager* bluetooth_ = nullptr;
+    auralis::audio::IAudioManager* audio_ = nullptr;
     auralis::audio::AudioRouter* router_ = nullptr;
     auralis::audio::AudioEndpointRegistry* endpoints_ = nullptr;
     auralis::bluetooth::DeviceRegistry* deviceRegistry_ = nullptr;

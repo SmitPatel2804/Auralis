@@ -1,8 +1,15 @@
+set(AURALIS_POWER_MONITOR_SOURCE SystemPowerMonitor.cpp)
+if(WIN32)
+    set(AURALIS_POWER_MONITOR_SOURCE SystemPowerMonitor_windows.cpp)
+elseif(APPLE)
+    set(AURALIS_POWER_MONITOR_SOURCE SystemPowerMonitor_macos.mm)
+endif()
+
 add_library(auralis-recovery
     RecoveryManager.cpp
     RecoveryTypes.cpp
     ServiceRetryPolicy.cpp
-    SystemPowerMonitor.cpp
+    ${AURALIS_POWER_MONITOR_SOURCE}
     "${CMAKE_SOURCE_DIR}/include/auralis/recovery/RecoveryManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/recovery/RecoveryTypes.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/recovery/ServiceRetryPolicy.h"
@@ -19,7 +26,12 @@ target_include_directories(auralis-recovery
 target_link_libraries(auralis-recovery
     PUBLIC
         Qt6::Core
-        Qt6::DBus
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(auralis-recovery PUBLIC Qt6::DBus)
+elseif(APPLE)
+    target_link_libraries(auralis-recovery PRIVATE "-framework AppKit")
+endif()
 
 auralis_apply_warnings(auralis-recovery)

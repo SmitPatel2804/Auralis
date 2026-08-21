@@ -18,6 +18,8 @@ set_source_files_properties(qml/components/ToastHost.qml PROPERTIES QT_RESOURCE_
 set_source_files_properties(qml/components/VolumeControl.qml PROPERTIES QT_RESOURCE_ALIAS VolumeControl.qml)
 set_source_files_properties(qml/components/PageHeader.qml PROPERTIES QT_RESOURCE_ALIAS PageHeader.qml)
 set_source_files_properties(qml/components/KeyValueRow.qml PROPERTIES QT_RESOURCE_ALIAS KeyValueRow.qml)
+set_source_files_properties(qml/components/MetricTile.qml PROPERTIES QT_RESOURCE_ALIAS MetricTile.qml)
+set_source_files_properties(qml/components/SignalButton.qml PROPERTIES QT_RESOURCE_ALIAS SignalButton.qml)
 set_source_files_properties(qml/pages/DashboardPage.qml PROPERTIES QT_RESOURCE_ALIAS DashboardPage.qml)
 set_source_files_properties(qml/pages/DevicesPage.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPage.qml)
 set_source_files_properties(qml/pages/SessionsPage.qml PROPERTIES QT_RESOURCE_ALIAS SessionsPage.qml)
@@ -51,6 +53,8 @@ qt_add_qml_module(auralis-ui
         qml/components/VolumeControl.qml
         qml/components/PageHeader.qml
         qml/components/KeyValueRow.qml
+        qml/components/MetricTile.qml
+        qml/components/SignalButton.qml
         qml/pages/DashboardPage.qml
         qml/pages/DevicesPage.qml
         qml/pages/SessionsPage.qml
