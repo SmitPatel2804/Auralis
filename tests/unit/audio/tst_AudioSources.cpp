@@ -109,6 +109,39 @@ private slots:
         QCOMPARE(sources.size(), 2);
         QCOMPARE(sources.constFirst().pipeWireNodeId, static_cast<quint32>(21));
     }
+
+    void auralisVirtualSourceHasStableIdentityAndSinkIsHidden()
+    {
+        PipeWireObjectStore store;
+        store.upsert(makeNode(
+            30,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("sink")}}));
+        store.upsert(makePort(300, 30, QStringLiteral("in")));
+        store.upsert(makePort(
+            301,
+            30,
+            QStringLiteral("out"),
+            {{QStringLiteral("port.monitor"), QStringLiteral("true")}}));
+        store.upsert(makeNode(
+            31,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("application.name"), QStringLiteral("PipeWire")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")}}));
+        store.upsert(makePort(310, 31, QStringLiteral("out")));
+
+        QVERIFY(!classifyAudioSource(*store.node(30), store).has_value());
+        const auto source = classifyAudioSource(*store.node(31), store);
+        QVERIFY(source.has_value());
+        QVERIFY(source->sourceType == AudioSourceType::VirtualAudioSource);
+        QCOMPARE(source->id, QStringLiteral("src:auralis-system-audio"));
+        QCOMPARE(source->description, QStringLiteral("Auralis System Audio"));
+        QVERIFY(source->applicationName.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioSources)

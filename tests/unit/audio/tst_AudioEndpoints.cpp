@@ -108,6 +108,17 @@ private slots:
         QVERIFY(!endpoint->sampleRate.has_value());
     }
 
+    void auralisVirtualSinkIsNotOfferedAsDestination()
+    {
+        PipeWireObjectStore store = storeWith(makeNode(
+            18,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("sink")}}));
+        QVERIFY(!classifyAudioEndpoint(*store.node(18), store).has_value());
+    }
+
     void registryDeduplicatesAndUpdates()
     {
         AudioEndpointRegistry registry;

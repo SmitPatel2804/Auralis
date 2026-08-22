@@ -10,6 +10,8 @@ Flickable {
     contentHeight: column.implicitHeight
     readonly property var audio: AppCore.audio
     readonly property var router: audio ? audio.router : null
+    readonly property bool linuxAudio: Qt.platform.os === "linux"
+    readonly property bool windowsAudio: Qt.platform.os === "windows"
     property string pendingRemovalRouteId: ""
 
     ColumnLayout {
@@ -22,12 +24,13 @@ Flickable {
         ErrorBanner { text: router ? router.lastErrorText : "" }
 
         SectionCard {
-            visible: Qt.platform.os === "windows"
+            visible: root.windowsAudio || root.linuxAudio
             title: qsTr("Auralis Virtual Output")
             subtitle: audio && audio.virtualOutputAvailable
-                      ? (audio.virtualOutputSelected ? qsTr("Active Windows system-audio path")
-                                                     : qsTr("Ready — select it as the Windows output"))
-                      : qsTr("Signed driver required")
+                      ? (audio.virtualOutputSelected ? qsTr("Active system-audio path")
+                                                     : qsTr("Ready - select it as the system output"))
+                      : (root.linuxAudio ? qsTr("Creating the PipeWire virtual output")
+                                         : qsTr("Signed driver required"))
             signalColor: audio && audio.virtualOutputSelected ? Theme.success : Theme.warning
             RowLayout {
                 Layout.fillWidth: true
@@ -45,6 +48,7 @@ Flickable {
                 }
                 SignalButton {
                     text: qsTr("WINDOWS SOUND")
+                    visible: root.windowsAudio
                     compact: true
                     primary: audio && audio.virtualOutputAvailable && !audio.virtualOutputSelected
                     onClicked: if (audio) audio.openWindowsSoundSettings()
@@ -55,8 +59,12 @@ Flickable {
                 wrapMode: Text.WordWrap
                 color: Theme.textMuted
                 text: audio && audio.virtualOutputAvailable
-                      ? qsTr("Choose Auralis Virtual Output in Windows, then select Auralis System Audio as the session source. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session.")
-                      : qsTr("The current application-capture fallback observes a copy after Windows has already sent audio to its selected device. A virtual endpoint removes that duplicate physical path, but Windows will only load an installed and trusted audio driver.")
+                      ? (root.linuxAudio
+                         ? qsTr("Choose Auralis Virtual Output in Linux sound settings, then select Auralis System Audio as the session source. The package makes the endpoint persistent after the next login; routing is active only while Auralis is running.")
+                         : qsTr("Choose Auralis Virtual Output in Windows, then select Auralis System Audio as the session source. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session."))
+                      : (root.linuxAudio
+                         ? qsTr("PipeWire could not publish the virtual output. Check Diagnostics and ensure PipeWire and WirePlumber are running in this user session.")
+                         : qsTr("The current application-capture fallback observes a copy after Windows has already sent audio to its selected device. A virtual endpoint removes that duplicate physical path, but Windows will only load an installed and trusted audio driver."))
             }
         }
 

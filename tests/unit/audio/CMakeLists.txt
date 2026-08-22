@@ -31,6 +31,13 @@ endif()
 auralis_add_test(tst_VirtualAudioDevice tst_VirtualAudioDevice.cpp)
 target_link_libraries(tst_VirtualAudioDevice PRIVATE auralis-audio)
 
+auralis_add_test(tst_PipeWireVirtualOutput tst_PipeWireVirtualOutput.cpp)
+target_link_libraries(tst_PipeWireVirtualOutput PRIVATE auralis-audio)
+target_include_directories(tst_PipeWireVirtualOutput PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(
+    tst_PipeWireVirtualOutput
+    PRIVATE AURALIS_PIPEWIRE_CONFIG_PATH="${CMAKE_SOURCE_DIR}/data/pipewire/90-auralis-virtual-output.conf")
+
 auralis_add_test(tst_PipeWireProperties tst_PipeWireProperties.cpp)
 target_link_libraries(tst_PipeWireProperties PRIVATE auralis-audio)
 

@@ -3,6 +3,7 @@
 #include <auralis/audio/IPipeWireManager.h>
 #include <auralis/audio/PipeWireConnection.h>
 #include <auralis/audio/PipeWireTypes.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 
 #include <QAbstractItemModel>
 #include <QObject>
@@ -37,6 +38,9 @@ class PipeWireManager final : public QObject, public IPipeWireManager {
     Q_PROPERTY(bool initialSyncComplete READ initialSyncComplete NOTIFY graphRevisionChanged)
     Q_PROPERTY(int graphRevision READ graphRevision NOTIFY graphRevisionChanged)
     Q_PROPERTY(QString diagnosticsText READ diagnosticsText NOTIFY graphRevisionChanged)
+    Q_PROPERTY(bool virtualOutputAvailable READ virtualOutputAvailable NOTIFY graphRevisionChanged)
+    Q_PROPERTY(bool virtualOutputSelected READ virtualOutputSelected NOTIFY graphRevisionChanged)
+    Q_PROPERTY(QString virtualOutputStatus READ virtualOutputStatus NOTIFY graphRevisionChanged)
     Q_PROPERTY(QAbstractItemModel* endpoints READ endpoints CONSTANT)
     Q_PROPERTY(QObject* router READ router CONSTANT)
 
@@ -64,6 +68,9 @@ public:
     bool initialSyncComplete() const noexcept;
     int graphRevision() const noexcept;
     QString diagnosticsText() const;
+    bool virtualOutputAvailable() const noexcept;
+    bool virtualOutputSelected() const noexcept;
+    QString virtualOutputStatus() const;
     QAbstractItemModel* endpoints() const;
     QObject* router() const;
     AudioRouter* audioRouter() const noexcept override;
@@ -71,6 +78,7 @@ public:
     const PipeWireObjectStore* objectStore() const noexcept;
 
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
+    Q_INVOKABLE void refreshVirtualAudio();
 
     /// Bounded reconnect after daemon loss. RecoveryManager observes; does not schedule a second retry.
     void setAutoReconnectEnabled(bool enabled) override;
@@ -114,6 +122,10 @@ private:
     void startInitialSyncTimeout();
     void stopInitialSyncTimeout();
     void onInitialSyncTimeout();
+    void completeInitialSync();
+    void updateVirtualOutputState();
+    void ensureVirtualOutput();
+    void resetVirtualOutputState();
 
     bluetooth::DeviceRegistry* bluetoothRegistry_ = nullptr;
     std::unique_ptr<PipeWireObjectStore> store_;
@@ -127,11 +139,13 @@ private:
     auralis::core::ServiceStatus status_ = auralis::core::ServiceStatus::Uninitialized;
     QString lastError_;
     bool initialSyncComplete_ = false;
+    bool initialSyncEventReceived_ = false;
     int graphRevision_ = 0;
     bool bluetoothWired_ = false;
     QTimer graphRefreshTimer_;
     QTimer reconnectTimer_;
     QTimer initialSyncTimeoutTimer_;
+    QTimer virtualOutputTimer_;
     bool autoReconnectEnabled_ = true;
     bool shuttingDown_ = false;
     bool reconnectInProgress_ = false;
@@ -141,6 +155,10 @@ private:
     int reconnectInitialDelayMs_ = 500;
     int reconnectMaxDelayMs_ = 30000;
     int initialSyncTimeoutMs_ = 8000;
+    PipeWireVirtualOutputState virtualOutput_;
+    QString defaultAudioSinkName_;
+    QString virtualOutputError_;
+    int virtualOutputProvisionAttempt_ = 0;
 };
 
 } // namespace auralis::audio

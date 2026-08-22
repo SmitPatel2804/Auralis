@@ -19,9 +19,14 @@ set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${PROJECT_VERSION}-${CMAKE_SY
 set(CPACK_SOURCE_GENERATOR "")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(CPACK_GENERATOR "DEB")
+    # DEB is the native reference package. TGZ keeps the exact install tree
+    # available to other distro packagers without pretending to own their
+    # dependency metadata.
+    set(CPACK_GENERATOR "DEB;TGZ")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Auralis (contact pending)")
     set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "pipewire (>= 0.3.60), libpipewire-0.3-modules (>= 0.3.60), wireplumber, bluez")
     # dpkg-shlibdeps needs Debian shlibs metadata. Official aqt/CI Qt trees
     # are not packaged that way, so automatic dependency scanning fails there.
     if(DEFINED ENV{CI})

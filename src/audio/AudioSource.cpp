@@ -1,6 +1,7 @@
 #include <auralis/audio/AudioSource.h>
 
 #include <auralis/audio/PipeWireObjectStore.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 
 #include <QSet>
 
@@ -93,6 +94,29 @@ std::optional<AudioSource> classifyAudioSource(const PipeWireNodeInfo& node, con
     }
     if (node.mediaClass.startsWith(QLatin1String("Stream/Input/"))) {
         return std::nullopt;
+    }
+
+    // The sink half is selected by desktop applications. Only the source half
+    // is routed by Auralis; exposing the sink monitor as well would create two
+    // indistinguishable copies and make feedback selection possible.
+    if (isAuralisPipeWireVirtualSink(node)) {
+        return std::nullopt;
+    }
+
+    if (isAuralisPipeWireVirtualSource(node)) {
+        AudioSource source = makeSourceFromNode(node, AudioSourceType::VirtualAudioSource, false);
+        source.id = QString::fromLatin1(kAuralisVirtualSourceId);
+        source.description = QStringLiteral("Auralis System Audio");
+        source.applicationName.clear();
+        for (const PipeWirePortInfo& port : store.portsForNode(node.globalId)) {
+            if (port.direction == PipeWirePortDirection::Output && isRoutableAudioPort(port)) {
+                source.portIds.push_back(port.globalId);
+            }
+        }
+        if (source.portIds.isEmpty()) {
+            return std::nullopt;
+        }
+        return source;
     }
 
     if (node.mediaClass == QLatin1String("Stream/Output/Audio")) {

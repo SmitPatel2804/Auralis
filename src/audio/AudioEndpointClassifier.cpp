@@ -1,6 +1,7 @@
 #include <auralis/audio/AudioEndpointClassifier.h>
 
 #include <auralis/audio/PipeWireObjectStore.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 
 namespace auralis::audio {
 namespace {
@@ -95,6 +96,11 @@ std::optional<AudioEndpoint> classifyAudioEndpoint(
         return std::nullopt;
     }
     if (isMonitorNode(node)) {
+        return std::nullopt;
+    }
+    // Never offer the Auralis input sink as one of its own playback
+    // destinations. That would form a graph feedback loop.
+    if (isAuralisPipeWireVirtualSink(node)) {
         return std::nullopt;
     }
     const AudioEndpointDirection direction = directionFromMediaClass(node.mediaClass);

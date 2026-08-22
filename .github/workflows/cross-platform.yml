@@ -29,7 +29,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpipewire-0.3-dev pkg-config ninja-build libgl1-mesa-dev libxkbcommon-dev
+          sudo apt-get install -y libpipewire-0.3-dev libpipewire-0.3-modules pipewire pipewire-bin wireplumber bluez dbus-x11 pkg-config ninja-build libgl1-mesa-dev libxkbcommon-dev
 
       - name: Install Ninja
         if: runner.os != 'Linux'
@@ -63,7 +63,43 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
+      - name: Test live PipeWire virtual output
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash scripts/ci/run-pipewire-virtual-output.sh runtime
+          bash scripts/ci/run-pipewire-virtual-output.sh persistent
+
       - name: Package
         run: cpack --config build/CPackConfig.cmake
         env:
           LD_LIBRARY_PATH: ${{ env.QT_ROOT_DIR }}/lib:${{ env.LD_LIBRARY_PATH }}
+
+      - name: Verify Linux package integration
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          deb="$(find . -maxdepth 1 -name 'auralis*.deb' -print -quit)"
+          archive="$(find . -maxdepth 1 -name 'auralis*.tar.gz' -print -quit)"
+          test -n "$deb"
+          test -n "$archive"
+          dpkg-deb -c "$deb" | grep -F 'usr/share/pipewire/pipewire.conf.d/90-auralis-virtual-output.conf'
+          dpkg-deb -c "$deb" | grep -F 'libQt6Core.so.6'
+          dpkg-deb -c "$deb" | grep -F '/qml/QtQuick/'
+          tar -tzf "$archive" | grep -F 'share/pipewire/pipewire.conf.d/90-auralis-virtual-output.conf'
+          tar -tzf "$archive" | grep -F 'libQt6Core.so.6'
+
+          smoke_root="$(mktemp -d)"
+          trap 'rm -rf -- "$smoke_root"' EXIT
+          dpkg-deb -x "$deb" "$smoke_root"
+          smoke_exe="$(find "$smoke_root" -type f -name 'auralis-desktop' -print -quit)"
+          test -n "$smoke_exe"
+          set +e
+          timeout 5 env QT_QPA_PLATFORM=offscreen \
+            "$smoke_exe" >"$smoke_root/smoke.log" 2>&1
+          smoke_rc=$?
+          set -e
+          if [[ $smoke_rc -ne 0 && $smoke_rc -ne 124 ]]; then
+            cat "$smoke_root/smoke.log" >&2
+            exit "$smoke_rc"
+          fi

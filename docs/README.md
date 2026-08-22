@@ -35,6 +35,8 @@ docs/
 | [architecture/overview.md](architecture/overview.md) | Modules, BlueZ, PipeWire, AudioRouter, sessions, QML |
 | [architecture/session-engine.md](architecture/session-engine.md) | Session engine architecture and policies |
 | [architecture/cross-platform-backends.md](architecture/cross-platform-backends.md) | Cross-platform backend contracts, selection, and validation gates |
+| [architecture/LINUX_VIRTUAL_AUDIO_OUTPUT.md](architecture/LINUX_VIRTUAL_AUDIO_OUTPUT.md) | Linux PipeWire virtual output, installation, operation, and diagnostics |
+| [architecture/WINDOWS_VIRTUAL_AUDIO_OUTPUT.md](architecture/WINDOWS_VIRTUAL_AUDIO_OUTPUT.md) | Windows virtual endpoint and signed-driver boundary |
 | [validation/phase-1.md](validation/phase-1.md) | Phase 1 foundation checklist |
 | [validation/phase-2.md](validation/phase-2.md) | Phase 2 discovery validation |
 | [validation/phase-3.md](validation/phase-3.md) | Phase 3 device management validation |

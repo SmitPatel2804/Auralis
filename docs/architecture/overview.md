@@ -68,12 +68,21 @@ QML
        -> PipeWireObjectStore (devices, nodes, ports, links)
        -> PipeWireConnection (pw_thread_loop)
             -> pw_context / pw_core / pw_registry
+            -> libpipewire-module-loopback (Auralis virtual output)
+            -> default metadata observation
             -> link-factory create / owned-link destroy / SPA_PROP volume
 ```
 
 **AdditiveRouting:** `createLink` tags `application.name=Auralis` and `auralis.route.id`. Legal ownership is the in-process owned-link list. `destroyOwnedLink` refuses ids that Auralis did not create.
 
 AudioRouter does not query BlueZ or pair/connect devices. Bluetooth destinations are Phase 4 `AudioEndpoint` objects.
+
+Installed Linux packages add a PipeWire vendor drop-in that publishes
+**Auralis Virtual Output** and its routable **Auralis System Audio** source.
+Build-tree runs use an equivalent app-lifetime module. The virtual sink is
+excluded from route destinations to prevent feedback, and the paired source
+uses a stable logical id across daemon restarts. See
+[LINUX_VIRTUAL_AUDIO_OUTPUT.md](LINUX_VIRTUAL_AUDIO_OUTPUT.md).
 
 ### Threading
 

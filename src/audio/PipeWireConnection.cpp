@@ -1,5 +1,6 @@
 #include <auralis/audio/PipeWireConnection.h>
 
+#include <auralis/audio/PipeWireVirtualOutput.h>
 #include <auralis/core/LoggingCategories.h>
 
 #include <QHash>
@@ -18,6 +19,8 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include <pipewire/pipewire.h>
+#include <pipewire/extensions/metadata.h>
+#include <pipewire/impl-module.h>
 #include <spa/param/param.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
@@ -102,6 +105,8 @@ uint32_t supportedVersion(PipeWireObjectKind kind)
         return PW_VERSION_PORT;
     case PipeWireObjectKind::Link:
         return PW_VERSION_LINK;
+    case PipeWireObjectKind::Metadata:
+        return PW_VERSION_METADATA;
     default:
         return 0;
     }
@@ -130,6 +135,8 @@ struct PipeWireConnection::Impl {
     pw_registry* registry = nullptr;
     spa_hook coreListener{};
     spa_hook registryListener{};
+    pw_impl_module* virtualOutputModule = nullptr;
+    spa_hook virtualOutputModuleListener{};
     QHash<quint32, BoundProxy*> proxies;
     QHash<quint64, BoundProxy*> ownedByToken;
     QHash<quint64, quint32> tokenToGlobalId;
@@ -147,6 +154,8 @@ struct PipeWireConnection::Impl {
     static const pw_device_events kDeviceEvents;
     static const pw_port_events kPortEvents;
     static const pw_link_events kLinkEvents;
+    static const pw_metadata_events kMetadataEvents;
+    static const pw_impl_module_events kModuleEvents;
 
     void emitEvent(const PipeWireClientEvent& event)
     {
@@ -197,6 +206,26 @@ struct PipeWireConnection::Impl {
         emitEvent(event);
     }
 
+    void emitMetadata(
+        BoundProxy* bound,
+        uint32_t subject,
+        const char* key,
+        const char* type,
+        const char* value)
+    {
+        if (bound == nullptr || key == nullptr) {
+            return;
+        }
+        PipeWireClientEvent event;
+        event.type = PipeWireClientEvent::Type::MetadataChanged;
+        event.metadataSubject = subject;
+        event.metadataName = QStringLiteral("default");
+        event.metadataKey = QString::fromUtf8(key);
+        event.metadataType = QString::fromUtf8(type != nullptr ? type : "");
+        event.metadataValue = QString::fromUtf8(value != nullptr ? value : "");
+        emitEvent(event);
+    }
+
     void addObjectListener(BoundProxy* bound)
     {
         switch (bound->kind) {
@@ -211,6 +240,13 @@ struct PipeWireConnection::Impl {
             break;
         case PipeWireObjectKind::Link:
             pw_proxy_add_object_listener(bound->proxy, &bound->objectListener, &kLinkEvents, bound);
+            break;
+        case PipeWireObjectKind::Metadata:
+            pw_metadata_add_listener(
+                reinterpret_cast<pw_metadata*>(bound->proxy),
+                &bound->objectListener,
+                &kMetadataEvents,
+                bound);
             break;
         default:
             break;
@@ -285,8 +321,14 @@ struct PipeWireConnection::Impl {
             return;
         }
         if (kind != PipeWireObjectKind::Device && kind != PipeWireObjectKind::Node && kind != PipeWireObjectKind::Port
-            && kind != PipeWireObjectKind::Link) {
+            && kind != PipeWireObjectKind::Link && kind != PipeWireObjectKind::Metadata) {
             return;
+        }
+        if (kind == PipeWireObjectKind::Metadata) {
+            const char* metadataName = props != nullptr ? spa_dict_lookup(props, PW_KEY_METADATA_NAME) : nullptr;
+            if (metadataName == nullptr || std::strcmp(metadataName, "default") != 0) {
+                return;
+            }
         }
 
         pw_proxy* proxy = static_cast<pw_proxy*>(pw_registry_bind(
@@ -384,7 +426,6 @@ const pw_core_events PipeWireConnection::Impl::kCoreEvents = {
     .bound_id = nullptr,
     .add_mem = nullptr,
     .remove_mem = nullptr,
-    .bound_props = nullptr,
 };
 
 const pw_registry_events PipeWireConnection::Impl::kRegistryEvents = {
@@ -466,7 +507,6 @@ const pw_proxy_events PipeWireConnection::Impl::kProxyEvents = {
                 bound->impl->destroyPending(bound);
             }
         },
-    .bound_props = nullptr,
 };
 
 const pw_node_events PipeWireConnection::Impl::kNodeEvents = {
@@ -542,6 +582,41 @@ const pw_link_events PipeWireConnection::Impl::kLinkEvents = {
         },
 };
 
+const pw_metadata_events PipeWireConnection::Impl::kMetadataEvents = {
+    .version = PW_VERSION_METADATA_EVENTS,
+    .property =
+        [](void* data, uint32_t subject, const char* key, const char* type, const char* value) {
+            auto* bound = static_cast<BoundProxy*>(data);
+            if (bound == nullptr || bound->impl == nullptr || bound->impl->stopping) {
+                return 0;
+            }
+            bound->impl->emitMetadata(bound, subject, key, type, value);
+            return 0;
+        },
+};
+
+const pw_impl_module_events PipeWireConnection::Impl::kModuleEvents = {
+    .version = PW_VERSION_IMPL_MODULE_EVENTS,
+    .destroy =
+        [](void* data) {
+            auto* impl = static_cast<Impl*>(data);
+            if (impl == nullptr) {
+                return;
+            }
+            // Modules can schedule their own destruction when initialization
+            // fails. Never leave the public ownership query with a dangling
+            // pw_impl_module pointer in that case.
+            spa_hook_remove(&impl->virtualOutputModuleListener);
+            impl->virtualOutputModule = nullptr;
+            if (!impl->stopping) {
+                qCWarning(auralisAudio) << "PipeWire VirtualOutputModuleDestroyed unexpectedly";
+            }
+        },
+    .free = nullptr,
+    .initialized = nullptr,
+    .registered = nullptr,
+};
+
 PipeWireConnection::PipeWireConnection() = default;
 
 PipeWireConnection::~PipeWireConnection()
@@ -561,6 +636,7 @@ bool PipeWireConnection::start(EventHandler handler)
 
     impl_ = new Impl;
     impl_->handler = std::move(handler);
+    impl_->linkErrorHandler = linkErrorHandler_;
     impl_->emitState(PipeWireConnectionState::Starting);
     qCInfo(auralisAudio) << "PipeWire Connecting";
 
@@ -636,12 +712,18 @@ void PipeWireConnection::stop()
         return;
     }
 
-    impl_->stopping = true;
     impl_->emitState(PipeWireConnectionState::Stopping);
+    impl_->stopping = true;
 
     if (impl_->loop != nullptr) {
         pw_thread_loop_stop(impl_->loop);
         pw_thread_loop_lock(impl_->loop);
+        if (impl_->virtualOutputModule != nullptr) {
+            pw_impl_module* module = impl_->virtualOutputModule;
+            impl_->virtualOutputModule = nullptr;
+            spa_hook_remove(&impl_->virtualOutputModuleListener);
+            pw_impl_module_destroy(module);
+        }
         impl_->destroyAllProxies();
         if (impl_->registry != nullptr) {
             spa_hook_remove(&impl_->registryListener);
@@ -664,6 +746,87 @@ void PipeWireConnection::stop()
 
     delete impl_;
     impl_ = nullptr;
+}
+
+bool PipeWireConnection::createVirtualOutput(QString* error)
+{
+    if (error != nullptr) {
+        error->clear();
+    }
+    if (impl_ == nullptr || impl_->context == nullptr || impl_->loop == nullptr || !impl_->started
+        || impl_->stopping) {
+        if (error != nullptr) {
+            *error = QStringLiteral("PipeWire is not connected");
+        }
+        return false;
+    }
+
+    pw_thread_loop_lock(impl_->loop);
+    if (impl_->virtualOutputModule != nullptr) {
+        pw_thread_loop_unlock(impl_->loop);
+        return true;
+    }
+
+    const QByteArray arguments = pipeWireVirtualOutputModuleArguments();
+    errno = 0;
+    impl_->virtualOutputModule = pw_context_load_module(
+        impl_->context,
+        "libpipewire-module-loopback",
+        arguments.constData(),
+        nullptr);
+    if (impl_->virtualOutputModule != nullptr) {
+        pw_impl_module_add_listener(
+            impl_->virtualOutputModule,
+            &impl_->virtualOutputModuleListener,
+            &Impl::kModuleEvents,
+            impl_);
+    }
+    const int savedError = errno;
+    const bool created = impl_->virtualOutputModule != nullptr;
+    pw_thread_loop_unlock(impl_->loop);
+
+    if (!created) {
+        const QString detail = savedError != 0
+            ? QString::fromLocal8Bit(std::strerror(savedError))
+            : QStringLiteral("module unavailable");
+        if (error != nullptr) {
+            *error = QStringLiteral("Unable to load PipeWire loopback module: %1").arg(detail);
+        }
+        qCWarning(auralisAudio) << "PipeWire VirtualOutputCreateFailed" << detail;
+        return false;
+    }
+
+    qCInfo(auralisAudio) << "PipeWire VirtualOutputCreateRequested persistence=runtime";
+    return true;
+}
+
+void PipeWireConnection::destroyVirtualOutput()
+{
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    pw_impl_module* module = impl_->virtualOutputModule;
+    impl_->virtualOutputModule = nullptr;
+    if (module != nullptr) {
+        spa_hook_remove(&impl_->virtualOutputModuleListener);
+        pw_impl_module_destroy(module);
+    }
+    pw_thread_loop_unlock(impl_->loop);
+    if (module != nullptr) {
+        qCInfo(auralisAudio) << "PipeWire VirtualOutputDestroyed persistence=runtime";
+    }
+}
+
+bool PipeWireConnection::ownsVirtualOutput() const noexcept
+{
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return false;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    const bool owned = impl_->virtualOutputModule != nullptr;
+    pw_thread_loop_unlock(impl_->loop);
+    return owned;
 }
 
 std::optional<LinkCreateResult> PipeWireConnection::createLink(
@@ -862,6 +1025,7 @@ bool PipeWireConnection::volumeSupported(quint32 nodeId) const
 
 void PipeWireConnection::setLinkErrorHandler(LinkErrorHandler handler)
 {
+    linkErrorHandler_ = handler;
     if (impl_ != nullptr) {
         impl_->linkErrorHandler = std::move(handler);
     }

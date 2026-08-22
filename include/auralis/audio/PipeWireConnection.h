@@ -13,7 +13,8 @@ struct PipeWireClientEvent {
         GlobalAdded,
         GlobalUpdated,
         GlobalRemoved,
-        InitialSyncDone
+        InitialSyncDone,
+        MetadataChanged
     };
 
     Type type = Type::StateChanged;
@@ -21,6 +22,11 @@ struct PipeWireClientEvent {
     QString error;
     PipeWireObjectSnapshot snapshot;
     quint32 removedId = 0;
+    quint32 metadataSubject = 0;
+    QString metadataName;
+    QString metadataKey;
+    QString metadataType;
+    QString metadataValue;
 };
 
 class PipeWireConnection final : public IPipeWireLinkBackend {
@@ -36,6 +42,12 @@ public:
     bool start(EventHandler handler);
     void stop();
     bool isStarted() const noexcept;
+
+    /// Creates the app-lifetime fallback virtual sink. Installed Linux
+    /// packages provide the same graph through a persistent PipeWire drop-in.
+    bool createVirtualOutput(QString* error = nullptr);
+    void destroyVirtualOutput();
+    bool ownsVirtualOutput() const noexcept;
 
     std::optional<LinkCreateResult> createLink(
         quint32 outputNode,
@@ -57,6 +69,7 @@ public:
 private:
     struct Impl;
     Impl* impl_ = nullptr;
+    LinkErrorHandler linkErrorHandler_;
 };
 
 } // namespace auralis::audio

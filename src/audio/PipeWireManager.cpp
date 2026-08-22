@@ -48,6 +48,9 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
 
     initialSyncTimeoutTimer_.setSingleShot(true);
     connect(&initialSyncTimeoutTimer_, &QTimer::timeout, this, &PipeWireManager::onInitialSyncTimeout);
+
+    virtualOutputTimer_.setSingleShot(true);
+    connect(&virtualOutputTimer_, &QTimer::timeout, this, &PipeWireManager::ensureVirtualOutput);
 }
 
 PipeWireManager::~PipeWireManager()
@@ -140,17 +143,52 @@ int PipeWireManager::graphRevision() const noexcept
 QString PipeWireManager::diagnosticsText() const
 {
     return QStringLiteral(
-               "state=%1 devices=%2 nodes=%3 ports=%4 links=%5 endpoints=%6 mappedBt=%7 unmappedBt=%8 error=%9")
-        .arg(
-            toString(connectionState_),
-            QString::number(store_->deviceCount()),
-            QString::number(store_->nodeCount()),
-            QString::number(store_->portCount()),
-            QString::number(store_->linkCount()),
-            QString::number(endpoints_->count()),
-            QString::number(endpoints_->mappedBluetoothEndpoints().size()),
-            QString::number(endpoints_->unmappedBluetoothEndpoints().size()),
-            lastError_.isEmpty() ? QStringLiteral("none") : lastError_);
+               "state=%1 devices=%2 nodes=%3 ports=%4 links=%5 endpoints=%6 mappedBt=%7 unmappedBt=%8 "
+               "virtualOutput=%9 defaultSink=%10 error=%11")
+        .arg(toString(connectionState_))
+        .arg(store_->deviceCount())
+        .arg(store_->nodeCount())
+        .arg(store_->portCount())
+        .arg(store_->linkCount())
+        .arg(endpoints_->count())
+        .arg(endpoints_->mappedBluetoothEndpoints().size())
+        .arg(endpoints_->unmappedBluetoothEndpoints().size())
+        .arg(virtualOutputStatus())
+        .arg(defaultAudioSinkName_.isEmpty() ? QStringLiteral("unknown") : defaultAudioSinkName_)
+        .arg(lastError_.isEmpty() ? QStringLiteral("none") : lastError_);
+}
+
+bool PipeWireManager::virtualOutputAvailable() const noexcept
+{
+    return virtualOutput_.ready();
+}
+
+bool PipeWireManager::virtualOutputSelected() const noexcept
+{
+    return virtualOutput_.ready() && virtualOutput_.selectedAsDefault;
+}
+
+QString PipeWireManager::virtualOutputStatus() const
+{
+    if (virtualOutput_.ready()) {
+        if (virtualOutput_.selectedAsDefault) {
+            return QStringLiteral("Selected as system output");
+        }
+        if (virtualOutput_.packageManaged) {
+            return QStringLiteral("Ready (persistent)");
+        }
+        if (virtualOutput_.runtimeManaged) {
+            return QStringLiteral("Ready (while Auralis runs)");
+        }
+        return QStringLiteral("Ready");
+    }
+    if (!virtualOutputError_.isEmpty()) {
+        return QStringLiteral("Unavailable - %1").arg(virtualOutputError_);
+    }
+    if (virtualOutput_.partial() || virtualOutputProvisionAttempt_ > 0) {
+        return QStringLiteral("Starting...");
+    }
+    return connected() ? QStringLiteral("Waiting for PipeWire") : QStringLiteral("PipeWire unavailable");
 }
 
 QAbstractItemModel* PipeWireManager::endpoints() const
@@ -202,6 +240,19 @@ QString PipeWireManager::audioStatusForDevice(const QString& bluetoothDeviceId) 
     return {};
 }
 
+void PipeWireManager::refreshVirtualAudio()
+{
+    if (shuttingDown_) {
+        return;
+    }
+    refreshGraph();
+    virtualOutputError_.clear();
+    virtualOutputProvisionAttempt_ = 0;
+    virtualOutputTimer_.stop();
+    ensureVirtualOutput();
+    bumpGraph();
+}
+
 bool PipeWireManager::initialize()
 {
     if (status_ == auralis::core::ServiceStatus::Ready || status_ == auralis::core::ServiceStatus::Initializing) {
@@ -209,6 +260,7 @@ bool PipeWireManager::initialize()
     }
 
     shuttingDown_ = false;
+    initialSyncEventReceived_ = false;
     status_ = auralis::core::ServiceStatus::Initializing;
     emit statusChanged();
     guard_->alive.store(true);
@@ -312,6 +364,7 @@ void PipeWireManager::onInitialSyncTimeout()
     stopInitialSyncTimeout();
     reconnectInProgress_ = false;
     initialSyncComplete_ = false;
+    initialSyncEventReceived_ = false;
     if (router_ != nullptr) {
         router_->handleConnectionState(PipeWireConnectionState::Error, false);
     }
@@ -321,6 +374,7 @@ void PipeWireManager::onInitialSyncTimeout()
     }
     endpoints_->clear();
     store_->clear();
+    resetVirtualOutputState();
     status_ = auralis::core::ServiceStatus::Error;
     setConnectionState(PipeWireConnectionState::Error, QStringLiteral("PipeWire initial graph sync timed out"));
     emit statusChanged();
@@ -400,7 +454,9 @@ void PipeWireManager::performReconnect()
     }
     endpoints_->clear();
     store_->clear();
+    resetVirtualOutputState();
     initialSyncComplete_ = false;
+    initialSyncEventReceived_ = false;
     lastError_.clear();
 
     const quint64 generation = guard_->generation.fetch_add(1) + 1;
@@ -431,6 +487,7 @@ void PipeWireManager::shutdown()
     reconnectTimer_.stop();
     stopInitialSyncTimeout();
     graphRefreshTimer_.stop();
+    virtualOutputTimer_.stop();
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
     if (router_ != nullptr) {
@@ -442,7 +499,9 @@ void PipeWireManager::shutdown()
     }
     endpoints_->clear();
     store_->clear();
+    resetVirtualOutputState();
     initialSyncComplete_ = false;
+    initialSyncEventReceived_ = false;
     lastError_.clear();
     reconnectAttempt_ = 0;
     reconnectExhaustedEmitted_ = false;
@@ -470,7 +529,9 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
                 router_->handleConnectionState(event.state, initialSyncComplete_);
             }
             // Do not reset reconnectAttempt_ until InitialSyncDone (usable graph).
-            if (!initialSyncComplete_) {
+            if (initialSyncEventReceived_) {
+                completeInitialSync();
+            } else if (!initialSyncComplete_) {
                 startInitialSyncTimeout();
             }
         } else if (event.state == PipeWireConnectionState::Error
@@ -482,7 +543,9 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
             }
             endpoints_->clear();
             store_->clear();
+            resetVirtualOutputState();
             initialSyncComplete_ = false;
+            initialSyncEventReceived_ = false;
             emit statusChanged();
             bumpGraph();
             if (!shuttingDown_ && !reconnectInProgress_) {
@@ -514,20 +577,24 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         }
         break;
     case PipeWireClientEvent::Type::InitialSyncDone:
+        initialSyncEventReceived_ = true;
         if (connectionState_ != PipeWireConnectionState::Connected) {
             break;
         }
-        stopInitialSyncTimeout();
-        initialSyncComplete_ = true;
-        graphRefreshTimer_.stop();
-        refreshGraph();
-        reconnectAttempt_ = 0;
-        reconnectExhaustedEmitted_ = false;
-        reconnectTimer_.stop();
-        if (router_ != nullptr) {
-            router_->handleConnectionState(connectionState_, true);
+        completeInitialSync();
+        break;
+    case PipeWireClientEvent::Type::MetadataChanged:
+        if (event.metadataSubject == 0
+            && event.metadataName == QLatin1String("default")
+            && event.metadataKey == QLatin1String("default.audio.sink")) {
+            const QString nextDefault = pipeWireDefaultNodeName(event.metadataValue);
+            if (defaultAudioSinkName_ != nextDefault) {
+                defaultAudioSinkName_ = nextDefault;
+                updateVirtualOutputState();
+                bumpGraph();
+                qCInfo(auralisAudio) << "PipeWire DefaultAudioSinkChanged name=" << defaultAudioSinkName_;
+            }
         }
-        qCInfo(auralisAudio) << "PipeWire initial registry sync complete" << diagnosticsText();
         break;
     }
 }
@@ -564,7 +631,113 @@ void PipeWireManager::refreshGraph()
     if (router_ != nullptr) {
         router_->handleGraphChanged();
     }
+    updateVirtualOutputState();
     bumpGraph();
+}
+
+void PipeWireManager::completeInitialSync()
+{
+    if (initialSyncComplete_ || !initialSyncEventReceived_
+        || connectionState_ != PipeWireConnectionState::Connected) {
+        return;
+    }
+    stopInitialSyncTimeout();
+    initialSyncComplete_ = true;
+    graphRefreshTimer_.stop();
+    refreshGraph();
+    reconnectAttempt_ = 0;
+    reconnectExhaustedEmitted_ = false;
+    reconnectTimer_.stop();
+    if (router_ != nullptr) {
+        router_->handleConnectionState(connectionState_, true);
+    }
+    ensureVirtualOutput();
+    qCInfo(auralisAudio) << "PipeWire initial registry sync complete" << diagnosticsText();
+}
+
+void PipeWireManager::updateVirtualOutputState()
+{
+    if (store_ == nullptr) {
+        virtualOutput_ = {};
+        return;
+    }
+    const bool wasReady = virtualOutput_.ready();
+    const bool wasSelected = virtualOutput_.selectedAsDefault;
+    virtualOutput_ = inspectPipeWireVirtualOutput(*store_, defaultAudioSinkName_);
+    if (virtualOutput_.ready()) {
+        virtualOutputTimer_.stop();
+        virtualOutputProvisionAttempt_ = 0;
+        virtualOutputError_.clear();
+        if (!wasReady || wasSelected != virtualOutput_.selectedAsDefault) {
+            qCInfo(auralisAudio) << "PipeWire VirtualOutputReady selected=" << virtualOutput_.selectedAsDefault
+                                 << "persistent=" << virtualOutput_.packageManaged;
+        }
+        return;
+    }
+    if (initialSyncComplete_ && connected() && !virtualOutputTimer_.isActive()) {
+        virtualOutputTimer_.start(500);
+    }
+}
+
+void PipeWireManager::ensureVirtualOutput()
+{
+    if (shuttingDown_ || !initialSyncComplete_ || !connected() || connection_ == nullptr) {
+        return;
+    }
+    updateVirtualOutputState();
+    if (virtualOutput_.ready()) {
+        bumpGraph();
+        return;
+    }
+
+    const bool ownsRuntime = connection_->ownsVirtualOutput();
+    if (virtualOutput_.partial() && !ownsRuntime) {
+        virtualOutputTimer_.stop();
+        virtualOutputError_ = QStringLiteral("persistent PipeWire node is incomplete; restart the user audio service");
+        qCWarning(auralisAudio) << "PipeWire VirtualOutputIncomplete persistence=package";
+        bumpGraph();
+        return;
+    }
+
+    if (virtualOutputProvisionAttempt_ >= 3) {
+        virtualOutputTimer_.stop();
+        virtualOutputError_ = QStringLiteral("PipeWire loopback module could not be provisioned");
+        qCWarning(auralisAudio) << "PipeWire VirtualOutputProvisionExhausted attempts="
+                                << virtualOutputProvisionAttempt_;
+        bumpGraph();
+        return;
+    }
+
+    if (ownsRuntime) {
+        connection_->destroyVirtualOutput();
+    }
+
+    QString error;
+    ++virtualOutputProvisionAttempt_;
+    if (!connection_->createVirtualOutput(&error)) {
+        virtualOutputError_ = error;
+        qCWarning(auralisAudio) << "PipeWire VirtualOutputUnavailable" << error;
+        if (virtualOutputProvisionAttempt_ < 3) {
+            const int retryDelayMs = virtualOutputProvisionAttempt_ * 1000;
+            qCInfo(auralisAudio) << "PipeWire VirtualOutputRetryScheduled attempt="
+                                 << virtualOutputProvisionAttempt_ << "delayMs=" << retryDelayMs;
+            virtualOutputTimer_.start(retryDelayMs);
+        }
+        bumpGraph();
+        return;
+    }
+    virtualOutputError_.clear();
+    virtualOutputTimer_.start(1500);
+    bumpGraph();
+}
+
+void PipeWireManager::resetVirtualOutputState()
+{
+    virtualOutputTimer_.stop();
+    virtualOutput_ = {};
+    defaultAudioSinkName_.clear();
+    virtualOutputError_.clear();
+    virtualOutputProvisionAttempt_ = 0;
 }
 
 void PipeWireManager::bumpGraph()

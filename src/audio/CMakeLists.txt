@@ -12,6 +12,7 @@ set(AURALIS_AUDIO_SOURCES
     PipeWireObjectStore.cpp
     PipeWireProperties.cpp
     PipeWireTypes.cpp
+    PipeWireVirtualOutput.cpp
     RoutePlanner.cpp
     RouteListModel.cpp
     VolumeController.cpp
@@ -32,6 +33,7 @@ set(AURALIS_AUDIO_SOURCES
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireObjectStore.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireProperties.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireTypes.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/audio/PipeWireVirtualOutput.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RoutePlanner.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/RouteListModel.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/VolumeController.h"
@@ -82,7 +84,7 @@ target_link_libraries(auralis-audio
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET "libpipewire-0.3>=0.3.60")
     target_link_libraries(auralis-audio PUBLIC PkgConfig::PIPEWIRE)
 else()
     target_link_libraries(auralis-audio PUBLIC Qt6::Multimedia)

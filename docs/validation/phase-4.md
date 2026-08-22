@@ -22,6 +22,19 @@ Configure requires `libpipewire-0.3` development files. Default `ctest` does **n
 4. Confirm those rows are **not** mapped to a Bluetooth device.
 5. Play audio from an ordinary application (browser, player). Confirm application `Stream/Output/Audio` nodes do **not** appear as Auralis endpoints.
 
+## Manual — Auralis system audio
+
+1. Launch Auralis and open **Audio Routing**.
+2. Confirm **Auralis Virtual Output** reports Ready (persistent) or Ready
+   (while Auralis runs).
+3. Select **Auralis Virtual Output** in the desktop sound settings.
+4. Confirm the card changes to **Selected as system output** and the source
+   list contains exactly one **Auralis System Audio** row.
+5. Confirm **Auralis Virtual Output** is not present in the destination list.
+6. Activate a route from **Auralis System Audio** to one connected playback
+   endpoint, play browser audio, and confirm only that selected endpoint plays.
+7. Deactivate the route and confirm Auralis-owned links are removed.
+
 ## Manual — Bluetooth audio device
 
 1. Use existing Phase 2/3 scan, pair, trust, connect.
@@ -60,7 +73,10 @@ AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF" \
 ctest --test-dir build -R tst_PipeWireLiveIntegration --output-on-failure
 ```
 
-If the flag is set and PipeWire is not connected, the live test **fails** with a diagnostics dump (`state=... devices=... nodes=... endpoints=...`).
+If the flag is set, the live test requires a real PipeWire connection, complete
+registry sync, a ready virtual sink/source graph, stable Auralis source
+classification, and feedback exclusion. Failure includes a diagnostics dump
+(`state=... devices=... nodes=... endpoints=... virtualOutput=...`).
 
 ## Mapping strategy
 

@@ -44,7 +44,15 @@ Linux reference baseline:
 
 Hardware-independent tests do not require a Bluetooth adapter. The desktop scan UI does.
 
-Windows and macOS builds require Qt 6.8 or newer with Bluetooth (`qtconnectivity`) and Multimedia. Windows specifically requires the **MSVC 2022 64-bit Qt kit and compiler**: Qt 6 does not provide a functional Windows Bluetooth backend in its MinGW builds. CMake rejects Windows+MinGW so a build cannot silently fall back to Qt's dummy Bluetooth backend. Linux additionally requires Qt DBus and the `libpipewire-0.3` development package. The cross-platform CI workflow builds and tests all three desktop families.
+Windows and macOS builds require Qt 6.8 or newer with Bluetooth (`qtconnectivity`) and Multimedia. Windows specifically requires the **MSVC 2022 64-bit Qt kit and compiler**: Qt 6 does not provide a functional Windows Bluetooth backend in its MinGW builds. CMake rejects Windows+MinGW so a build cannot silently fall back to Qt's dummy Bluetooth backend. Linux additionally requires Qt DBus, BlueZ, PipeWire/WirePlumber, and the `libpipewire-0.3` development package. Auralis supports PipeWire 0.3.60 or newer; the table above is the reference machine, not the minimum supported release. The cross-platform CI workflow builds and tests all three desktop families.
+
+Ubuntu/Debian development dependencies:
+
+```bash
+sudo apt install cmake ninja-build g++ pkg-config \
+  qt6-base-dev qt6-declarative-dev qt6-connectivity-dev qt6-multimedia-dev \
+  libpipewire-0.3-dev libpipewire-0.3-modules pipewire wireplumber bluez
+```
 
 ## Build
 
@@ -82,7 +90,7 @@ In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, an
 
 The **Audio Endpoints** list shows platform playback devices. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
-The **Audio Routing** panel selects a source and one or more playback endpoints, then Activate/Deactivate. Linux routes playback streams through PipeWire. Windows/macOS fan out a selected native capture source through Qt Multimedia over WASAPI/Core Audio.
+The **Audio Routing** panel selects a source and one or more playback endpoints, then Activate/Deactivate. On Linux, choose **Auralis Virtual Output** in the desktop sound settings and **Auralis System Audio** in Auralis to route the system mix once to the selected endpoints. No Linux kernel driver or code signing is required. The DEB installs a persistent PipeWire definition; a build-tree run also creates an app-lifetime fallback automatically. See [Linux virtual audio output](docs/architecture/LINUX_VIRTUAL_AUDIO_OUTPUT.md). Windows/macOS use their platform audio implementations.
 
 Optional AddressSanitizer/UBSan build:
 
@@ -100,7 +108,7 @@ cmake --build build
 cd build && cpack
 ```
 
-The default artifact is a DEB on Linux, an NSIS installer plus ZIP on Windows when NSIS is installed (otherwise ZIP), and a DMG on macOS.
+The default artifacts are DEB and TGZ on Linux, an NSIS installer plus ZIP on Windows when NSIS is installed (otherwise ZIP), and a DMG on macOS. Linux artifacts carry the matching Qt runtime, platform plugins, and imported QML modules, so they do not silently bind to an older distro Qt.
 
 Install validation (no root required for extract/launch smoke):
 
@@ -112,6 +120,9 @@ timeout 3 env QT_QPA_PLATFORM=offscreen /tmp/auralis-prefix/usr/bin/auralis-desk
 ```
 
 Runtime does not require root. System install via `sudo dpkg -i` is optional.
+After the first DEB installation, log out and back in to load the persistent
+PipeWire virtual output. Auralis supplies an immediate app-lifetime fallback
+until that happens.
 
 ## Test
 
@@ -136,6 +147,9 @@ AURALIS_RUN_PIPEWIRE_INTEGRATION=1 ctest --test-dir build -R tst_PipeWireLiveInt
 ```
 
 Add `AURALIS_EXPECT_DEVICE_ADDRESS="AA:BB:CC:DD:EE:FF"` to also require a mapped Bluetooth audio endpoint.
+The Linux CI helper in `scripts/ci/run-pipewire-virtual-output.sh` additionally
+tests both the runtime fallback and persistent drop-in against isolated real
+PipeWire daemons.
 
 Live audio routing tests are skipped unless explicitly enabled:
 
@@ -195,6 +209,7 @@ The current application does **not**:
 - destroy WirePlumber or other clients' PipeWire links (AdditiveRouting);
 - hijack or replace WirePlumber session policy;
 - put `pw_stream` in the production application (test binary only);
+- install or load a Linux kernel audio driver (the virtual output is a PipeWire loopback module);
 - call `bluetoothctl`, `wpctl`, `pactl`, `btmgmt`, `busctl`, `pw-cli`, or `pw-link`.
 
 ## License

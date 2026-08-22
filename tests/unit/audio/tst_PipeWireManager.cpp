@@ -1,3 +1,6 @@
+#include "AudioTestFixtures.h"
+
+#include <auralis/audio/AudioRouter.h>
 #include <auralis/audio/PipeWireManager.h>
 #include <auralis/audio/PipeWireTypes.h>
 #include <auralis/core/ServiceStatus.h>
@@ -9,6 +12,8 @@ using auralis::audio::PipeWireClientEvent;
 using auralis::audio::PipeWireConnectionState;
 using auralis::audio::PipeWireManager;
 using auralis::core::ServiceStatus;
+using auralis::test::makeNode;
+using auralis::test::makePort;
 
 namespace {
 
@@ -26,6 +31,25 @@ PipeWireClientEvent syncDoneEvent()
     PipeWireClientEvent event;
     event.type = PipeWireClientEvent::Type::InitialSyncDone;
     event.state = PipeWireConnectionState::Connected;
+    return event;
+}
+
+PipeWireClientEvent graphEvent(const auralis::audio::PipeWireObjectSnapshot& snapshot)
+{
+    PipeWireClientEvent event;
+    event.type = PipeWireClientEvent::Type::GlobalAdded;
+    event.snapshot = snapshot;
+    return event;
+}
+
+PipeWireClientEvent defaultSinkEvent(const QString& nodeName)
+{
+    PipeWireClientEvent event;
+    event.type = PipeWireClientEvent::Type::MetadataChanged;
+    event.metadataName = QStringLiteral("default");
+    event.metadataKey = QStringLiteral("default.audio.sink");
+    event.metadataType = QStringLiteral("Spa:String:JSON");
+    event.metadataValue = QStringLiteral(R"({"name":"%1"})").arg(nodeName);
     return event;
 }
 
@@ -233,6 +257,76 @@ private slots:
         manager.injectClientEventForTesting(syncDoneEvent());
         QVERIFY(!manager.initialSyncComplete());
         QVERIFY(manager.reconnectAttempt() >= attempts);
+    }
+
+    void packagedVirtualOutputBecomesReadyAndTracksDefaultMetadata()
+    {
+        PipeWireManager manager;
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            60,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("sink")},
+             {QStringLiteral("auralis.virtual.persistence"), QStringLiteral("package")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(600, 60, QStringLiteral("in"))));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            61,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")},
+             {QStringLiteral("auralis.virtual.persistence"), QStringLiteral("package")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(610, 61, QStringLiteral("out"))));
+        manager.injectClientEventForTesting(syncDoneEvent());
+
+        QVERIFY(manager.virtualOutputAvailable());
+        QVERIFY(!manager.virtualOutputSelected());
+        QCOMPARE(manager.virtualOutputStatus(), QStringLiteral("Ready (persistent)"));
+        QVERIFY(manager.audioRouter()->sourceDisplayName(QStringLiteral("src:auralis-system-audio"))
+                    == QStringLiteral("Auralis System Audio"));
+
+        manager.injectClientEventForTesting(defaultSinkEvent(QStringLiteral("auralis_virtual_output")));
+        QVERIFY(manager.virtualOutputSelected());
+        QCOMPARE(manager.virtualOutputStatus(), QStringLiteral("Selected as system output"));
+        QVERIFY(manager.diagnosticsText().contains(QStringLiteral("defaultSink=auralis_virtual_output")));
+        manager.shutdown();
+    }
+
+    void initialSyncEventBeforeConnectedIsNotLost()
+    {
+        PipeWireManager manager;
+        manager.injectClientEventForTesting(syncDoneEvent());
+        QVERIFY(!manager.initialSyncComplete());
+
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        QVERIFY(manager.initialSyncComplete());
+        QVERIFY(!manager.initialSyncTimeoutPendingForTesting());
+        manager.shutdown();
+    }
+
+    void ignoresDefaultSinkMetadataForNonCoreSubject()
+    {
+        PipeWireManager manager;
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            70,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(700, 70, QStringLiteral("in"))));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            71,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(710, 71, QStringLiteral("out"))));
+        manager.injectClientEventForTesting(syncDoneEvent());
+
+        PipeWireClientEvent metadata = defaultSinkEvent(QStringLiteral("auralis_virtual_output"));
+        metadata.metadataSubject = 99;
+        manager.injectClientEventForTesting(metadata);
+        QVERIFY(!manager.virtualOutputSelected());
+        manager.shutdown();
     }
 };
 

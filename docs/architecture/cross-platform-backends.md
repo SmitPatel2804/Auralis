@@ -21,10 +21,10 @@ The native audio manager projects host inputs, outputs, and owned streams into t
 
 Bluetooth pairing and profile connection policy is ultimately controlled by the host operating system. Windows and macOS may display system confirmation UI or require the user to finish a profile action in Bluetooth settings. Auralis reports that state as an explicit operation error; it never fabricates a connected device.
 
-The native Qt audio route captures a selected input device. It does not claim process-level system-playback capture when the operating system has not exposed such a capture endpoint. Linux retains its existing PipeWire playback-stream routing unchanged. WASAPI loopback and macOS system-output taps remain hardware-gated enhancements if exact system-mix capture is required on those platforms.
+The native Qt audio route captures a selected input device. It does not claim process-level system-playback capture when the operating system has not exposed such a capture endpoint. Linux also publishes a native PipeWire loopback sink named **Auralis Virtual Output**; selecting it in the desktop routes the system mix into the stable **Auralis System Audio** source without a kernel driver. See [LINUX_VIRTUAL_AUDIO_OUTPUT.md](LINUX_VIRTUAL_AUDIO_OUTPUT.md). Windows system-mix capture uses its separately packaged virtual audio driver, while macOS system-output taps remain a platform enhancement.
 
 ## Build and package gates
 
-Linux alone compiles the BlueZ, Qt DBus, and PipeWire sources. Windows and macOS compile the Qt Bluetooth/Multimedia sources and have no DBus or PipeWire dependency. CPack selects DEB, NSIS/ZIP, or DragNDrop respectively. The macOS bundle declares Bluetooth and audio-capture privacy descriptions.
+Linux alone compiles the BlueZ, Qt DBus, and PipeWire sources. Windows and macOS compile the Qt Bluetooth/Multimedia sources and have no DBus or PipeWire dependency. CPack produces DEB and TGZ artifacts on Linux, NSIS/ZIP on Windows, or DragNDrop on macOS. The Linux install tree carries the PipeWire vendor drop-in plus its build-matched Qt libraries, plugins, and QML imports; the macOS bundle declares Bluetooth and audio-capture privacy descriptions.
 
 The workflow in `.github/workflows/cross-platform.yml` configures, builds, tests, and packages each desktop family, with the Windows job pinned to `win64_msvc2022_64`. Real Bluetooth hardware, multi-output audio, suspend/resume, and long-duration clock-drift checks still require actual-machine validation on each target OS.

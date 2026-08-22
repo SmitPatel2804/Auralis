@@ -70,6 +70,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         "${CMAKE_SOURCE_DIR}/data/icons/hicolor/scalable/apps/io.github.auralis.Auralis.svg"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
     )
+
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/data/pipewire/90-auralis-virtual-output.conf"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/pipewire/pipewire.conf.d"
+    )
 endif()
 
 install(FILES
@@ -77,24 +82,47 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/auralis"
 )
 
-set(AURALIS_DEPLOY_OPTIONS
-    NO_UNSUPPORTED_PLATFORM_ERROR
-    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
-)
-if(MSVC)
-    # The ZIP carries app-local MSVC runtime DLLs via
-    # InstallRequiredSystemLibraries. Do not add vc_redist.x64.exe: merely
-    # placing the installer beside the application does not make a portable
-    # extracted build runnable on a clean machine.
-    list(APPEND AURALIS_DEPLOY_OPTIONS NO_COMPILER_RUNTIME)
-endif()
-if(APPLE)
-    list(APPEND AURALIS_DEPLOY_OPTIONS MACOS_BUNDLE_POST_BUILD)
-endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # qt_generate_deploy_qml_app_script does not deploy regular runtime
+    # dependencies on Linux. Use Qt's low-level paired deployment calls so the
+    # DEB/TGZ carries the exact Qt runtime, plugins, and imported QML modules it
+    # was built against instead of relying on a distro's potentially older Qt.
+    set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
+    qt_generate_deploy_script(
+        TARGET auralis-desktop
+        OUTPUT_SCRIPT auralis_deploy_script
+        CONTENT "
+            qt_deploy_qml_imports(
+                TARGET auralis-desktop
+                PLUGINS_FOUND auralis_qml_plugins
+            )
+            qt_deploy_runtime_dependencies(
+                EXECUTABLE \"${auralis_linux_executable}\"
+                ADDITIONAL_MODULES \${auralis_qml_plugins}
+                GENERATE_QT_CONF
+            )
+        "
+    )
+else()
+    set(AURALIS_DEPLOY_OPTIONS
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+    )
+    if(MSVC)
+        # The ZIP carries app-local MSVC runtime DLLs via
+        # InstallRequiredSystemLibraries. Do not add vc_redist.x64.exe: merely
+        # placing the installer beside the application does not make a portable
+        # extracted build runnable on a clean machine.
+        list(APPEND AURALIS_DEPLOY_OPTIONS NO_COMPILER_RUNTIME)
+    endif()
+    if(APPLE)
+        list(APPEND AURALIS_DEPLOY_OPTIONS MACOS_BUNDLE_POST_BUILD)
+    endif()
 
-qt_generate_deploy_qml_app_script(
-    TARGET auralis-desktop
-    OUTPUT_SCRIPT auralis_deploy_script
-    ${AURALIS_DEPLOY_OPTIONS}
-)
+    qt_generate_deploy_qml_app_script(
+        TARGET auralis-desktop
+        OUTPUT_SCRIPT auralis_deploy_script
+        ${AURALIS_DEPLOY_OPTIONS}
+    )
+endif()
 install(SCRIPT ${auralis_deploy_script})
