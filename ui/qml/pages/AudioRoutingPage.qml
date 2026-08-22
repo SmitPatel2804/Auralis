@@ -47,8 +47,8 @@ Flickable {
                     onClicked: if (audio) audio.refreshVirtualAudio()
                 }
                 SignalButton {
-                    text: qsTr("WINDOWS SOUND")
-                    visible: root.windowsAudio
+                    text: root.windowsAudio ? qsTr("WINDOWS SOUND") : qsTr("SOUND SETTINGS")
+                    visible: root.windowsAudio || root.linuxAudio
                     compact: true
                     primary: audio && audio.virtualOutputAvailable && !audio.virtualOutputSelected
                     onClicked: if (audio) audio.openWindowsSoundSettings()

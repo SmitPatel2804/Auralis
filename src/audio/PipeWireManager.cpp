@@ -9,6 +9,7 @@
 #include <auralis/core/LoggingCategories.h>
 
 #include <QCoreApplication>
+#include <QProcess>
 
 #include <algorithm>
 
@@ -248,9 +249,34 @@ void PipeWireManager::refreshVirtualAudio()
     refreshGraph();
     virtualOutputError_.clear();
     virtualOutputProvisionAttempt_ = 0;
+    virtualOutputPortWaitAttempts_ = 0;
     virtualOutputTimer_.stop();
     ensureVirtualOutput();
     bumpGraph();
+}
+
+bool PipeWireManager::openWindowsSoundSettings()
+{
+    struct Candidate {
+        const char* program;
+        QStringList args;
+    };
+    const Candidate candidates[] = {
+        { "gnome-control-center", { QStringLiteral("sound") } },
+        { "unity-control-center", { QStringLiteral("sound") } },
+        { "systemsettings", { QStringLiteral("kcm_pipewire") } },
+        { "systemsettings", { QStringLiteral("kcm_pulseaudio") } },
+        { "pavucontrol", {} },
+        { "pavucontrol-qt", {} },
+    };
+    for (const Candidate& candidate : candidates) {
+        if (QProcess::startDetached(QString::fromLatin1(candidate.program), candidate.args)) {
+            qCInfo(auralisAudio) << "LinuxSoundSettingsRequested opened=" << candidate.program;
+            return true;
+        }
+    }
+    qCWarning(auralisAudio) << "LinuxSoundSettingsRequested no known control panel found";
+    return false;
 }
 
 bool PipeWireManager::initialize()
@@ -667,6 +693,7 @@ void PipeWireManager::updateVirtualOutputState()
     if (virtualOutput_.ready()) {
         virtualOutputTimer_.stop();
         virtualOutputProvisionAttempt_ = 0;
+        virtualOutputPortWaitAttempts_ = 0;
         virtualOutputError_.clear();
         if (!wasReady || wasSelected != virtualOutput_.selectedAsDefault) {
             qCInfo(auralisAudio) << "PipeWire VirtualOutputReady selected=" << virtualOutput_.selectedAsDefault
@@ -691,12 +718,25 @@ void PipeWireManager::ensureVirtualOutput()
     }
 
     const bool ownsRuntime = connection_->ownsVirtualOutput();
-    if (virtualOutput_.partial() && !ownsRuntime) {
-        virtualOutputTimer_.stop();
-        virtualOutputError_ = QStringLiteral("persistent PipeWire node is incomplete; restart the user audio service");
-        qCWarning(auralisAudio) << "PipeWire VirtualOutputIncomplete persistence=package";
-        bumpGraph();
-        return;
+    if (virtualOutput_.partial() && !virtualOutput_.ready()) {
+        // Adapter ports often arrive after the loopback nodes. Wait before
+        // tearing down a runtime module or declaring a package drop-in dead.
+        constexpr int kMaxPortWaitAttempts = 8;
+        if (virtualOutputPortWaitAttempts_ < kMaxPortWaitAttempts) {
+            ++virtualOutputPortWaitAttempts_;
+            virtualOutputTimer_.start(500);
+            bumpGraph();
+            return;
+        }
+        virtualOutputPortWaitAttempts_ = 0;
+        if (!ownsRuntime) {
+            virtualOutputTimer_.stop();
+            virtualOutputError_ =
+                QStringLiteral("persistent PipeWire node is incomplete; restart the user audio service");
+            qCWarning(auralisAudio) << "PipeWire VirtualOutputIncomplete persistence=package";
+            bumpGraph();
+            return;
+        }
     }
 
     if (virtualOutputProvisionAttempt_ >= 3) {
@@ -727,6 +767,7 @@ void PipeWireManager::ensureVirtualOutput()
         return;
     }
     virtualOutputError_.clear();
+    virtualOutputPortWaitAttempts_ = 0;
     virtualOutputTimer_.start(1500);
     bumpGraph();
 }
@@ -738,6 +779,7 @@ void PipeWireManager::resetVirtualOutputState()
     defaultAudioSinkName_.clear();
     virtualOutputError_.clear();
     virtualOutputProvisionAttempt_ = 0;
+    virtualOutputPortWaitAttempts_ = 0;
 }
 
 void PipeWireManager::bumpGraph()

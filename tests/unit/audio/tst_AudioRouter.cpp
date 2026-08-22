@@ -752,6 +752,22 @@ private slots:
         QVERIFY(h.store.link(60) != nullptr);
         QVERIFY(h.store.link(61) != nullptr);
     }
+
+    void auralisSystemAudioDisplayNameIsNotMic()
+    {
+        Harness h;
+        h.store.upsert(makeNode(
+            80,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")}}));
+        h.store.upsert(makePort(800, 80, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(801, 80, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        h.router.refreshSources();
+        QCOMPARE(h.router.sourceDisplayName(QStringLiteral("src:auralis-system-audio")),
+                 QStringLiteral("Auralis System Audio"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioRouter)

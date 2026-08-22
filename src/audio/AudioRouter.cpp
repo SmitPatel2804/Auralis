@@ -1,6 +1,7 @@
 #include <auralis/audio/AudioRouter.h>
 
 #include <auralis/audio/AudioSourceListModel.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 #include <auralis/audio/RouteListModel.h>
 #include <auralis/core/LoggingCategories.h>
 
@@ -88,6 +89,9 @@ QString AudioRouter::sourceDisplayName(const QString& sourceId) const
             : (!source.nodeName.isEmpty() ? source.nodeName : source.id);
         if (source.monitorSource) {
             return base + QStringLiteral(" (monitor)");
+        }
+        if (source.id == QLatin1String(kAuralisVirtualSourceId)) {
+            return base;
         }
         if (source.sourceType == AudioSourceType::PhysicalAudioSource
             || source.sourceType == AudioSourceType::VirtualAudioSource) {

@@ -79,6 +79,9 @@ public:
 
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
     Q_INVOKABLE void refreshVirtualAudio();
+    /// Opens the desktop sound panel so the user can select Auralis Virtual Output.
+    /// Named to match the Windows QML contract (`AudioRoutingPage` / `tst_QmlComponents`).
+    Q_INVOKABLE bool openWindowsSoundSettings();
 
     /// Bounded reconnect after daemon loss. RecoveryManager observes; does not schedule a second retry.
     void setAutoReconnectEnabled(bool enabled) override;
@@ -159,6 +162,7 @@ private:
     QString defaultAudioSinkName_;
     QString virtualOutputError_;
     int virtualOutputProvisionAttempt_ = 0;
+    int virtualOutputPortWaitAttempts_ = 0;
 };
 
 } // namespace auralis::audio
