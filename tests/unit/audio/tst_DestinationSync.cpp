@@ -2,8 +2,6 @@
 
 #include <QtTest>
 
-#include <cmath>
-
 using auralis::audio::DestinationLatencySample;
 using auralis::audio::destinationDelayMsTowardMax;
 
@@ -63,44 +61,6 @@ private slots:
         const auto delays = destinationDelayMsTowardMax(samples);
         QCOMPARE(delays.value(QStringLiteral("a")), 0.0);
         QCOMPARE(delays.value(QStringLiteral("b")), 0.0);
-    }
-
-    void estimateLagFindsInsertedDelay()
-    {
-        constexpr int rate = 16000;
-        QVector<float> reference(rate);
-        QVector<float> observed(rate);
-        for (int i = 0; i < rate; ++i) {
-            const float sample = static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * 440.0 * i / rate));
-            reference[i] = sample;
-            const int delayed = i - 640; // 40 ms at 16 kHz
-            observed[i] = delayed >= 0 ? reference[delayed] : 0.0f;
-        }
-        const auto lag = auralis::audio::estimateLagMs(reference, observed, rate);
-        QVERIFY(lag.has_value());
-        QVERIFY(std::abs(*lag - 40.0) < 3.0);
-    }
-
-    void silentBuffersAreNotALagEstimate()
-    {
-        const QVector<float> silence(8000, 0.0f);
-        QVERIFY(!auralis::audio::estimateLagMs(silence, silence, 8000).has_value());
-    }
-
-    void runtimeAverageUsesTenSecondWindow()
-    {
-        auralis::audio::RuntimeLagAverager averager;
-        averager.add(QStringLiteral("fast"), 100.0, 0);
-        averager.add(QStringLiteral("slow"), 140.0, 0);
-        QVERIFY(averager.hasTwoEndpoints(0));
-        QCOMPARE(averager.averagedDelayMs(0).value(QStringLiteral("fast")), 100.0);
-        averager.add(QStringLiteral("fast"), 999.0, 11000);
-        QCOMPARE(averager.averagedDelayMs(11000).value(QStringLiteral("fast")), 250.0);
-        QVERIFY(!averager.hasTwoEndpoints(11000));
-        averager.add(QStringLiteral("slow"), 180.0, 11000);
-        const auto pads = destinationDelayMsTowardMax(averager.averagedLatencySamples(11000));
-        QCOMPARE(pads.value(QStringLiteral("fast")), 0.0);
-        QVERIFY(pads.value(QStringLiteral("slow")) > 0.0);
     }
 };
 

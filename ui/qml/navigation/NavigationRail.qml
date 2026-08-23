@@ -23,9 +23,10 @@ ColumnLayout {
             { glyph: "01", title: qsTr("Dashboard"), page: 0 },
             { glyph: "02", title: qsTr("Devices"), page: 1 },
             { glyph: "03", title: qsTr("Sessions"), page: 2 },
-            { glyph: "04", title: qsTr("Audio Routing"), page: 3 },
-            { glyph: "05", title: qsTr("Diagnostics"), page: 4 },
-            { glyph: "06", title: qsTr("Settings"), page: 5 }
+            { glyph: "04", title: qsTr("Playground"), page: 3 },
+            { glyph: "05", title: qsTr("Audio Routing"), page: 4 },
+            { glyph: "06", title: qsTr("Diagnostics"), page: 5 },
+            { glyph: "07", title: qsTr("Settings"), page: 6 }
         ]
 
         delegate: Button {

@@ -199,6 +199,7 @@ private slots:
              "activateSession(QString)", "deactivateSession(QString)", "retrySession(QString)",
              "setGroupVolume(QString,double)", "setSessionMuted(QString,bool)",
              "setDeviceVolume(QString,QString,double)", "setDeviceDelayMs(QString,QString,double)",
+             "nudgeDeviceDelayMs(QString,QString,double)",
              "setRecoveryPolicy(QString,QString)",
              "restoreLastSession()", "duplicateSession(QString)", "commandResultText(int)"});
         verifyRoles(
@@ -209,7 +210,7 @@ private slots:
             {"deviceId", "displayName", "connected", "endpointAvailable", "volume", "muted", "delayMs", "memberEnabled"});
         verifyRoles(
             modelProperty(sessions, "currentMembers"),
-            {"displayName", "connected", "recovering", "routeActive", "endpointAvailable"});
+            {"deviceId", "displayName", "connected", "recovering", "routeActive", "endpointAvailable", "delayMs"});
         verifyProperties(
             selectedSession,
             {"sessionId", "name", "stateLabel", "sourceId", "sourceName", "groupVolume", "muted",
@@ -260,6 +261,7 @@ private slots:
             QStringLiteral("pageDashboard"),
             QStringLiteral("pageDevices"),
             QStringLiteral("pageSessions"),
+            QStringLiteral("pagePlayground"),
             QStringLiteral("pageAudioRouting"),
             QStringLiteral("pageDiagnostics"),
             QStringLiteral("pageSettings"),

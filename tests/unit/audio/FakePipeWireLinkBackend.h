@@ -47,6 +47,7 @@ public:
     quint32 lastDelayNode = 0;
     double lastDelaySeconds = -1.0;
     bool fanoutEnabled = false;
+    bool omitDelayNodes = false;
     QStringList lastFanoutNames;
     int fanoutDestroyCalls = 0;
     QHash<QString, double> lastDelayBridgeSec;
@@ -190,7 +191,7 @@ public:
             destroyDelayBridge(endpointId);
             return true;
         }
-        if (store_ == nullptr) {
+        if (omitDelayNodes || store_ == nullptr) {
             return true;
         }
         quint32 captureId = delayCaptureIds_.value(endpointId, 0);

@@ -252,20 +252,27 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         active: AppCore.currentPage === 3 || status === Loader.Ready
+                        sourceComponent: PlaygroundPage {}
+                        onLoaded: if (item) item.objectName = "pagePlayground"
+                    }
+                    Loader {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        active: AppCore.currentPage === 4 || status === Loader.Ready
                         sourceComponent: AudioRoutingPage {}
                         onLoaded: if (item) item.objectName = "pageAudioRouting"
                     }
                     Loader {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        active: AppCore.currentPage === 4 || status === Loader.Ready
+                        active: AppCore.currentPage === 5 || status === Loader.Ready
                         sourceComponent: DiagnosticsPage {}
                         onLoaded: if (item) item.objectName = "pageDiagnostics"
                     }
                     Loader {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        active: AppCore.currentPage === 5 || status === Loader.Ready
+                        active: AppCore.currentPage === 6 || status === Loader.Ready
                         sourceComponent: SettingsPage {}
                         onLoaded: if (item) item.objectName = "pageSettings"
                     }
@@ -284,9 +291,10 @@ Rectangle {
         case 0: return qsTr("Dashboard")
         case 1: return qsTr("Devices")
         case 2: return qsTr("Sessions")
-        case 3: return qsTr("Audio Routing")
-        case 4: return qsTr("Diagnostics")
-        case 5: return qsTr("Settings")
+        case 3: return qsTr("Playground")
+        case 4: return qsTr("Audio Routing")
+        case 5: return qsTr("Diagnostics")
+        case 6: return qsTr("Settings")
         }
         return qsTr("Auralis")
     }
@@ -300,9 +308,10 @@ Rectangle {
         case 0: return qsTr("Realtime system overview")
         case 1: return qsTr("Discover, pair and inspect hardware")
         case 2: return qsTr("Compose synchronized listening groups")
-        case 3: return qsTr("Shape the native signal graph")
-        case 4: return qsTr("Inspect services and telemetry")
-        case 5: return qsTr("Tune the control environment")
+        case 3: return qsTr("Pad extra delay on live session devices")
+        case 4: return qsTr("Shape the native signal graph")
+        case 5: return qsTr("Inspect services and telemetry")
+        case 6: return qsTr("Tune the control environment")
         }
         return ""
     }

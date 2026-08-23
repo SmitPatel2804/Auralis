@@ -8,6 +8,8 @@
 
 namespace auralis::core {
 
+inline constexpr int kMaxNavPageIndex = 6;
+
 class ConfigurationManager : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString applicationName READ applicationName CONSTANT)

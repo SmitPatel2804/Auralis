@@ -322,8 +322,8 @@ void ApplicationCore::navigateTo(int page)
     if (page < 0) {
         page = 0;
     }
-    if (page > 5) {
-        page = 5;
+    if (page > kMaxNavPageIndex) {
+        page = kMaxNavPageIndex;
     }
     if (currentPage_ == page) {
         return;

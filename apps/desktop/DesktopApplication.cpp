@@ -50,7 +50,7 @@ auralis::core::ApplicationServices makeProductionServices()
 #if defined(Q_OS_LINUX)
     auto pipeWire = std::make_unique<auralis::audio::PipeWireManager>(registry);
     if (auto* router = pipeWire->audioRouter()) {
-        router->enableAcousticLagCalibration();
+        router->setDelayGraphCommitMs(200);
     }
 #else
     auto pipeWire = std::make_unique<auralis::audio::NativeAudioManager>(registry);

@@ -3,7 +3,6 @@
 #include <auralis/audio/AudioEndpointRegistry.h>
 #include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioSource.h>
-#include <auralis/audio/DestinationSync.h>
 #include <auralis/audio/IPipeWireLinkBackend.h>
 #include <auralis/audio/LinkManager.h>
 #include <auralis/audio/PipeWireObjectStore.h>
@@ -15,6 +14,7 @@
 #include <QHash>
 #include <QObject>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -25,7 +25,6 @@
 
 namespace auralis::audio {
 
-class AcousticLagCalibrator;
 class AudioSourceListModel;
 class RouteListModel;
 
@@ -42,7 +41,6 @@ class AudioRouter final : public QObject {
     Q_PROPERTY(bool routeMuted READ routeMuted NOTIFY routeMutedChanged)
     Q_PROPERTY(bool volumeCapable READ volumeCapable NOTIFY volumeCapableChanged)
     Q_PROPERTY(int ownedLinkCount READ ownedLinkCount NOTIFY ownedLinkCountChanged)
-    Q_PROPERTY(QString lagCalibrationStatus READ lagCalibrationStatus NOTIFY lagCalibrationStatusChanged)
 
 public:
     AudioRouter(
@@ -63,7 +61,6 @@ public:
     bool routeMuted() const;
     bool volumeCapable() const;
     int ownedLinkCount() const;
-    QString lagCalibrationStatus() const;
 
     void setActivationTimeoutMs(int milliseconds);
     int activationTimeoutMs() const noexcept;
@@ -91,9 +88,8 @@ public:
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
     Q_INVOKABLE QString selectableSourceIdAt(int row) const;
 
-    void enableAcousticLagCalibration();
-    void ingestAcousticLagSample(const QString& endpointId, double delayMs);
-    void applyRuntimeLagCompensation();
+    void setDelayGraphCommitMs(int milliseconds);
+    int delayGraphCommitMs() const noexcept;
 
     void syncSessionDestinations(const QString& sessionId);
 
@@ -118,7 +114,6 @@ signals:
     void routeMutedChanged();
     void volumeCapableChanged();
     void ownedLinkCountChanged();
-    void lagCalibrationStatusChanged();
 
 private:
     void setState(AudioRoute& route, RouteState state);
@@ -155,8 +150,9 @@ private:
     bool tryActivateCompensatedFanout(AudioRoute& route);
     void relinkSessionToFanout(const QString& ownerId);
     void releaseFanoutIfUnused(const QString& ownerId);
-    void applyAutomaticDelayBridges(const QVector<AudioRoute*>& group);
-    void maybeStartRuntimeLagCalibration(const QString& sessionId);
+    void applyDelayBridges(const QVector<AudioRoute*>& group);
+    void commitDelayGraph();
+    void scheduleDelayGraphCommit();
     ResolvedRoutePlan expandPlanThroughDelayBridges(const ResolvedRoutePlan& plan) const;
     bool ownedLinksMatchPlan(const AudioRoute& route, const ResolvedRoutePlan& plan) const;
 
@@ -186,8 +182,10 @@ private:
     bool qmlRouteMuted_ = false;
     bool qmlVolumeCapable_ = false;
     int qmlOwnedLinkCount_ = 0;
-    RuntimeLagAverager lagAverager_;
-    AcousticLagCalibrator* calibrator_ = nullptr;
+    QHash<QString, double> playgroundPads_;
+    QSet<QString> pendingDelayDestroys_;
+    QTimer* delayCommitTimer_ = nullptr;
+    int delayGraphCommitMs_ = 0;
 };
 
 } // namespace auralis::audio

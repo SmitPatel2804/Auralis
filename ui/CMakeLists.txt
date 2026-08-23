@@ -24,6 +24,7 @@ set_source_files_properties(qml/components/SignalComboBox.qml PROPERTIES QT_RESO
 set_source_files_properties(qml/pages/DashboardPage.qml PROPERTIES QT_RESOURCE_ALIAS DashboardPage.qml)
 set_source_files_properties(qml/pages/DevicesPage.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPage.qml)
 set_source_files_properties(qml/pages/SessionsPage.qml PROPERTIES QT_RESOURCE_ALIAS SessionsPage.qml)
+set_source_files_properties(qml/pages/PlaygroundPage.qml PROPERTIES QT_RESOURCE_ALIAS PlaygroundPage.qml)
 set_source_files_properties(qml/pages/AudioRoutingPage.qml PROPERTIES QT_RESOURCE_ALIAS AudioRoutingPage.qml)
 set_source_files_properties(qml/pages/DiagnosticsPage.qml PROPERTIES QT_RESOURCE_ALIAS DiagnosticsPage.qml)
 set_source_files_properties(qml/pages/SettingsPage.qml PROPERTIES QT_RESOURCE_ALIAS SettingsPage.qml)
@@ -60,6 +61,7 @@ qt_add_qml_module(auralis-ui
         qml/pages/DashboardPage.qml
         qml/pages/DevicesPage.qml
         qml/pages/SessionsPage.qml
+        qml/pages/PlaygroundPage.qml
         qml/pages/AudioRoutingPage.qml
         qml/pages/DiagnosticsPage.qml
         qml/pages/SettingsPage.qml

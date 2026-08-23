@@ -175,6 +175,7 @@ private slots:
             QStringLiteral("pageDashboard"),
             QStringLiteral("pageDevices"),
             QStringLiteral("pageSessions"),
+            QStringLiteral("pagePlayground"),
             QStringLiteral("pageAudioRouting"),
             QStringLiteral("pageDiagnostics"),
             QStringLiteral("pageSettings")};
@@ -250,7 +251,7 @@ private slots:
         window->show();
         QTest::qWait(200);
 
-        for (int page = 0; page < 6; ++page) {
+        for (int page = 0; page < 7; ++page) {
             core.navigateTo(page);
             QCOMPARE(core.currentPage(), page);
             QTest::qWait(40);

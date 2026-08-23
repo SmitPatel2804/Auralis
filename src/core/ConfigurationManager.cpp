@@ -99,7 +99,7 @@ bool ConfigurationManager::initialize()
     restoreLastSession_ = settings_->value(kRestoreLastSessionKey, false).toBool();
     autoRecoverServices_ = settings_->value(kAutoRecoverServicesKey, true).toBool();
     restoreOnResume_ = settings_->value(kRestoreOnResumeKey, true).toBool();
-    lastNavPage_ = qBound(0, settings_->value(kLastNavPageKey, 0).toInt(), 5);
+    lastNavPage_ = qBound(0, settings_->value(kLastNavPageKey, 0).toInt(), kMaxNavPageIndex);
     windowWidth_ = qMax(kMinimumWindowWidth, settings_->value(kWindowWidthKey, 1280).toInt());
     windowHeight_ = qMax(kMinimumWindowHeight, settings_->value(kWindowHeightKey, 800).toInt());
 
@@ -379,8 +379,8 @@ bool ConfigurationManager::setLastNavPage(int page)
     if (page < 0) {
         page = 0;
     }
-    if (page > 5) {
-        page = 5;
+    if (page > kMaxNavPageIndex) {
+        page = kMaxNavPageIndex;
     }
     if (lastNavPage_ == page) {
         return true;

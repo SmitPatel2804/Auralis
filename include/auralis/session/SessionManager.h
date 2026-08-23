@@ -104,6 +104,7 @@ public:
     Q_INVOKABLE SessionCommandResult setDeviceVolume(const QString& sessionId, const QString& deviceId, double value);
     Q_INVOKABLE SessionCommandResult setDeviceMuted(const QString& sessionId, const QString& deviceId, bool muted);
     Q_INVOKABLE SessionCommandResult setDeviceDelayMs(const QString& sessionId, const QString& deviceId, double delayMs);
+    Q_INVOKABLE SessionCommandResult nudgeDeviceDelayMs(const QString& sessionId, const QString& deviceId, double deltaMs);
     Q_INVOKABLE SessionCommandResult setAutoReconnect(const QString& sessionId, bool enabled);
     Q_INVOKABLE SessionCommandResult setRecoveryPolicy(const QString& sessionId, const QString& policy);
     Q_INVOKABLE SessionCommandResult restoreLastSession();

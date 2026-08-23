@@ -57,11 +57,36 @@ private slots:
         volume.applyMemberVolume(session, device);
         QCOMPARE(backend.lastVolume, 0.3);
         QVERIFY(!backend.lastMuted);
-        QCOMPARE(backend.lastDelaySeconds, -1.0);
+        QCOMPARE(backend.lastDelaySeconds, 0.0);
 
         session.muted = true;
         volume.applyMemberVolume(session, device);
         QVERIFY(backend.lastMuted);
+    }
+
+    void memberDelayIsAppliedThroughRouter()
+    {
+        PipeWireObjectStore store;
+        AudioEndpointRegistry endpoints;
+        FakePipeWireLinkBackend backend(&store);
+        AudioRouter router(&store, &endpoints, &backend);
+        VolumeCoordinator volume(&router);
+        router.handleConnectionState(PipeWireConnectionState::Connected, true);
+
+        store.upsert(makeNode(2, {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+                                  {QStringLiteral("node.name"), QStringLiteral("dest-a")}}));
+        auto endpoint = makePlaybackEndpoint(QStringLiteral("dest-a"), 2, QStringLiteral("dest-a"));
+        endpoints.upsert(endpoint);
+
+        AuralisSession session;
+        SessionDevice device;
+        device.delayMs = 40.0;
+        device.runtime.endpointId = QStringLiteral("dest-a");
+        device.runtime.routeActive = true;
+
+        volume.applyMemberVolume(session, device);
+        QCOMPARE(backend.lastDelaySeconds, 0.04);
+        QCOMPARE(backend.lastDelayBridgeSec.value(QStringLiteral("dest-a")), 0.04);
     }
 
     void unavailableMemberRetainsIntendedVolume()

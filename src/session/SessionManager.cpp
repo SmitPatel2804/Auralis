@@ -846,6 +846,25 @@ SessionCommandResult SessionManager::setDeviceDelayMs(const QString& sessionId, 
     return SessionCommandResult::MemberNotFound;
 }
 
+SessionCommandResult SessionManager::nudgeDeviceDelayMs(
+    const QString& sessionId, const QString& deviceId, double deltaMs)
+{
+    if (!std::isfinite(deltaMs)) {
+        return SessionCommandResult::InvalidArgument;
+    }
+    AuralisSession* session = mutableSession(sessionId);
+    if (session == nullptr) {
+        return SessionCommandResult::SessionNotFound;
+    }
+    for (const SessionDevice& device : session->devices) {
+        if (device.deviceId != deviceId.trimmed().toUpper()) {
+            continue;
+        }
+        return setDeviceDelayMs(sessionId, deviceId, device.delayMs + deltaMs);
+    }
+    return SessionCommandResult::MemberNotFound;
+}
+
 SessionCommandResult SessionManager::setAutoReconnect(const QString& sessionId, bool enabled)
 {
     qCInfo(auralisSession) << "SessionAutoReconnectRequested id=" << sessionId << "enabled=" << enabled;

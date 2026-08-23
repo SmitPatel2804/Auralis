@@ -197,13 +197,13 @@ private slots:
         QVERIFY(manager.setLastNavPage(99));
         QVERIFY(manager.setWindowWidth(1));
         QVERIFY(manager.setWindowHeight(1));
-        QCOMPARE(manager.lastNavPage(), 5);
+        QCOMPARE(manager.lastNavPage(), 6);
         QCOMPARE(manager.windowWidth(), 880);
         QCOMPARE(manager.windowHeight(), 600);
 
         auralis::core::ConfigurationManager persisted(makeIsolatedSettings(dir));
         QVERIFY(persisted.initialize());
-        QCOMPARE(persisted.lastNavPage(), 5);
+        QCOMPARE(persisted.lastNavPage(), 6);
         QCOMPARE(persisted.windowWidth(), 880);
         QCOMPARE(persisted.windowHeight(), 600);
     }

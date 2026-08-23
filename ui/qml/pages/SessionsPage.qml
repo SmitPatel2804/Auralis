@@ -250,14 +250,6 @@ Item {
                             Layout.fillWidth: true
                             font.pixelSize: 12
                         }
-                        Label {
-                            visible: router && router.lagCalibrationStatus && router.lagCalibrationStatus.length > 0
-                            text: router ? router.lagCalibrationStatus : ""
-                            color: Theme.accent
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                            font.pixelSize: 12
-                        }
                         SignalComboBox {
                             id: sourceCombo
                             objectName: "sessionSourceSelector"
@@ -337,7 +329,7 @@ Item {
                             wrapMode: Text.WordWrap
                             color: Theme.textMuted
                             font.pixelSize: 12
-                            text: qsTr("Auralis aligns session outputs automatically. Dual Bluetooth still cannot be sample-perfect.")
+                            text: qsTr("Use Playground to add extra delay per headset. Dual Bluetooth still cannot be sample-perfect.")
                         }
                         Frame {
                             Layout.fillWidth: true
