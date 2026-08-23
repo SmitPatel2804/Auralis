@@ -3,6 +3,7 @@
 #include <auralis/audio/PipeWireVirtualOutput.h>
 #include <auralis/core/LoggingCategories.h>
 
+#include <QByteArray>
 #include <QHash>
 #include <QSet>
 #include <QVector>
@@ -12,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <optional>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -142,6 +144,7 @@ struct PipeWireConnection::Impl {
     QHash<quint64, quint32> tokenToGlobalId;
     QVector<BoundProxy*> pendingCreated;
     QSet<quint32> createdLinkIds;
+    quint32 defaultMetadataId = 0;
     quint64 nextOwnershipToken = 1;
     int pendingSync = 0;
     bool started = false;
@@ -270,6 +273,9 @@ struct PipeWireConnection::Impl {
             return;
         }
         createdLinkIds.remove(globalId);
+        if (defaultMetadataId == globalId) {
+            defaultMetadataId = 0;
+        }
         forgetOwned(bound);
         spa_hook_remove(&bound->objectListener);
         spa_hook_remove(&bound->proxyListener);
@@ -349,9 +355,21 @@ struct PipeWireConnection::Impl {
         pw_proxy_add_listener(bound->proxy, &bound->proxyListener, &kProxyEvents, bound);
         addObjectListener(bound);
         proxies.insert(id, bound);
+        if (kind == PipeWireObjectKind::Metadata) {
+            defaultMetadataId = id;
+        }
     }
 
     bool applyNodeProps(quint32 nodeId, const std::optional<float>& volume, const std::optional<bool>& mute)
+    {
+        return applyNodeProps(nodeId, volume, mute, std::nullopt);
+    }
+
+    bool applyNodeProps(
+        quint32 nodeId,
+        const std::optional<float>& volume,
+        const std::optional<bool>& mute,
+        const std::optional<float>& delaySec)
     {
         if (loop == nullptr || !started || stopping) {
             return false;
@@ -363,17 +381,37 @@ struct PipeWireConnection::Impl {
             return false;
         }
 
-        uint8_t buffer[1024];
+        uint8_t buffer[2048];
         spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
         spa_pod_frame frame{};
         spa_pod_builder_push_object(&builder, &frame, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
         if (volume.has_value()) {
             spa_pod_builder_prop(&builder, SPA_PROP_volume, 0);
             spa_pod_builder_float(&builder, *volume);
+            // BlueZ sinks often ignore the scalar and honor channelVolumes.
+            const float channels[2] = {*volume, *volume};
+            spa_pod_builder_prop(&builder, SPA_PROP_channelVolumes, 0);
+            spa_pod_builder_array(&builder, sizeof(float), SPA_TYPE_Float, 2, channels);
         }
         if (mute.has_value()) {
             spa_pod_builder_prop(&builder, SPA_PROP_mute, 0);
             spa_pod_builder_bool(&builder, *mute);
+        }
+        if (delaySec.has_value()) {
+            const float clamped = std::clamp(*delaySec, 0.0f, 0.5f);
+            QByteArray graph;
+            if (clamped > 0.0005f) {
+                graph = "{ nodes = [ { type = builtin name = auralis_delay label = delay "
+                        "config = { \"max-delay\" = 1.0 } control = { \"Delay (s)\" = ";
+                graph += QByteArray::number(static_cast<double>(clamped), 'f', 4);
+                graph += " } } ] }";
+            }
+            spa_pod_builder_prop(&builder, SPA_PROP_params, 0);
+            spa_pod_frame paramsFrame{};
+            spa_pod_builder_push_struct(&builder, &paramsFrame);
+            spa_pod_builder_string(&builder, "audioconvert.filter-graph");
+            spa_pod_builder_string(&builder, graph.constData());
+            spa_pod_builder_pop(&builder, &paramsFrame);
         }
         const spa_pod* pod = static_cast<spa_pod*>(spa_pod_builder_pop(&builder, &frame));
         if (pod == nullptr) {
@@ -1021,6 +1059,40 @@ bool PipeWireConnection::volumeSupported(quint32 nodeId) const
         bound != nullptr && bound->kind == PipeWireObjectKind::Node && bound->propsWritable;
     pw_thread_loop_unlock(impl_->loop);
     return supported;
+}
+
+bool PipeWireConnection::setNodeDelaySeconds(quint32 nodeId, double delaySeconds)
+{
+    if (impl_ == nullptr) {
+        return false;
+    }
+    const float clamped = static_cast<float>(std::clamp(delaySeconds, 0.0, 0.5));
+    return impl_->applyNodeProps(nodeId, std::nullopt, std::nullopt, clamped);
+}
+
+bool PipeWireConnection::setDefaultAudioSink(const QString& nodeName)
+{
+    const QString name = nodeName.trimmed();
+    if (impl_ == nullptr || impl_->loop == nullptr || !impl_->started || impl_->stopping || name.isEmpty()) {
+        return false;
+    }
+    if (name.contains(QLatin1Char('"')) || name.contains(QLatin1Char('\\'))) {
+        return false;
+    }
+    const QByteArray json = "{\"name\":\"" + name.toUtf8() + "\"}";
+    pw_thread_loop_lock(impl_->loop);
+    Impl::BoundProxy* bound = impl_->proxies.value(impl_->defaultMetadataId);
+    if (bound == nullptr || bound->kind != PipeWireObjectKind::Metadata || bound->proxy == nullptr) {
+        pw_thread_loop_unlock(impl_->loop);
+        return false;
+    }
+    auto* metadata = reinterpret_cast<pw_metadata*>(bound->proxy);
+    const int current = pw_metadata_set_property(
+        metadata, PW_ID_CORE, "default.audio.sink", "Spa:String:JSON", json.constData());
+    const int configured = pw_metadata_set_property(
+        metadata, PW_ID_CORE, "default.configured.audio.sink", "Spa:String:JSON", json.constData());
+    pw_thread_loop_unlock(impl_->loop);
+    return current >= 0 && configured >= 0;
 }
 
 void PipeWireConnection::setLinkErrorHandler(LinkErrorHandler handler)

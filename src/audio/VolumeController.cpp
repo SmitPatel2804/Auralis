@@ -41,6 +41,28 @@ VolumeApplyResult VolumeController::setDestinationVolume(quint32 nodeId, const Q
     return result;
 }
 
+VolumeApplyResult VolumeController::setDestinationDelayMs(quint32 nodeId, const QString& endpointId, double delayMs)
+{
+    VolumeApplyResult result;
+    if (backend_ == nullptr) {
+        result.allSucceeded = false;
+        result.error = {RouteError::InternalError, QStringLiteral("Delay backend is missing")};
+        result.failedEndpointIds.push_back(endpointId);
+        return result;
+    }
+    double ms = delayMs;
+    if (!std::isfinite(ms)) {
+        ms = 0.0;
+    }
+    ms = std::clamp(ms, 0.0, 250.0);
+    if (!backend_->setNodeDelaySeconds(nodeId, ms / 1000.0)) {
+        result.allSucceeded = false;
+        result.error = {RouteError::InternalError, QStringLiteral("Failed to set destination delay")};
+        result.failedEndpointIds.push_back(endpointId);
+    }
+    return result;
+}
+
 VolumeApplyResult VolumeController::setDestinationMuted(quint32 nodeId, const QString& endpointId, bool muted)
 {
     VolumeApplyResult result;

@@ -40,6 +40,7 @@ class PipeWireManager final : public QObject, public IPipeWireManager {
     Q_PROPERTY(QString diagnosticsText READ diagnosticsText NOTIFY graphRevisionChanged)
     Q_PROPERTY(bool virtualOutputAvailable READ virtualOutputAvailable NOTIFY graphRevisionChanged)
     Q_PROPERTY(bool virtualOutputSelected READ virtualOutputSelected NOTIFY graphRevisionChanged)
+    Q_PROPERTY(bool virtualOutputHeld READ virtualOutputHeld NOTIFY graphRevisionChanged)
     Q_PROPERTY(QString virtualOutputStatus READ virtualOutputStatus NOTIFY graphRevisionChanged)
     Q_PROPERTY(QAbstractItemModel* endpoints READ endpoints CONSTANT)
     Q_PROPERTY(QObject* router READ router CONSTANT)
@@ -70,6 +71,7 @@ public:
     QString diagnosticsText() const;
     bool virtualOutputAvailable() const noexcept;
     bool virtualOutputSelected() const noexcept;
+    bool virtualOutputHeld() const noexcept;
     QString virtualOutputStatus() const;
     QAbstractItemModel* endpoints() const;
     QObject* router() const;
@@ -82,6 +84,11 @@ public:
     /// Opens the desktop sound panel so the user can select Auralis Virtual Output.
     /// Named to match the Windows QML contract (`AudioRoutingPage` / `tst_QmlComponents`).
     Q_INVOKABLE bool openWindowsSoundSettings();
+    /// GNOME Settings often omits loopback sinks. This writes PipeWire's default sink metadata
+    /// and holds it against Bluetooth autoswitch until releaseVirtualOutputAsSystemDefault().
+    Q_INVOKABLE bool selectVirtualOutputAsSystemDefault();
+    Q_INVOKABLE bool releaseVirtualOutputAsSystemDefault();
+    bool virtualOutputDefaultRestorePendingForTesting() const noexcept;
 
     /// Bounded reconnect after daemon loss. RecoveryManager observes; does not schedule a second retry.
     void setAutoReconnectEnabled(bool enabled) override;
@@ -129,6 +136,10 @@ private:
     void updateVirtualOutputState();
     void ensureVirtualOutput();
     void resetVirtualOutputState();
+    bool applyHeldVirtualOutputDefault();
+    void scheduleVirtualOutputDefaultRestore(const QString& stolenName);
+    void restoreHeldVirtualOutputDefault();
+    bool isAuralisDefaultSinkName(const QString& nodeName) const;
 
     bluetooth::DeviceRegistry* bluetoothRegistry_ = nullptr;
     std::unique_ptr<PipeWireObjectStore> store_;
@@ -149,7 +160,9 @@ private:
     QTimer reconnectTimer_;
     QTimer initialSyncTimeoutTimer_;
     QTimer virtualOutputTimer_;
+    QTimer restoreDefaultTimer_;
     bool autoReconnectEnabled_ = true;
+    bool holdVirtualOutputDefault_ = false;
     bool shuttingDown_ = false;
     bool reconnectInProgress_ = false;
     bool reconnectExhaustedEmitted_ = false;
@@ -160,6 +173,7 @@ private:
     int initialSyncTimeoutMs_ = 8000;
     PipeWireVirtualOutputState virtualOutput_;
     QString defaultAudioSinkName_;
+    QString previousDefaultSinkName_;
     QString virtualOutputError_;
     int virtualOutputProvisionAttempt_ = 0;
     int virtualOutputPortWaitAttempts_ = 0;

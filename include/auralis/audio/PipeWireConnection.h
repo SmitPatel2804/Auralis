@@ -62,6 +62,9 @@ public:
     bool setNodeVolume(quint32 nodeId, double volume) override;
     bool setNodeMuted(quint32 nodeId, bool muted) override;
     bool volumeSupported(quint32 nodeId) const override;
+    /// Sets PipeWire/WirePlumber current and configured default sink.
+    bool setDefaultAudioSink(const QString& nodeName);
+    bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) override;
 
     using LinkErrorHandler = std::function<void(quint64 ownershipToken, int res, const QString& message)>;
     void setLinkErrorHandler(LinkErrorHandler handler);

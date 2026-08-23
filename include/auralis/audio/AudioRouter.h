@@ -81,6 +81,7 @@ public:
     Q_INVOKABLE void setRouteDestinations(const QString& routeId, const QStringList& destinationEndpointIds);
     Q_INVOKABLE void setDestinationVolume(const QString& endpointId, double value);
     Q_INVOKABLE void setDestinationMuted(const QString& endpointId, bool muted);
+    Q_INVOKABLE void setDestinationDelayMs(const QString& endpointId, double delayMs);
     Q_INVOKABLE void setRouteVolume(const QString& routeId, double value);
     Q_INVOKABLE void setRouteMuted(const QString& routeId, bool muted);
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;

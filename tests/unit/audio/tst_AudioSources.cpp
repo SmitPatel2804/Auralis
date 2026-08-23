@@ -160,6 +160,7 @@ private slots:
         QCOMPARE(source->id, QStringLiteral("src:auralis-system-audio"));
         QCOMPARE(source->description, QStringLiteral("Auralis System Audio"));
         QVERIFY(source->applicationName.isEmpty());
+        QCOMPARE(auralis::audio::sourceListDisplayName(*source), QStringLiteral("Auralis System Audio"));
     }
 };
 

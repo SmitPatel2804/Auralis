@@ -158,10 +158,11 @@ private slots:
             audio,
             {"connectionStateText", "connected", "lastError", "endpointCount", "nodeCount",
              "mappedBluetoothCount", "initialSyncComplete", "graphRevision", "diagnosticsText",
-             "virtualOutputAvailable", "virtualOutputSelected", "virtualOutputStatus", "endpoints", "router"});
+             "virtualOutputAvailable", "virtualOutputSelected", "virtualOutputHeld", "virtualOutputStatus", "endpoints", "router"});
         verifyMethods(
             audio,
-            {"audioStatusForDevice(QString)", "refreshVirtualAudio()", "openWindowsSoundSettings()"});
+            {"audioStatusForDevice(QString)", "refreshVirtualAudio()", "openWindowsSoundSettings()",
+             "selectVirtualOutputAsSystemDefault()", "releaseVirtualOutputAsSystemDefault()"});
         verifyRoles(
             modelProperty(audio, "endpoints"),
             {"endpointId", "name", "direction", "available", "transport", "profile", "codec",
@@ -177,7 +178,7 @@ private slots:
              "deactivateRoute(QString)", "setRouteSource(QString,QString)",
              "setRouteDestinations(QString,QStringList)", "setDestinationVolume(QString,double)",
              "setDestinationMuted(QString,bool)", "setRouteVolume(QString,double)",
-             "setRouteMuted(QString,bool)"});
+             "setRouteMuted(QString,bool)", "setDestinationDelayMs(QString,double)"});
         verifyRoles(
             modelProperty(router, "sources"),
             {"sourceId", "name", "sourceType", "applicationName", "available", "monitorSource"});
@@ -196,14 +197,15 @@ private slots:
              "addDevice(QString,QString)", "removeDevice(QString,QString)", "setSource(QString,QString)",
              "activateSession(QString)", "deactivateSession(QString)", "retrySession(QString)",
              "setGroupVolume(QString,double)", "setSessionMuted(QString,bool)",
-             "setDeviceVolume(QString,QString,double)", "setRecoveryPolicy(QString,QString)",
+             "setDeviceVolume(QString,QString,double)", "setDeviceDelayMs(QString,QString,double)",
+             "setRecoveryPolicy(QString,QString)",
              "restoreLastSession()", "duplicateSession(QString)", "commandResultText(int)"});
         verifyRoles(
             modelProperty(sessions, "sessionList"),
             {"sessionId", "name", "stateLabel", "active", "degraded", "deviceCount", "connectedDeviceCount"});
         verifyRoles(
             modelProperty(sessions, "sessionMembers"),
-            {"deviceId", "displayName", "connected", "endpointAvailable", "volume", "muted", "memberEnabled"});
+            {"deviceId", "displayName", "connected", "endpointAvailable", "volume", "muted", "delayMs", "memberEnabled"});
         verifyRoles(
             modelProperty(sessions, "currentMembers"),
             {"displayName", "connected", "recovering", "routeActive", "endpointAvailable"});

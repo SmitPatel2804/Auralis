@@ -56,6 +56,11 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
 
     virtualOutputTimer_.setSingleShot(true);
     connect(&virtualOutputTimer_, &QTimer::timeout, this, &PipeWireManager::ensureVirtualOutput);
+
+    restoreDefaultTimer_.setSingleShot(true);
+    restoreDefaultTimer_.setInterval(80);
+    restoreDefaultTimer_.setTimerType(Qt::CoarseTimer);
+    connect(&restoreDefaultTimer_, &QTimer::timeout, this, &PipeWireManager::restoreHeldVirtualOutputDefault);
 }
 
 PipeWireManager::~PipeWireManager()
@@ -173,11 +178,19 @@ bool PipeWireManager::virtualOutputSelected() const noexcept
     return virtualOutput_.ready() && virtualOutput_.selectedAsDefault;
 }
 
+bool PipeWireManager::virtualOutputHeld() const noexcept
+{
+    return holdVirtualOutputDefault_;
+}
+
 QString PipeWireManager::virtualOutputStatus() const
 {
     if (virtualOutput_.ready()) {
         if (virtualOutput_.selectedAsDefault) {
             return QStringLiteral("Selected as system output");
+        }
+        if (holdVirtualOutputDefault_) {
+            return QStringLiteral("Reclaiming as system output");
         }
         if (virtualOutput_.packageManaged) {
             return QStringLiteral("Ready (persistent)");
@@ -281,6 +294,98 @@ bool PipeWireManager::openWindowsSoundSettings()
     }
     qCWarning(auralisAudio) << "LinuxSoundSettingsRequested no known control panel found";
     return false;
+}
+
+bool PipeWireManager::selectVirtualOutputAsSystemDefault()
+{
+    if (!virtualOutputAvailable() || connection_ == nullptr) {
+        qCWarning(auralisAudio) << "PipeWire SelectVirtualOutputDefault unavailable";
+        return false;
+    }
+    if (!defaultAudioSinkName_.isEmpty() && !isAuralisDefaultSinkName(defaultAudioSinkName_)) {
+        previousDefaultSinkName_ = defaultAudioSinkName_;
+    }
+    holdVirtualOutputDefault_ = true;
+    const bool ok = applyHeldVirtualOutputDefault();
+    qCInfo(auralisAudio) << "PipeWire SelectVirtualOutputDefault ok=" << ok
+                         << "name=" << kAuralisVirtualSinkNodeName
+                         << "held=" << holdVirtualOutputDefault_;
+    if (!ok) {
+        scheduleVirtualOutputDefaultRestore(defaultAudioSinkName_);
+    }
+    bumpGraph();
+    return ok;
+}
+
+bool PipeWireManager::releaseVirtualOutputAsSystemDefault()
+{
+    holdVirtualOutputDefault_ = false;
+    restoreDefaultTimer_.stop();
+    qCInfo(auralisAudio) << "PipeWire ReleaseVirtualOutputDefault previous=" << previousDefaultSinkName_;
+    if (connection_ == nullptr || !connection_->isStarted() || previousDefaultSinkName_.isEmpty()
+        || isAuralisDefaultSinkName(previousDefaultSinkName_)) {
+        bumpGraph();
+        return true;
+    }
+    const bool ok = connection_->setDefaultAudioSink(previousDefaultSinkName_);
+    if (ok) {
+        defaultAudioSinkName_ = previousDefaultSinkName_;
+        updateVirtualOutputState();
+    }
+    bumpGraph();
+    return ok;
+}
+
+bool PipeWireManager::virtualOutputDefaultRestorePendingForTesting() const noexcept
+{
+    return restoreDefaultTimer_.isActive();
+}
+
+bool PipeWireManager::isAuralisDefaultSinkName(const QString& nodeName) const
+{
+    return nodeName == QLatin1String(kAuralisVirtualSinkNodeName);
+}
+
+bool PipeWireManager::applyHeldVirtualOutputDefault()
+{
+    if (!holdVirtualOutputDefault_ || connection_ == nullptr || !virtualOutputAvailable()) {
+        return false;
+    }
+    const QString name = QString::fromLatin1(kAuralisVirtualSinkNodeName);
+    if (!connection_->isStarted()) {
+        return false;
+    }
+    const bool ok = connection_->setDefaultAudioSink(name);
+    if (ok && defaultAudioSinkName_ != name) {
+        defaultAudioSinkName_ = name;
+        updateVirtualOutputState();
+    }
+    return ok;
+}
+
+void PipeWireManager::scheduleVirtualOutputDefaultRestore(const QString& stolenName)
+{
+    if (shuttingDown_ || !holdVirtualOutputDefault_ || isAuralisDefaultSinkName(stolenName)) {
+        return;
+    }
+    if (!restoreDefaultTimer_.isActive()) {
+        qCInfo(auralisAudio) << "PipeWire VirtualOutputDefaultStolen restoring from=" << stolenName;
+    }
+    restoreDefaultTimer_.start();
+}
+
+void PipeWireManager::restoreHeldVirtualOutputDefault()
+{
+    if (shuttingDown_ || !holdVirtualOutputDefault_) {
+        return;
+    }
+    if (isAuralisDefaultSinkName(defaultAudioSinkName_) && virtualOutput_.selectedAsDefault) {
+        return;
+    }
+    const bool ok = applyHeldVirtualOutputDefault();
+    qCInfo(auralisAudio) << "PipeWire RestoreVirtualOutputDefault ok=" << ok
+                         << "current=" << defaultAudioSinkName_;
+    bumpGraph();
 }
 
 bool PipeWireManager::initialize()
@@ -518,6 +623,7 @@ void PipeWireManager::shutdown()
     stopInitialSyncTimeout();
     graphRefreshTimer_.stop();
     virtualOutputTimer_.stop();
+    restoreDefaultTimer_.stop();
     guard_->alive.store(false);
     guard_->generation.fetch_add(1);
     if (router_ != nullptr) {
@@ -611,16 +717,18 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         completeInitialSync();
         break;
     case PipeWireClientEvent::Type::MetadataChanged:
-        if (event.metadataSubject == 0
-            && event.metadataName == QLatin1String("default")
-            && event.metadataKey == QLatin1String("default.audio.sink")) {
+        if (event.metadataSubject == 0 && event.metadataName == QLatin1String("default")
+            && (event.metadataKey == QLatin1String("default.audio.sink")
+                || event.metadataKey == QLatin1String("default.configured.audio.sink"))) {
             const QString nextDefault = pipeWireDefaultNodeName(event.metadataValue);
-            if (defaultAudioSinkName_ != nextDefault) {
+            if (event.metadataKey == QLatin1String("default.audio.sink")
+                && defaultAudioSinkName_ != nextDefault) {
                 defaultAudioSinkName_ = nextDefault;
                 updateVirtualOutputState();
                 bumpGraph();
                 qCInfo(auralisAudio) << "PipeWire DefaultAudioSinkChanged name=" << defaultAudioSinkName_;
             }
+            scheduleVirtualOutputDefaultRestore(nextDefault);
         }
         break;
     }
@@ -718,6 +826,9 @@ void PipeWireManager::ensureVirtualOutput()
     updateVirtualOutputState();
     if (virtualOutput_.ready()) {
         bumpGraph();
+        if (holdVirtualOutputDefault_ && !virtualOutput_.selectedAsDefault) {
+            scheduleVirtualOutputDefaultRestore(defaultAudioSinkName_);
+        }
         return;
     }
 
@@ -779,8 +890,11 @@ void PipeWireManager::ensureVirtualOutput()
 void PipeWireManager::resetVirtualOutputState()
 {
     virtualOutputTimer_.stop();
+    restoreDefaultTimer_.stop();
     virtualOutput_ = {};
     defaultAudioSinkName_.clear();
+    previousDefaultSinkName_.clear();
+    holdVirtualOutputDefault_ = false;
     virtualOutputError_.clear();
     virtualOutputProvisionAttempt_ = 0;
     virtualOutputPortWaitAttempts_ = 0;

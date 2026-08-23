@@ -382,6 +382,15 @@ public:
         return outputs_.contains(nodeId);
     }
 
+    bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) override
+    {
+        if (!outputs_.contains(nodeId)) {
+            return false;
+        }
+        delays_.insert(nodeId, std::clamp(delaySeconds, 0.0, 0.5));
+        return true;
+    }
+
 private:
     struct Link {
         quint32 globalId = 0;
@@ -826,6 +835,7 @@ private:
     QHash<quint32, QAudioDevice> outputs_;
     QHash<quint64, Link> links_;
     QHash<quint32, double> volumes_;
+    QHash<quint32, double> delays_;
     QSet<quint32> muted_;
     std::unique_ptr<QAudioSource> source_;
 #if defined(Q_OS_WIN)
@@ -983,6 +993,7 @@ QString NativeAudioManager::diagnosticsText() const
 }
 bool NativeAudioManager::virtualOutputAvailable() const noexcept { return stateImpl_->virtualAudio.ready(); }
 bool NativeAudioManager::virtualOutputSelected() const noexcept { return stateImpl_->virtualAudio.selectedAsDefault; }
+bool NativeAudioManager::virtualOutputHeld() const noexcept { return false; }
 QString NativeAudioManager::virtualOutputStatus() const
 {
 #if defined(Q_OS_WIN)
@@ -1014,6 +1025,16 @@ bool NativeAudioManager::openWindowsSoundSettings()
 #else
     return false;
 #endif
+}
+
+bool NativeAudioManager::selectVirtualOutputAsSystemDefault()
+{
+    return false;
+}
+
+bool NativeAudioManager::releaseVirtualOutputAsSystemDefault()
+{
+    return false;
 }
 
 QString NativeAudioManager::audioStatusForDevice(const QString& bluetoothDeviceId) const

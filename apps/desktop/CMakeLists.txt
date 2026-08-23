@@ -82,27 +82,46 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/auralis"
 )
 
+set(AURALIS_LINUX_BUNDLE_QT ON CACHE BOOL "Bundle Qt into Linux packages")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # qt_generate_deploy_qml_app_script does not deploy regular runtime
-    # dependencies on Linux. Use Qt's low-level paired deployment calls so the
-    # DEB/TGZ carries the exact Qt runtime, plugins, and imported QML modules it
-    # was built against instead of relying on a distro's potentially older Qt.
-    set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
-    qt_generate_deploy_script(
-        TARGET auralis-desktop
-        OUTPUT_SCRIPT auralis_deploy_script
-        CONTENT "
-            qt_deploy_qml_imports(
-                TARGET auralis-desktop
-                PLUGINS_FOUND auralis_qml_plugins
-            )
-            qt_deploy_runtime_dependencies(
-                EXECUTABLE \"${auralis_linux_executable}\"
-                ADDITIONAL_MODULES \${auralis_qml_plugins}
-                GENERATE_QT_CONF
-            )
-        "
-    )
+    # Distro QML plugins often have no DT_RPATH. CMake 3.21+ file(RPATH_SET)
+    # then fails. patchelf can add an RPATH; without it, do not bundle Qt and
+    # declare Debian Qt/QML dependencies instead. Official aqt/CI trees still
+    # bundle because those plugins already carry an RPATH.
+    if(Qt6_DIR MATCHES "^/usr/")
+        find_program(AURALIS_PATCHELF_EXECUTABLE patchelf)
+        if(AURALIS_PATCHELF_EXECUTABLE)
+            set(QT_DEPLOY_USE_PATCHELF ON)
+            set(QT_DEPLOY_PATCHELF_EXECUTABLE "${AURALIS_PATCHELF_EXECUTABLE}")
+        else()
+            set(AURALIS_LINUX_BUNDLE_QT OFF CACHE BOOL "Bundle Qt into Linux packages" FORCE)
+            message(STATUS
+                "Linux packaging will not bundle Qt (system Qt; install patchelf to enable RPATH rewriting).")
+        endif()
+    endif()
+
+    if(AURALIS_LINUX_BUNDLE_QT)
+        # qt_generate_deploy_qml_app_script does not deploy regular runtime
+        # dependencies on Linux. Use Qt's low-level paired deployment calls so the
+        # DEB/TGZ carries the exact Qt runtime, plugins, and imported QML modules it
+        # was built against instead of relying on a distro's potentially older Qt.
+        set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
+        qt_generate_deploy_script(
+            TARGET auralis-desktop
+            OUTPUT_SCRIPT auralis_deploy_script
+            CONTENT "
+                qt_deploy_qml_imports(
+                    TARGET auralis-desktop
+                    PLUGINS_FOUND auralis_qml_plugins
+                )
+                qt_deploy_runtime_dependencies(
+                    EXECUTABLE \"${auralis_linux_executable}\"
+                    ADDITIONAL_MODULES \${auralis_qml_plugins}
+                    GENERATE_QT_CONF
+                )
+            "
+        )
+    endif()
 else()
     set(AURALIS_DEPLOY_OPTIONS
         NO_UNSUPPORTED_PLATFORM_ERROR
@@ -125,4 +144,6 @@ else()
         ${AURALIS_DEPLOY_OPTIONS}
     )
 endif()
-install(SCRIPT ${auralis_deploy_script})
+if(DEFINED auralis_deploy_script)
+    install(SCRIPT ${auralis_deploy_script})
+endif()

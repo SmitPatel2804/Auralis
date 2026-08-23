@@ -75,29 +75,9 @@ int AudioRouter::sourceCount() const
 QString AudioRouter::sourceDisplayName(const QString& sourceId) const
 {
     for (const AudioSource& source : sources_) {
-        if (source.id != sourceId) {
-            continue;
+        if (source.id == sourceId) {
+            return sourceListDisplayName(source);
         }
-        if (!source.applicationName.isEmpty()) {
-            if (!source.description.isEmpty() && source.description != source.applicationName
-                && source.description != source.nodeName) {
-                return source.applicationName + QStringLiteral(" — ") + source.description;
-            }
-            return source.applicationName;
-        }
-        const QString base = !source.description.isEmpty() ? source.description
-            : (!source.nodeName.isEmpty() ? source.nodeName : source.id);
-        if (source.monitorSource) {
-            return base + QStringLiteral(" (monitor)");
-        }
-        if (source.id == QLatin1String(kAuralisVirtualSourceId)) {
-            return base;
-        }
-        if (source.sourceType == AudioSourceType::PhysicalAudioSource
-            || source.sourceType == AudioSourceType::VirtualAudioSource) {
-            return base + QStringLiteral(" (mic)");
-        }
-        return base;
     }
     return sourceId;
 }
@@ -398,6 +378,8 @@ void AudioRouter::setDestinationVolume(const QString& endpointId, double value)
     }
     const VolumeApplyResult result = volume_.setDestinationVolume(endpoint->pipeWireObjectId, endpointId, value);
     if (!result.allSucceeded) {
+        qCWarning(auralisAudio) << "AudioRouter DestinationVolumeFailed endpoint=" << endpointId
+                                << "node=" << endpoint->pipeWireObjectId << result.error.detail;
         emit routeError(currentRouteId(), result.error.category, result.error.detail);
         emitQmlPropertyNotifications();
     }
@@ -416,6 +398,26 @@ void AudioRouter::setDestinationMuted(const QString& endpointId, bool muted)
     }
     const VolumeApplyResult result = volume_.setDestinationMuted(endpoint->pipeWireObjectId, endpointId, muted);
     if (!result.allSucceeded) {
+        emit routeError(currentRouteId(), result.error.category, result.error.detail);
+        emitQmlPropertyNotifications();
+    }
+}
+
+void AudioRouter::setDestinationDelayMs(const QString& endpointId, double delayMs)
+{
+    if (endpoints_ == nullptr) {
+        return;
+    }
+    const AudioEndpoint* endpoint = endpoints_->findById(endpointId);
+    if (endpoint == nullptr) {
+        emit routeError(currentRouteId(), RouteError::DestinationNotFound, QStringLiteral("Unknown endpoint"));
+        emitQmlPropertyNotifications();
+        return;
+    }
+    const VolumeApplyResult result = volume_.setDestinationDelayMs(endpoint->pipeWireObjectId, endpointId, delayMs);
+    if (!result.allSucceeded) {
+        qCWarning(auralisAudio) << "AudioRouter DestinationDelayFailed endpoint=" << endpointId
+                                << "node=" << endpoint->pipeWireObjectId << result.error.detail;
         emit routeError(currentRouteId(), result.error.category, result.error.detail);
         emitQmlPropertyNotifications();
     }

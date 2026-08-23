@@ -29,6 +29,7 @@ struct SessionDevice {
     bool enabled = true;
     double volumeTrim = 1.0;
     bool muted = false;
+    double delayMs = 0.0;
     SessionMemberRuntime runtime;
 };
 

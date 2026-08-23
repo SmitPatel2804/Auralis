@@ -42,6 +42,8 @@ public:
     quint32 lastVolumeNode = 0;
     quint32 lastMutedNode = 0;
     bool lastMuted = false;
+    quint32 lastDelayNode = 0;
+    double lastDelaySeconds = -1.0;
 
     std::optional<auralis::audio::LinkCreateResult> createLink(
         quint32 outputNode,
@@ -154,6 +156,13 @@ public:
     bool volumeSupported(quint32 nodeId) const override
     {
         return !unsupportedVolumeNodes.contains(nodeId);
+    }
+
+    bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) override
+    {
+        lastDelayNode = nodeId;
+        lastDelaySeconds = delaySeconds;
+        return !failVolumeNodes.contains(nodeId);
     }
 
 private:

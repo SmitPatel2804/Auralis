@@ -35,6 +35,7 @@ class NativeAudioManager final : public QObject, public IAudioManager {
     Q_PROPERTY(QString diagnosticsText READ diagnosticsText NOTIFY graphRevisionChanged)
     Q_PROPERTY(bool virtualOutputAvailable READ virtualOutputAvailable NOTIFY graphRevisionChanged)
     Q_PROPERTY(bool virtualOutputSelected READ virtualOutputSelected NOTIFY graphRevisionChanged)
+    Q_PROPERTY(bool virtualOutputHeld READ virtualOutputHeld NOTIFY graphRevisionChanged)
     Q_PROPERTY(QString virtualOutputStatus READ virtualOutputStatus NOTIFY graphRevisionChanged)
     Q_PROPERTY(QAbstractItemModel* endpoints READ endpoints CONSTANT)
     Q_PROPERTY(QObject* router READ router CONSTANT)
@@ -68,12 +69,15 @@ public:
     QString diagnosticsText() const;
     bool virtualOutputAvailable() const noexcept;
     bool virtualOutputSelected() const noexcept;
+    bool virtualOutputHeld() const noexcept;
     QString virtualOutputStatus() const;
     QAbstractItemModel* endpoints() const;
     QObject* router() const;
     Q_INVOKABLE QString audioStatusForDevice(const QString& bluetoothDeviceId) const;
     Q_INVOKABLE void refreshVirtualAudio();
     Q_INVOKABLE bool openWindowsSoundSettings();
+    Q_INVOKABLE bool selectVirtualOutputAsSystemDefault();
+    Q_INVOKABLE bool releaseVirtualOutputAsSystemDefault();
 
 signals:
     void statusChanged();

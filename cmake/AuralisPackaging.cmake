@@ -27,6 +27,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
         "pipewire (>= 0.3.60), libpipewire-0.3-modules (>= 0.3.60), wireplumber, bluez")
+    if(NOT AURALIS_LINUX_BUNDLE_QT)
+        # QML modules are dlopened; dpkg-shlibdeps will not see them.
+        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS
+            ", libqt6core6t64, libqt6gui6, libqt6dbus6, libqt6qml6, libqt6quick6, "
+            "libqt6quickcontrols2-6, qml6-module-qtquick, qml6-module-qtquick-controls, "
+            "qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qt6-qpa-plugins, qt6-wayland")
+    endif()
     # dpkg-shlibdeps needs Debian shlibs metadata. Official aqt/CI Qt trees
     # are not packaged that way, so automatic dependency scanning fails there.
     if(DEFINED ENV{CI})

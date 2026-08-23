@@ -109,7 +109,7 @@ In the Bluetooth Discovery panel: **Start Scan**, **Stop Scan**, **Refresh**, an
 
 The **Audio Endpoints** list shows platform playback devices. Bluetooth rows distinguish **Connected** from **Audio: Available / Initializing...**.
 
-The **Audio Routing** panel selects a source and one or more playback endpoints, then Activate/Deactivate. On Linux, choose **Auralis Virtual Output** in the desktop sound settings and **Auralis System Audio** in Auralis to route the system mix once to the selected endpoints. No Linux kernel driver or code signing is required. The DEB installs a persistent PipeWire definition; a build-tree run also creates an app-lifetime fallback automatically. See [Linux virtual audio output](docs/architecture/LINUX_VIRTUAL_AUDIO_OUTPUT.md). Windows/macOS use their platform audio implementations.
+The **Audio Routing** panel selects a source and one or more playback endpoints, then Activate/Deactivate. On Linux, click **USE AS SYSTEM OUTPUT** on that page (GNOME Settings often cannot select the loopback sink), then choose **Auralis System Audio** as the session source so the system mix is routed once to the selected endpoints. No Linux kernel driver or code signing is required. The DEB installs a persistent PipeWire definition; a build-tree run also creates an app-lifetime fallback automatically. See [Linux virtual audio output](docs/architecture/LINUX_VIRTUAL_AUDIO_OUTPUT.md). Windows/macOS use their platform audio implementations.
 
 Optional AddressSanitizer/UBSan build:
 

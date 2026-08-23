@@ -47,10 +47,26 @@ Flickable {
                     onClicked: if (audio) audio.refreshVirtualAudio()
                 }
                 SignalButton {
+                    text: (audio && (audio.virtualOutputHeld || audio.virtualOutputSelected))
+                          ? qsTr("RELEASE SYSTEM OUTPUT")
+                          : qsTr("USE AS SYSTEM OUTPUT")
+                    visible: root.linuxAudio && audio && audio.virtualOutputAvailable
+                    compact: true
+                    primary: audio && !audio.virtualOutputHeld && !audio.virtualOutputSelected
+                    onClicked: {
+                        if (!audio)
+                            return
+                        if (audio.virtualOutputHeld || audio.virtualOutputSelected)
+                            audio.releaseVirtualOutputAsSystemDefault()
+                        else
+                            audio.selectVirtualOutputAsSystemDefault()
+                    }
+                }
+                SignalButton {
                     text: root.windowsAudio ? qsTr("WINDOWS SOUND") : qsTr("SOUND SETTINGS")
                     visible: root.windowsAudio || root.linuxAudio
                     compact: true
-                    primary: audio && audio.virtualOutputAvailable && !audio.virtualOutputSelected
+                    primary: root.windowsAudio && audio && audio.virtualOutputAvailable && !audio.virtualOutputSelected
                     onClicked: if (audio) audio.openWindowsSoundSettings()
                 }
             }
@@ -60,7 +76,7 @@ Flickable {
                 color: Theme.textMuted
                 text: audio && audio.virtualOutputAvailable
                       ? (root.linuxAudio
-                         ? qsTr("Choose Auralis Virtual Output in Linux sound settings, then select Auralis System Audio as the session source. The package makes the endpoint persistent after the next login; routing is active only while Auralis is running.")
+                         ? qsTr("GNOME Settings can meter this sink without making it the default, and Bluetooth often steals the default back to a headset. Click USE AS SYSTEM OUTPUT and leave it held. Then deactivate the session if it is active, choose Auralis System Audio as the source, and activate. Dual Bluetooth can still sound slightly out of sync. Routing is active only while Auralis is running.")
                          : qsTr("Choose Auralis Virtual Output in Windows, then select Auralis System Audio as the session source. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session."))
                       : (root.linuxAudio
                          ? qsTr("PipeWire could not publish the virtual output. Check Diagnostics and ensure PipeWire and WirePlumber are running in this user session.")

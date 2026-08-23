@@ -30,6 +30,8 @@ public:
     virtual bool setNodeVolume(quint32 nodeId, double volume) = 0;
     virtual bool setNodeMuted(quint32 nodeId, bool muted) = 0;
     virtual bool volumeSupported(quint32 nodeId) const = 0;
+    /// Software delay on a destination node. 0 clears the delay graph.
+    virtual bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) = 0;
 };
 
 } // namespace auralis::audio

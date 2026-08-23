@@ -72,6 +72,16 @@ private slots:
         QCOMPARE(backend.lastVolumeNode, static_cast<quint32>(1));
         QCOMPARE(backend.lastVolume, 0.3);
     }
+
+    void destinationDelay()
+    {
+        FakePipeWireLinkBackend backend(nullptr);
+        VolumeController volume(&backend);
+        const auto result = volume.setDestinationDelayMs(4, QStringLiteral("dest-a"), 80);
+        QVERIFY(result.allSucceeded);
+        QCOMPARE(backend.lastDelayNode, static_cast<quint32>(4));
+        QCOMPARE(backend.lastDelaySeconds, 0.08);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstVolumeController)

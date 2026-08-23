@@ -36,6 +36,7 @@ QJsonObject deviceToJson(const SessionDevice& device)
     object.insert(QStringLiteral("enabled"), device.enabled);
     object.insert(QStringLiteral("volume"), device.volumeTrim);
     object.insert(QStringLiteral("muted"), device.muted);
+    object.insert(QStringLiteral("delayMs"), device.delayMs);
     return object;
 }
 
@@ -55,6 +56,7 @@ std::optional<SessionDevice> deviceFromJson(const QJsonObject& object)
     device.enabled = object.value(QStringLiteral("enabled")).toBool(true);
     device.volumeTrim = clampVolume(object.value(QStringLiteral("volume")).toDouble(1.0));
     device.muted = object.value(QStringLiteral("muted")).toBool(false);
+    device.delayMs = std::clamp(object.value(QStringLiteral("delayMs")).toDouble(0.0), 0.0, 250.0);
     return device;
 }
 

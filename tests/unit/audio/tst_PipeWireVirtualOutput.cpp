@@ -77,6 +77,8 @@ private slots:
         QVERIFY(runtime.contains("auralis.virtual.persistence = \"runtime\""));
         QVERIFY(runtime.contains("node.autoconnect = false"));
         QVERIFY(runtime.contains("priority.session = 100"));
+        QVERIFY(runtime.contains("session.suspend-timeout-seconds = 0"));
+        QVERIFY(runtime.contains("node.virtual = false"));
 
         QFile packaged(QStringLiteral(AURALIS_PIPEWIRE_CONFIG_PATH));
         QVERIFY2(packaged.open(QIODevice::ReadOnly), qPrintable(packaged.errorString()));

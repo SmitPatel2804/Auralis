@@ -38,6 +38,7 @@ struct AudioSource {
 };
 
 QString toString(AudioSourceType type);
+QString sourceListDisplayName(const AudioSource& source);
 QString makeSourceLogicalId(const AudioSource& source);
 std::optional<AudioSource> classifyAudioSource(const PipeWireNodeInfo& node, const PipeWireObjectStore& store);
 QVector<AudioSource> classifyAudioSources(const PipeWireObjectStore& store);

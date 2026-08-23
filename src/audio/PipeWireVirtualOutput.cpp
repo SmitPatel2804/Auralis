@@ -97,8 +97,10 @@ QByteArray pipeWireVirtualOutputModuleArguments()
             node.name = "auralis_virtual_output"
             node.description = "Auralis Virtual Output"
             media.class = "Audio/Sink"
-            node.virtual = true
+            node.nick = "Auralis Virtual Output"
+            node.virtual = false
             node.autoconnect = false
+            session.suspend-timeout-seconds = 0
             priority.session = 100
             auralis.virtual.output = true
             auralis.virtual.role = "sink"

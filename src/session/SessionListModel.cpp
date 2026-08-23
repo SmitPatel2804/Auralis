@@ -293,6 +293,8 @@ QVariant SessionMemberListModel::data(const QModelIndex& index, int role) const
         return device.volumeTrim;
     case MutedRole:
         return device.muted;
+    case DelayMsRole:
+        return device.delayMs;
     case ErrorTextRole:
         return device.runtime.lastError.detail;
     default:
@@ -315,6 +317,7 @@ QHash<int, QByteArray> SessionMemberListModel::roleNames() const
         {RecoveringRole, "recovering"},
         {VolumeRole, "volume"},
         {MutedRole, "muted"},
+        {DelayMsRole, "delayMs"},
         {ErrorTextRole, "errorText"},
     };
 }

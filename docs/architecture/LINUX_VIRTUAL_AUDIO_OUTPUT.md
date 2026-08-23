@@ -6,10 +6,18 @@ driver, a Microsoft-style driver signature, or root privileges at runtime.
 ## User flow
 
 1. Start Auralis.
-2. In the desktop sound settings, select **Auralis Virtual Output**.
+2. On the Audio Routing page, click **USE AS SYSTEM OUTPUT** and leave it held.
+   GNOME Settings often meters this loopback sink without making it the default,
+   and Bluetooth sinks with higher session priority steal the default back to a
+   headset. Auralis writes and reclaims the PipeWire default-sink metadata.
+   Use **RELEASE SYSTEM OUTPUT** when you want the desktop to pick a headset or
+   speakers again.
 3. In Auralis, select **Auralis System Audio** as the route/session source.
+   Routing a browser or other app stream instead of that source leaves one
+   headset on the OS path and the other on Auralis, which sounds like lag.
 4. Select one or more connected playback endpoints and activate the route or
-   session.
+   session. Dual Bluetooth A2DP is not delay-compensated, so a small remaining
+   offset between headsets can still be audible.
 
 Applications write once to the virtual sink. The paired PipeWire source is the
 only object Auralis routes to the selected speakers or Bluetooth endpoints.
@@ -62,7 +70,11 @@ and daemon restarts.
 The source stream disables automatic linking. Auralis creates only the links
 for an activated route and selected destinations. The virtual sink deliberately
 has a low session priority, so installation does not silently replace the
-user's current default output.
+user's current default output. The sink half is not marked `node.virtual` and
+disables idle suspend so Pulse clients such as pavucontrol can select it.
+GNOME Settings still often omits this loopback sink; use **USE AS SYSTEM
+OUTPUT** in Auralis instead of relying on that panel. The System Audio source
+stream remains virtual and is not offered as a system output.
 
 ## Diagnostics
 

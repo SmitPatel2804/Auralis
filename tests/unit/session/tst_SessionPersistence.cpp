@@ -28,6 +28,7 @@ private slots:
         left.deviceId = QStringLiteral("AA:BB:CC:DD:EE:01");
         left.role = SessionDeviceRole::Left;
         left.volumeTrim = 0.9;
+        left.delayMs = 80.0;
         session.devices.push_back(left);
         session.groupVolume = 0.7;
         session.state = SessionState::Active;
@@ -39,6 +40,7 @@ private slots:
         QCOMPARE(loaded.sessions.front().id, session.id);
         QCOMPARE(loaded.sessions.front().devices.size(), 1);
         QCOMPARE(loaded.sessions.front().devices.front().deviceId, left.deviceId);
+        QCOMPARE(loaded.sessions.front().devices.front().delayMs, 80.0);
         QCOMPARE(loaded.sessions.front().groupVolume, 0.7);
         QVERIFY(loaded.sessions.front().state == SessionState::Idle);
     }

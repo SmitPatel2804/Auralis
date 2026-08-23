@@ -75,6 +75,30 @@ QString toString(AudioSourceType type)
     return QStringLiteral("Unknown");
 }
 
+QString sourceListDisplayName(const AudioSource& source)
+{
+    if (!source.applicationName.isEmpty()) {
+        if (!source.description.isEmpty() && source.description != source.applicationName
+            && source.description != source.nodeName) {
+            return source.applicationName + QStringLiteral(" — ") + source.description;
+        }
+        return source.applicationName;
+    }
+    const QString base = !source.description.isEmpty() ? source.description
+        : (!source.nodeName.isEmpty() ? source.nodeName : source.id);
+    if (source.monitorSource) {
+        return base + QStringLiteral(" (monitor)");
+    }
+    if (source.id == QLatin1String(kAuralisVirtualSourceId)) {
+        return base;
+    }
+    if (source.sourceType == AudioSourceType::PhysicalAudioSource
+        || source.sourceType == AudioSourceType::VirtualAudioSource) {
+        return base + QStringLiteral(" (mic)");
+    }
+    return base;
+}
+
 QString makeSourceLogicalId(const AudioSource& source)
 {
     const QString token = source.objectSerial.has_value()

@@ -24,6 +24,7 @@ public:
 
     VolumeApplyResult setDestinationVolume(quint32 nodeId, const QString& endpointId, double value);
     VolumeApplyResult setDestinationMuted(quint32 nodeId, const QString& endpointId, bool muted);
+    VolumeApplyResult setDestinationDelayMs(quint32 nodeId, const QString& endpointId, double delayMs);
     VolumeApplyResult setRouteVolume(
         const QVector<QPair<QString, quint32>>& destinations,
         double value);

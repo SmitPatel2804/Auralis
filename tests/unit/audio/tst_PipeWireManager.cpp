@@ -294,6 +294,44 @@ private slots:
         manager.shutdown();
     }
 
+    void holdsVirtualOutputDefaultWhenBluetoothStealsSink()
+    {
+        PipeWireManager manager;
+        manager.injectClientEventForTesting(stateEvent(PipeWireConnectionState::Connected));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            60,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("sink")},
+             {QStringLiteral("auralis.virtual.persistence"), QStringLiteral("package")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(600, 60, QStringLiteral("in"))));
+        manager.injectClientEventForTesting(graphEvent(makeNode(
+            61,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")},
+             {QStringLiteral("auralis.virtual.persistence"), QStringLiteral("package")}})));
+        manager.injectClientEventForTesting(graphEvent(makePort(610, 61, QStringLiteral("out"))));
+        manager.injectClientEventForTesting(syncDoneEvent());
+        manager.injectClientEventForTesting(defaultSinkEvent(QStringLiteral("bluez_output.headset")));
+
+        QVERIFY(manager.virtualOutputAvailable());
+        QVERIFY(!manager.virtualOutputSelected());
+        QVERIFY(!manager.virtualOutputHeld());
+        QVERIFY(!manager.selectVirtualOutputAsSystemDefault());
+        QVERIFY(manager.virtualOutputHeld());
+        QCOMPARE(manager.virtualOutputStatus(), QStringLiteral("Reclaiming as system output"));
+
+        manager.injectClientEventForTesting(defaultSinkEvent(QStringLiteral("bluez_output.headset")));
+        QVERIFY(manager.virtualOutputDefaultRestorePendingForTesting());
+        QVERIFY(manager.releaseVirtualOutputAsSystemDefault());
+        QVERIFY(!manager.virtualOutputHeld());
+        QVERIFY(!manager.virtualOutputDefaultRestorePendingForTesting());
+        manager.shutdown();
+    }
+
     void initialSyncEventBeforeConnectedIsNotLost()
     {
         PipeWireManager manager;
