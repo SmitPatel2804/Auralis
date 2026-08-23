@@ -1,11 +1,13 @@
 #include <auralis/audio/AudioRouter.h>
 
+#include <auralis/audio/AcousticLagCalibrator.h>
 #include <auralis/audio/AudioSourceListModel.h>
 #include <auralis/audio/DestinationSync.h>
 #include <auralis/audio/PipeWireVirtualOutput.h>
 #include <auralis/audio/RouteListModel.h>
 #include <auralis/core/LoggingCategories.h>
 
+#include <QDateTime>
 #include <QHash>
 #include <QUuid>
 
@@ -110,6 +112,9 @@ AudioRouter::AudioRouter(
 AudioRouter::~AudioRouter()
 {
     stopAllActivationTimeouts();
+    if (calibrator_ != nullptr) {
+        calibrator_->stop();
+    }
 }
 
 QAbstractItemModel* AudioRouter::sources() const
@@ -216,6 +221,69 @@ int AudioRouter::ownedLinkCount() const
         count += static_cast<int>(route.ownedLinks.size());
     }
     return count;
+}
+
+QString AudioRouter::lagCalibrationStatus() const
+{
+    return calibrator_ != nullptr ? calibrator_->statusText() : QString();
+}
+
+void AudioRouter::enableAcousticLagCalibration()
+{
+    if (calibrator_ != nullptr) {
+        return;
+    }
+    calibrator_ = new AcousticLagCalibrator(this, store_, endpoints_, backend_, this);
+    connect(calibrator_, &AcousticLagCalibrator::statusChanged, this, &AudioRouter::lagCalibrationStatusChanged);
+}
+
+void AudioRouter::ingestAcousticLagSample(const QString& endpointId, double delayMs)
+{
+    lagAverager_.add(endpointId, delayMs, QDateTime::currentMSecsSinceEpoch());
+}
+
+void AudioRouter::applyRuntimeLagCompensation()
+{
+    QString sessionId;
+    for (const AudioRoute& route : routes_) {
+        if (route.ownerType == RouteOwnerType::Session && !route.ownerId.isEmpty()) {
+            sessionId = route.ownerId;
+            break;
+        }
+    }
+    if (sessionId.isEmpty()) {
+        return;
+    }
+    const QVector<AudioRoute*> group = sessionGroup(sessionId);
+    applyAutomaticDelayBridges(group);
+    if (!group.isEmpty()) {
+        tryActivateCompensatedFanout(*group.front());
+    }
+}
+
+void AudioRouter::maybeStartRuntimeLagCalibration(const QString& sessionId)
+{
+    if (calibrator_ == nullptr || sessionId.isEmpty()) {
+        return;
+    }
+    const QVector<AudioRoute*> group = sessionGroup(sessionId);
+    if (group.size() < 2) {
+        return;
+    }
+    QStringList endpointIds;
+    for (const AudioRoute* route : group) {
+        if (route == nullptr || route->state != RouteState::Active) {
+            return;
+        }
+        for (const QString& destId : route->destinationIds) {
+            if (!destId.isEmpty() && !endpointIds.contains(destId)) {
+                endpointIds.push_back(destId);
+            }
+        }
+    }
+    if (endpointIds.size() >= 2) {
+        calibrator_->maybeStart(sessionId, endpointIds);
+    }
 }
 
 void AudioRouter::setActivationTimeoutMs(int milliseconds)
@@ -679,6 +747,10 @@ void AudioRouter::shutdown()
         backend_->destroyLatencyCompensatedFanout();
         backend_->destroyAllDelayBridges();
     }
+    if (calibrator_ != nullptr) {
+        calibrator_->stop();
+    }
+    lagAverager_.clear();
     routes_.clear();
     sources_.clear();
     if (sourceModel_ != nullptr) {
@@ -1025,8 +1097,13 @@ void AudioRouter::finishActivationIfReady(AudioRoute& route)
         links_.destroyLinks(previous);
     }
     route.error = {};
-    setState(route, RouteState::Active);
-    qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route.id << "links=" << route.ownedLinks.size();
+    if (route.state != RouteState::Active) {
+        setState(route, RouteState::Active);
+        qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route.id << "links=" << route.ownedLinks.size();
+        if (route.ownerType == RouteOwnerType::Session) {
+            maybeStartRuntimeLagCalibration(route.ownerId);
+        }
+    }
 }
 
 void AudioRouter::rollback(AudioRoute& route, RouteError category, const QString& detail, bool disable)
@@ -1311,6 +1388,16 @@ QStringList AudioRouter::sessionSinkNodeNames(const QVector<AudioRoute*>& group)
                     sinkName = node->name;
                 }
             }
+            if (store_ != nullptr) {
+                const DelayBridgeNodes bridge = findDelayBridge(*store_, destId);
+                if (bridge.ready) {
+                    if (const PipeWireNodeInfo* capture = store_->node(bridge.captureNodeId)) {
+                        if (!capture->name.isEmpty()) {
+                            sinkName = capture->name;
+                        }
+                    }
+                }
+            }
             if (sinkName.isEmpty() || names.contains(sinkName)) {
                 continue;
             }
@@ -1363,7 +1450,6 @@ bool AudioRouter::tryActivateCompensatedFanout(AudioRoute& route)
         }
         return false;
     }
-    backend_->destroyAllDelayBridges();
     relinkSessionToFanout(route.ownerId);
     return true;
 }
@@ -1455,6 +1541,9 @@ void AudioRouter::relinkSessionToFanout(const QString& ownerId)
             qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route->id << "fanout=member";
         }
     }
+    if (leader != nullptr) {
+        maybeStartRuntimeLagCalibration(ownerId);
+    }
 }
 
 void AudioRouter::releaseFanoutIfUnused(const QString& ownerId)
@@ -1469,6 +1558,10 @@ void AudioRouter::releaseFanoutIfUnused(const QString& ownerId)
     }
     backend_->destroyLatencyCompensatedFanout();
     backend_->destroyAllDelayBridges();
+    if (calibrator_ != nullptr) {
+        calibrator_->stop();
+    }
+    lagAverager_.clear();
     for (AudioRoute* route : group) {
         route->fanoutRole = RouteFanoutRole::None;
         if (route->enabled) {
@@ -1504,6 +1597,11 @@ void AudioRouter::applyAutomaticDelayBridges(const QVector<AudioRoute*>& group)
             }
             samples.push_back(sample);
         }
+    }
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (lagAverager_.hasTwoEndpoints(nowMs)) {
+        samples = lagAverager_.averagedLatencySamples(nowMs);
+        qCInfo(auralisAudio) << "AudioRouter RuntimeLagPads endpoints=" << samples.size();
     }
     const QHash<QString, double> delays = destinationDelayMsTowardMax(samples);
     for (auto it = destNodeNames.constBegin(); it != destNodeNames.constEnd(); ++it) {

@@ -107,7 +107,9 @@ private slots:
             QStringLiteral("dest-a"), QStringLiteral("bluez_output.one"), 0.08);
         QVERIFY(args.contains("target.delay.sec = 0.0800"));
         QVERIFY(args.contains("auralis.delay.bridge = true"));
-        QVERIFY(args.contains("auralis.delay.endpoint = \"dest-a\""));
+        QVERIFY(args.contains("target.object = \"bluez_output.one\""));
+        QCOMPARE(auralis::audio::auralisDelayBridgeCaptureNodeName(QStringLiteral("dest-a")),
+                 QStringLiteral("auralis_delay_dest_a"));
     }
 };
 

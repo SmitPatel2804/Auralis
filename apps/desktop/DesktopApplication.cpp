@@ -49,6 +49,9 @@ auralis::core::ApplicationServices makeProductionServices()
     auralis::bluetooth::DeviceRegistry* registry = bluetooth->deviceRegistry();
 #if defined(Q_OS_LINUX)
     auto pipeWire = std::make_unique<auralis::audio::PipeWireManager>(registry);
+    if (auto* router = pipeWire->audioRouter()) {
+        router->enableAcousticLagCalibration();
+    }
 #else
     auto pipeWire = std::make_unique<auralis::audio::NativeAudioManager>(registry);
 #endif

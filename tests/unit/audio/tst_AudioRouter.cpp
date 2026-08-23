@@ -3,6 +3,7 @@
 
 #include <auralis/audio/AudioEndpointRegistry.h>
 #include <auralis/audio/AudioRouter.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -799,6 +800,29 @@ private slots:
         QVERIFY(model != nullptr);
         QCOMPARE(model->rowCount(), 1);
         QCOMPARE(model->data(model->index(0, 0), Qt::DisplayRole).toString(), QStringLiteral("Auralis Virtual Output"));
+    }
+
+    void runtimeLagPadsFasterHeadset()
+    {
+        Harness h;
+        h.backend.fanoutEnabled = true;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        const QString routeA =
+            h.router.createSessionRoute(QStringLiteral("sess"), h.sourceId(), {QStringLiteral("dest-a")});
+        const QString routeB =
+            h.router.createSessionRoute(QStringLiteral("sess"), h.sourceId(), {QStringLiteral("dest-b")});
+        h.router.activateRoute(routeA);
+        h.router.activateRoute(routeB);
+        h.router.ingestAcousticLagSample(QStringLiteral("dest-a"), 180.0);
+        h.router.ingestAcousticLagSample(QStringLiteral("dest-b"), 220.0);
+        h.router.applyRuntimeLagCompensation();
+        QCOMPARE(h.backend.lastDelayBridgeSec.value(QStringLiteral("dest-a")), 0.04);
+        QVERIFY(h.backend.lastDelayBridgeSec.value(QStringLiteral("dest-b")) < 0.0005);
+        QVERIFY(h.backend.lastFanoutNames.contains(
+            auralis::audio::auralisDelayBridgeCaptureNodeName(QStringLiteral("dest-a"))));
+        QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-b")));
     }
 
     void sessionFanoutLinksSourceToMixNotDestinations()

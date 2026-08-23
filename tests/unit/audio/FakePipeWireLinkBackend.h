@@ -2,6 +2,7 @@
 
 #include <auralis/audio/IPipeWireLinkBackend.h>
 #include <auralis/audio/PipeWireObjectStore.h>
+#include <auralis/audio/PipeWireVirtualOutput.h>
 
 #include "AudioTestFixtures.h"
 
@@ -48,6 +49,7 @@ public:
     bool fanoutEnabled = false;
     QStringList lastFanoutNames;
     int fanoutDestroyCalls = 0;
+    QHash<QString, double> lastDelayBridgeSec;
 
     std::optional<auralis::audio::LinkCreateResult> createLink(
         quint32 outputNode,
@@ -180,6 +182,76 @@ public:
         ++fanoutDestroyCalls;
     }
 
+    bool ensureDelayBridge(const QString& endpointId, const QString& destNodeName, double delaySeconds) override
+    {
+        Q_UNUSED(destNodeName);
+        lastDelayBridgeSec.insert(endpointId, delaySeconds);
+        if (delaySeconds < 0.0005) {
+            destroyDelayBridge(endpointId);
+            return true;
+        }
+        if (store_ == nullptr) {
+            return true;
+        }
+        quint32 captureId = delayCaptureIds_.value(endpointId, 0);
+        if (captureId == 0) {
+            captureId = nextDelayId_++;
+            delayCaptureIds_.insert(endpointId, captureId);
+            delayPlaybackIds_.insert(endpointId, nextDelayId_++);
+        }
+        const quint32 playbackId = delayPlaybackIds_.value(endpointId);
+        const QString captureName = auralis::audio::auralisDelayBridgeCaptureNodeName(endpointId);
+        store_->upsert(makeNode(
+            captureId,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), captureName},
+             {QStringLiteral("auralis.delay.bridge"), QStringLiteral("true")},
+             {QStringLiteral("auralis.delay.role"), QStringLiteral("capture")},
+             {QStringLiteral("auralis.delay.endpoint"), endpointId}}));
+        store_->upsert(makePort(
+            captureId + 10000,
+            captureId,
+            QStringLiteral("in"),
+            {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store_->upsert(makeNode(
+            playbackId,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), captureName + QStringLiteral(".source")},
+             {QStringLiteral("auralis.delay.bridge"), QStringLiteral("true")},
+             {QStringLiteral("auralis.delay.role"), QStringLiteral("playback")},
+             {QStringLiteral("auralis.delay.endpoint"), endpointId}}));
+        store_->upsert(makePort(
+            playbackId + 10000,
+            playbackId,
+            QStringLiteral("out"),
+            {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        return true;
+    }
+
+    void destroyDelayBridge(const QString& endpointId) override
+    {
+        if (store_ == nullptr) {
+            return;
+        }
+        if (const quint32 captureId = delayCaptureIds_.take(endpointId)) {
+            store_->remove(captureId);
+            store_->remove(captureId + 10000);
+        }
+        if (const quint32 playbackId = delayPlaybackIds_.take(endpointId)) {
+            store_->remove(playbackId);
+            store_->remove(playbackId + 10000);
+        }
+    }
+
+    void destroyAllDelayBridges() override
+    {
+        const QStringList ids = delayCaptureIds_.keys();
+        for (const QString& id : ids) {
+            destroyDelayBridge(id);
+        }
+        lastDelayBridgeSec.clear();
+    }
+
 private:
     void upsertStore(const Owned& created)
     {
@@ -204,6 +276,9 @@ private:
     auralis::audio::PipeWireObjectStore* store_ = nullptr;
     quint32 nextId_ = 900;
     quint64 nextToken_ = 1;
+    quint32 nextDelayId_ = 8100;
+    QHash<QString, quint32> delayCaptureIds_;
+    QHash<QString, quint32> delayPlaybackIds_;
 };
 
 } // namespace auralis::test

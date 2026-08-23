@@ -46,6 +46,7 @@ bool isAuralisSessionFanoutSink(const PipeWireNodeInfo& node);
 bool isAuralisDelayBridgeNode(const PipeWireNodeInfo& node);
 bool isAuralisInternalGraphNode(const PipeWireNodeInfo& node);
 QByteArray pipeWireSessionFanoutModuleArguments(const QStringList& sinkNodeNames);
+QString auralisDelayBridgeCaptureNodeName(const QString& endpointId);
 QByteArray pipeWireDelayBridgeModuleArguments(
     const QString& endpointId,
     const QString& destNodeName,

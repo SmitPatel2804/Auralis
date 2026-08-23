@@ -174,6 +174,11 @@ bool isSafePipeWireName(const QString& name)
 
 } // namespace
 
+QString auralisDelayBridgeCaptureNodeName(const QString& endpointId)
+{
+    return QStringLiteral("auralis_delay_") + sanitizedGraphToken(endpointId);
+}
+
 QByteArray pipeWireSessionFanoutModuleArguments(const QStringList& sinkNodeNames)
 {
     QByteArray rules;
@@ -244,11 +249,19 @@ QByteArray pipeWireDelayBridgeModuleArguments(
     args += token.toUtf8();
     args += ".source\"\n            node.description = \"Auralis Delay\"\n"
             "            media.class = \"Stream/Output/Audio\"\n            node.virtual = true\n"
-            "            node.autoconnect = false\n            node.dont-fallback = true\n"
+            "            node.dont-fallback = true\n"
             "            node.dont-reconnect = true\n            auralis.delay.bridge = true\n"
             "            auralis.delay.role = \"playback\"\n            auralis.delay.endpoint = \"";
     args += endpointId.toUtf8();
-    args += "\"\n        }\n    }";
+    args += "\"\n";
+    if (isSafePipeWireName(destNodeName)) {
+        args += "            target.object = \"";
+        args += destNodeName.toUtf8();
+        args += "\"\n            node.autoconnect = true\n";
+    } else {
+        args += "            node.autoconnect = false\n";
+    }
+    args += "        }\n    }";
     return args;
 }
 
