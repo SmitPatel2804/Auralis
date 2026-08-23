@@ -138,7 +138,10 @@ bool isAuralisDelayBridgeNode(const PipeWireNodeInfo& node)
     if (node.properties.boolValue(QStringLiteral("auralis.delay.bridge")).value_or(false)) {
         return true;
     }
-    return node.name.startsWith(QLatin1String("auralis_delay_"));
+    if (node.name.startsWith(QLatin1String("auralis_delay_"))) {
+        return true;
+    }
+    return node.name.contains(QLatin1String(".auralis_delay_"));
 }
 
 bool isAuralisInternalGraphNode(const PipeWireNodeInfo& node)
@@ -177,6 +180,11 @@ bool isSafePipeWireName(const QString& name)
 QString auralisDelayBridgeCaptureNodeName(const QString& endpointId)
 {
     return QStringLiteral("auralis_delay_") + sanitizedGraphToken(endpointId);
+}
+
+QString auralisDelayBridgePlaybackNodeName(const QString& endpointId)
+{
+    return auralisDelayBridgeCaptureNodeName(endpointId) + QStringLiteral(".source");
 }
 
 QByteArray pipeWireSessionFanoutModuleArguments(const QStringList& sinkNodeNames)
@@ -228,38 +236,44 @@ QByteArray pipeWireDelayBridgeModuleArguments(
     const QString& destNodeName,
     double delaySeconds)
 {
+    const QString capture = auralisDelayBridgeCaptureNodeName(endpointId);
+    const QString playback = capture + QStringLiteral(".source");
     const QString token = sanitizedGraphToken(endpointId);
     const double clamped = std::clamp(std::isfinite(delaySeconds) ? delaySeconds : 0.0, 0.0, 0.5);
     QByteArray args = QByteArrayLiteral("{\n"
-        "        node.name = \"auralis_delay_");
-    args += token.toUtf8();
-    args += "\"\n        audio.rate = 48000\n        audio.channels = 2\n"
+        "        node.name = \"");
+    args += capture.toUtf8();
+    args += "\"\n        node.description = \"Auralis Delay\"\n"
+            "        audio.rate = 48000\n        audio.channels = 2\n"
             "        audio.position = [ FL FR ]\n        target.delay.sec = ";
     args += QByteArray::number(clamped, 'f', 4);
-    args += "\n        capture.props = {\n            node.name = \"auralis_delay_";
-    args += token.toUtf8();
+    args += "\n        capture.props = {\n            node.name = \"";
+    args += capture.toUtf8();
     args += "\"\n            node.description = \"Auralis Delay\"\n"
-            "            media.class = \"Audio/Sink\"\n            node.virtual = true\n"
-            "            node.autoconnect = false\n            auralis.delay.bridge = true\n"
-            "            auralis.delay.role = \"capture\"\n            auralis.delay.endpoint = \"";
-    args += endpointId.toUtf8();
-    args += "\"\n            auralis.delay.target = \"";
-    args += destNodeName.toUtf8();
-    args += "\"\n        }\n        playback.props = {\n            node.name = \"auralis_delay_";
+            "            media.class = \"Audio/Sink\"\n"
+            "            node.virtual = false\n"
+            "            node.autoconnect = false\n"
+            "            session.suspend-timeout-seconds = 0\n"
+            "            auralis.delay.bridge = true\n"
+            "            auralis.delay.role = \"capture\"\n"
+            "            auralis.delay.token = \"";
     args += token.toUtf8();
-    args += ".source\"\n            node.description = \"Auralis Delay\"\n"
-            "            media.class = \"Stream/Output/Audio\"\n            node.virtual = true\n"
+    args += "\"\n        }\n        playback.props = {\n            node.name = \"";
+    args += playback.toUtf8();
+    args += "\"\n            node.description = \"Auralis Delay\"\n"
+            "            media.class = \"Stream/Output/Audio\"\n"
+            "            node.virtual = true\n"
+            "            node.autoconnect = true\n"
             "            node.dont-fallback = true\n"
-            "            node.dont-reconnect = true\n            auralis.delay.bridge = true\n"
-            "            auralis.delay.role = \"playback\"\n            auralis.delay.endpoint = \"";
-    args += endpointId.toUtf8();
+            "            auralis.delay.bridge = true\n"
+            "            auralis.delay.role = \"playback\"\n"
+            "            auralis.delay.token = \"";
+    args += token.toUtf8();
     args += "\"\n";
     if (isSafePipeWireName(destNodeName)) {
         args += "            target.object = \"";
         args += destNodeName.toUtf8();
-        args += "\"\n            node.autoconnect = true\n";
-    } else {
-        args += "            node.autoconnect = false\n";
+        args += "\"\n";
     }
     args += "        }\n    }";
     return args;

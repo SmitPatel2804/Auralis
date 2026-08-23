@@ -208,24 +208,34 @@ public:
              {QStringLiteral("node.name"), captureName},
              {QStringLiteral("auralis.delay.bridge"), QStringLiteral("true")},
              {QStringLiteral("auralis.delay.role"), QStringLiteral("capture")},
-             {QStringLiteral("auralis.delay.endpoint"), endpointId}}));
+             {QStringLiteral("auralis.delay.token"), captureName.mid(QStringLiteral("auralis_delay_").size())}}));
         store_->upsert(makePort(
             captureId + 10000,
             captureId,
             QStringLiteral("in"),
             {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store_->upsert(makePort(
+            captureId + 10001,
+            captureId,
+            QStringLiteral("in"),
+            {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
         store_->upsert(makeNode(
             playbackId,
             {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
              {QStringLiteral("node.name"), captureName + QStringLiteral(".source")},
              {QStringLiteral("auralis.delay.bridge"), QStringLiteral("true")},
              {QStringLiteral("auralis.delay.role"), QStringLiteral("playback")},
-             {QStringLiteral("auralis.delay.endpoint"), endpointId}}));
+             {QStringLiteral("auralis.delay.token"), captureName.mid(QStringLiteral("auralis_delay_").size())}}));
         store_->upsert(makePort(
-            playbackId + 10000,
+            playbackId + 20000,
             playbackId,
             QStringLiteral("out"),
             {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store_->upsert(makePort(
+            playbackId + 20001,
+            playbackId,
+            QStringLiteral("out"),
+            {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
         return true;
     }
 
@@ -237,10 +247,12 @@ public:
         if (const quint32 captureId = delayCaptureIds_.take(endpointId)) {
             store_->remove(captureId);
             store_->remove(captureId + 10000);
+            store_->remove(captureId + 10001);
         }
         if (const quint32 playbackId = delayPlaybackIds_.take(endpointId)) {
             store_->remove(playbackId);
-            store_->remove(playbackId + 10000);
+            store_->remove(playbackId + 20000);
+            store_->remove(playbackId + 20001);
         }
     }
 

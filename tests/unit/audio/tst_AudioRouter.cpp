@@ -809,6 +809,13 @@ private slots:
         h.addStereoStream(1, 11, 12);
         h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
         h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        h.store.upsert(makeNode(
+            50,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_session_fanout")},
+             {QStringLiteral("auralis.session.fanout"), QStringLiteral("true")}}));
+        h.store.upsert(makePort(51, 50, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(52, 50, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
         const QString routeA =
             h.router.createSessionRoute(QStringLiteral("sess"), h.sourceId(), {QStringLiteral("dest-a")});
         const QString routeB =
@@ -822,9 +829,19 @@ private slots:
         QVERIFY(h.backend.lastFanoutNames.contains(
             auralis::audio::auralisDelayBridgeCaptureNodeName(QStringLiteral("dest-a"))));
         QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-b")));
+        bool sawDelayLink = false;
+        for (auto it = h.backend.owned.constBegin(); it != h.backend.owned.constEnd(); ++it) {
+            if (!it->routeId.startsWith(QLatin1String("delay:"))) {
+                continue;
+            }
+            sawDelayLink = true;
+            QVERIFY(it->outputNode != it->inputNode);
+            QCOMPARE(it->inputNode, quint32(2));
+        }
+        QVERIFY(sawDelayLink);
     }
 
-    void delayPadKeepsFanoutNameWhenBridgeNodesAreMissing()
+    void delayPadKeepsHeadsetUntilBridgeIsReady()
     {
         Harness h;
         h.backend.fanoutEnabled = true;
@@ -839,6 +856,13 @@ private slots:
         h.router.activateRoute(routeA);
         h.router.activateRoute(routeB);
         h.router.setDestinationDelayMs(QStringLiteral("dest-a"), 40.0);
+        QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-a")));
+        QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-b")));
+        QVERIFY(!h.backend.lastFanoutNames.contains(
+            auralis::audio::auralisDelayBridgeCaptureNodeName(QStringLiteral("dest-a"))));
+        h.backend.omitDelayNodes = false;
+        h.backend.destroyDelayBridge(QStringLiteral("dest-a"));
+        h.router.handleGraphChanged();
         QVERIFY(h.backend.lastFanoutNames.contains(
             auralis::audio::auralisDelayBridgeCaptureNodeName(QStringLiteral("dest-a"))));
         QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-b")));

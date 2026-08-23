@@ -7,10 +7,12 @@
 
 #include <QDateTime>
 #include <QHash>
+#include <QSet>
 #include <QUuid>
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace auralis::audio {
 namespace {
@@ -42,51 +44,132 @@ struct DelayBridgeNodes {
     bool ready = false;
 };
 
-const PipeWirePortInfo* findNodeAudioPort(
+std::optional<PipeWirePortInfo> findNodeAudioPort(
     const PipeWireObjectStore& store,
     quint32 nodeId,
     PipeWirePortDirection direction,
     const QString& channel)
 {
-    const PipeWirePortInfo* fallback = nullptr;
+    std::optional<PipeWirePortInfo> fallback;
     for (const PipeWirePortInfo& port : store.portsForNode(nodeId)) {
         if (port.direction != direction || port.control || port.monitor) {
             continue;
         }
         if (!channel.isEmpty() && port.audioChannel == channel) {
-            return &port;
+            return port;
         }
-        if (fallback == nullptr) {
-            fallback = &port;
+        if (!fallback.has_value()) {
+            fallback = port;
         }
     }
     return fallback;
 }
 
+bool nodeNameEquals(const QString& nodeName, const QString& expected)
+{
+    if (expected.isEmpty()) {
+        return false;
+    }
+    if (nodeName == expected) {
+        return true;
+    }
+    return nodeName.endsWith(QLatin1Char('.') + expected);
+}
+
+bool isUsableDestinationSink(const PipeWireNodeInfo& node)
+{
+    return node.mediaClass == QLatin1String("Audio/Sink") && !isAuralisInternalGraphNode(node);
+}
+
+quint32 liveDestinationSinkNodeId(const AudioEndpoint& endpoint, const PipeWireObjectStore& store)
+{
+    if (const PipeWireNodeInfo* node = store.node(endpoint.pipeWireObjectId)) {
+        if (isUsableDestinationSink(*node)) {
+            return node->globalId;
+        }
+    }
+    if (!endpoint.nodeName.isEmpty()) {
+        for (const PipeWireNodeInfo& node : store.nodes()) {
+            if (node.name == endpoint.nodeName && isUsableDestinationSink(node)) {
+                return node.globalId;
+            }
+        }
+    }
+    if (!endpoint.bluetoothAddress.isEmpty()) {
+        for (const PipeWireNodeInfo& node : store.nodes()) {
+            if (!isUsableDestinationSink(node) || !node.bluezAddress.has_value()) {
+                continue;
+            }
+            if (*node.bluezAddress == endpoint.bluetoothAddress) {
+                return node.globalId;
+            }
+        }
+    }
+    return 0;
+}
+
+QString liveDestinationSinkNodeName(const AudioEndpoint& endpoint, const PipeWireObjectStore* store)
+{
+    if (store != nullptr) {
+        const quint32 id = liveDestinationSinkNodeId(endpoint, *store);
+        if (const PipeWireNodeInfo* node = store->node(id)) {
+            if (!node->name.isEmpty()) {
+                return node->name;
+            }
+        }
+    }
+    if (!endpoint.nodeName.isEmpty() && !endpoint.nodeName.startsWith(QLatin1String("auralis_delay_"))) {
+        return endpoint.nodeName;
+    }
+    return endpoint.name;
+}
+
 DelayBridgeNodes findDelayBridge(const PipeWireObjectStore& store, const QString& endpointId)
 {
     DelayBridgeNodes result;
+    const QString captureName = auralisDelayBridgeCaptureNodeName(endpointId);
+    const QString playbackName = auralisDelayBridgePlaybackNodeName(endpointId);
+    const QString expectedToken = captureName.mid(QStringLiteral("auralis_delay_").size());
     for (const PipeWireNodeInfo& node : store.nodes()) {
-        if (node.properties.value(QStringLiteral("auralis.delay.endpoint")) != endpointId) {
+        if (!isAuralisDelayBridgeNode(node)) {
             continue;
         }
         const QString role = node.properties.value(QStringLiteral("auralis.delay.role"));
-        if (role == QLatin1String("capture") || node.mediaClass == QLatin1String("Audio/Sink")) {
-            result.captureNodeId = node.globalId;
-        } else if (role == QLatin1String("playback")
-                   || node.mediaClass.startsWith(QLatin1String("Stream/Output"))) {
-            result.playbackNodeId = node.globalId;
+        const bool thisEndpoint =
+            nodeNameEquals(node.name, playbackName) || nodeNameEquals(node.name, captureName)
+            || (!expectedToken.isEmpty()
+                && node.properties.value(QStringLiteral("auralis.delay.token")) == expectedToken);
+        if (!thisEndpoint) {
+            continue;
+        }
+        if (nodeNameEquals(node.name, playbackName) || role == QLatin1String("playback")) {
+            if (node.mediaClass.startsWith(QLatin1String("Stream/Output"))) {
+                result.playbackNodeId = node.globalId;
+            }
+            continue;
+        }
+        if (nodeNameEquals(node.name, captureName) || role == QLatin1String("capture")) {
+            if (node.mediaClass == QLatin1String("Audio/Sink")) {
+                result.captureNodeId = node.globalId;
+            }
         }
     }
-    if (result.captureNodeId == 0 || result.playbackNodeId == 0) {
+    if (result.captureNodeId == 0 || result.playbackNodeId == 0
+        || result.captureNodeId == result.playbackNodeId) {
         return result;
     }
     const bool captureReady =
-        findNodeAudioPort(store, result.captureNodeId, PipeWirePortDirection::Input, {}) != nullptr;
+        findNodeAudioPort(store, result.captureNodeId, PipeWirePortDirection::Input, {}).has_value();
     const bool playbackReady =
-        findNodeAudioPort(store, result.playbackNodeId, PipeWirePortDirection::Output, {}) != nullptr;
+        findNodeAudioPort(store, result.playbackNodeId, PipeWirePortDirection::Output, {}).has_value();
     result.ready = captureReady && playbackReady;
     return result;
+}
+
+bool delayBridgeCanFeedDestination(const DelayBridgeNodes& bridge, quint32 destNodeId)
+{
+    return bridge.ready && destNodeId != 0 && bridge.playbackNodeId != destNodeId
+        && bridge.captureNodeId != destNodeId;
 }
 
 } // namespace
@@ -698,6 +781,10 @@ void AudioRouter::shutdown()
     if (delayCommitTimer_ != nullptr) {
         delayCommitTimer_->stop();
     }
+    for (auto it = delayOutputLinks_.begin(); it != delayOutputLinks_.end(); ++it) {
+        links_.destroyLinks(it.value());
+    }
+    delayOutputLinks_.clear();
     if (backend_ != nullptr) {
         backend_->destroyLatencyCompensatedFanout();
         backend_->destroyAllDelayBridges();
@@ -1329,25 +1416,12 @@ QStringList AudioRouter::sessionSinkNodeNames(const QVector<AudioRoute*>& group)
             if (endpoint == nullptr) {
                 continue;
             }
-            QString sinkName = endpoint->nodeName;
-            if (sinkName.isEmpty()) {
-                sinkName = endpoint->name;
-            }
-            if (sinkName.isEmpty() && store_ != nullptr) {
-                if (const PipeWireNodeInfo* node = store_->node(endpoint->pipeWireObjectId)) {
-                    sinkName = node->name;
-                }
-            }
-            if (playgroundPads_.value(destId, 0.0) > 0.0) {
-                sinkName = auralisDelayBridgeCaptureNodeName(destId);
-            } else if (store_ != nullptr) {
+            QString sinkName = liveDestinationSinkNodeName(*endpoint, store_);
+            if (playgroundPads_.value(destId, 0.0) > 0.0 && store_ != nullptr) {
+                const quint32 destNodeId = liveDestinationSinkNodeId(*endpoint, *store_);
                 const DelayBridgeNodes bridge = findDelayBridge(*store_, destId);
-                if (bridge.ready) {
-                    if (const PipeWireNodeInfo* capture = store_->node(bridge.captureNodeId)) {
-                        if (!capture->name.isEmpty()) {
-                            sinkName = capture->name;
-                        }
-                    }
+                if (delayBridgeCanFeedDestination(bridge, destNodeId)) {
+                    sinkName = auralisDelayBridgeCaptureNodeName(destId);
                 }
             }
             if (sinkName.isEmpty() || names.contains(sinkName)) {
@@ -1378,7 +1452,7 @@ bool AudioRouter::fanoutSinkReady() const
     if (id == 0 || store_ == nullptr) {
         return false;
     }
-    return findNodeAudioPort(*store_, id, PipeWirePortDirection::Input, {}) != nullptr;
+    return findNodeAudioPort(*store_, id, PipeWirePortDirection::Input, {}).has_value();
 }
 
 bool AudioRouter::tryActivateCompensatedFanout(AudioRoute& route)
@@ -1494,6 +1568,7 @@ void AudioRouter::relinkSessionToFanout(const QString& ownerId)
             qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route->id << "fanout=member";
         }
     }
+    linkDelayPlaybacks(group);
 }
 
 void AudioRouter::releaseFanoutIfUnused(const QString& ownerId)
@@ -1508,6 +1583,10 @@ void AudioRouter::releaseFanoutIfUnused(const QString& ownerId)
     }
     backend_->destroyLatencyCompensatedFanout();
     backend_->destroyAllDelayBridges();
+    for (auto it = delayOutputLinks_.begin(); it != delayOutputLinks_.end(); ++it) {
+        links_.destroyLinks(it.value());
+    }
+    delayOutputLinks_.clear();
     for (AudioRoute* route : group) {
         route->fanoutRole = RouteFanoutRole::None;
         if (route->enabled) {
@@ -1537,7 +1616,7 @@ void AudioRouter::applyDelayBridges(const QVector<AudioRoute*>& group)
             if (endpoint == nullptr) {
                 continue;
             }
-            destNodeNames.insert(destId, endpoint->nodeName);
+            destNodeNames.insert(destId, liveDestinationSinkNodeName(*endpoint, store_));
         }
     }
     for (auto it = destNodeNames.constBegin(); it != destNodeNames.constEnd(); ++it) {
@@ -1547,6 +1626,111 @@ void AudioRouter::applyDelayBridges(const QVector<AudioRoute*>& group)
         } else {
             backend_->ensureDelayBridge(it.key(), it.value(), ms / 1000.0);
         }
+    }
+}
+
+void AudioRouter::linkDelayPlaybacks(const QVector<AudioRoute*>& group)
+{
+    if (store_ == nullptr || endpoints_ == nullptr || backend_ == nullptr) {
+        return;
+    }
+    QSet<QString> wanted;
+    for (const AudioRoute* route : group) {
+        if (route == nullptr) {
+            continue;
+        }
+        for (const QString& destId : route->destinationIds) {
+            if (playgroundPads_.value(destId, 0.0) <= 0.0) {
+                continue;
+            }
+            wanted.insert(destId);
+            const DelayBridgeNodes bridge = findDelayBridge(*store_, destId);
+            const AudioEndpoint* endpoint = endpoints_->findById(destId);
+            if (endpoint == nullptr) {
+                continue;
+            }
+            const quint32 destNodeId = liveDestinationSinkNodeId(*endpoint, *store_);
+            if (!delayBridgeCanFeedDestination(bridge, destNodeId)) {
+                qCInfo(auralisAudio) << "AudioRouter DelayPlaybackDeferred endpoint=" << destId
+                                    << "capture=" << bridge.captureNodeId << "playback=" << bridge.playbackNodeId
+                                    << "dest=" << destNodeId;
+                continue;
+            }
+            ResolvedRoutePlan plan;
+            plan.destinationIds = {destId};
+            const QStringList channels{QStringLiteral("FL"), QStringLiteral("FR")};
+            for (const QString& channel : channels) {
+                const std::optional<PipeWirePortInfo> outPort =
+                    findNodeAudioPort(*store_, bridge.playbackNodeId, PipeWirePortDirection::Output, channel);
+                const std::optional<PipeWirePortInfo> inPort =
+                    findNodeAudioPort(*store_, destNodeId, PipeWirePortDirection::Input, channel);
+                if (!outPort.has_value() || !inPort.has_value()) {
+                    continue;
+                }
+                ResolvedPortPair pair;
+                pair.destinationId = destId;
+                pair.outputNodeId = outPort->nodeId.value_or(bridge.playbackNodeId);
+                pair.outputPortId = outPort->globalId;
+                pair.inputNodeId = inPort->nodeId.value_or(destNodeId);
+                pair.inputPortId = inPort->globalId;
+                pair.channel = channel;
+                if (pair.outputNodeId == 0 || pair.inputNodeId == 0
+                    || pair.outputNodeId == pair.inputNodeId || pair.outputPortId == pair.inputPortId) {
+                    qCWarning(auralisAudio) << "AudioRouter DelayPlaybackRejected endpoint=" << destId
+                                            << "out=" << pair.outputNodeId << ":" << pair.outputPortId
+                                            << "in=" << pair.inputNodeId << ":" << pair.inputPortId;
+                    continue;
+                }
+                plan.pairs.push_back(pair);
+            }
+            if (plan.pairs.isEmpty()) {
+                continue;
+            }
+            bool alreadyConnected = true;
+            for (const ResolvedPortPair& pair : plan.pairs) {
+                if (!store_->findExactLinkGlobalId(
+                        pair.outputNodeId, pair.outputPortId, pair.inputNodeId, pair.inputPortId)) {
+                    alreadyConnected = false;
+                    break;
+                }
+            }
+            if (alreadyConnected) {
+                continue;
+            }
+            QVector<OwnedLink>& owned = delayOutputLinks_[destId];
+            if (owned.size() == plan.pairs.size()) {
+                bool same = true;
+                for (int i = 0; i < plan.pairs.size(); ++i) {
+                    if (owned.at(i).outputPortId != plan.pairs.at(i).outputPortId
+                        || owned.at(i).inputPortId != plan.pairs.at(i).inputPortId) {
+                        same = false;
+                        break;
+                    }
+                }
+                if (same) {
+                    continue;
+                }
+            }
+            links_.destroyLinks(owned);
+            owned.clear();
+            RouteErrorInfo error;
+            owned = links_.createLinks(QStringLiteral("delay:") + destId, plan, &error);
+            if (owned.isEmpty()) {
+                qCWarning(auralisAudio) << "AudioRouter DelayPlaybackLinkFailed endpoint=" << destId << error.detail;
+            } else {
+                qCInfo(auralisAudio) << "AudioRouter DelayPlaybackLinked endpoint=" << destId
+                                    << "playback=" << bridge.playbackNodeId << "dest=" << destNodeId
+                                    << "links=" << owned.size();
+            }
+        }
+    }
+    const QStringList existing = delayOutputLinks_.keys();
+    for (const QString& id : existing) {
+        if (wanted.contains(id)) {
+            continue;
+        }
+        links_.destroyLinks(delayOutputLinks_[id]);
+        delayOutputLinks_.remove(id);
     }
 }
 
@@ -1580,7 +1764,8 @@ void AudioRouter::commitDelayGraph()
             if (endpoint == nullptr) {
                 continue;
             }
-            backend_->ensureDelayBridge(it.key(), endpoint->nodeName, it.value() / 1000.0);
+            backend_->ensureDelayBridge(
+                it.key(), liveDestinationSinkNodeName(*endpoint, store_), it.value() / 1000.0);
         }
     }
     QStringList sessionIds;
@@ -1626,15 +1811,16 @@ ResolvedRoutePlan AudioRouter::expandPlanThroughDelayBridges(const ResolvedRoute
     expanded.pairs.clear();
     for (const ResolvedPortPair& pair : plan.pairs) {
         const DelayBridgeNodes bridge = findDelayBridge(*store_, pair.destinationId);
-        if (!bridge.ready) {
+        if (!bridge.ready || bridge.playbackNodeId == pair.inputNodeId
+            || bridge.captureNodeId == pair.inputNodeId) {
             expanded.pairs.push_back(pair);
             continue;
         }
-        const PipeWirePortInfo* captureIn =
+        const std::optional<PipeWirePortInfo> captureIn =
             findNodeAudioPort(*store_, bridge.captureNodeId, PipeWirePortDirection::Input, pair.channel);
-        const PipeWirePortInfo* playbackOut =
+        const std::optional<PipeWirePortInfo> playbackOut =
             findNodeAudioPort(*store_, bridge.playbackNodeId, PipeWirePortDirection::Output, pair.channel);
-        if (captureIn == nullptr || playbackOut == nullptr) {
+        if (!captureIn.has_value() || !playbackOut.has_value()) {
             expanded.pairs.push_back(pair);
             continue;
         }
@@ -1646,6 +1832,10 @@ ResolvedRoutePlan AudioRouter::expandPlanThroughDelayBridges(const ResolvedRoute
         ResolvedPortPair toDest = pair;
         toDest.outputNodeId = playbackOut->nodeId.value_or(bridge.playbackNodeId);
         toDest.outputPortId = playbackOut->globalId;
+        if (toDest.outputNodeId == toDest.inputNodeId || toBridge.inputNodeId == pair.outputNodeId) {
+            expanded.pairs.push_back(pair);
+            continue;
+        }
         expanded.pairs.push_back(toDest);
     }
     return expanded;

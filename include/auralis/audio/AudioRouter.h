@@ -151,6 +151,7 @@ private:
     void relinkSessionToFanout(const QString& ownerId);
     void releaseFanoutIfUnused(const QString& ownerId);
     void applyDelayBridges(const QVector<AudioRoute*>& group);
+    void linkDelayPlaybacks(const QVector<AudioRoute*>& group);
     void commitDelayGraph();
     void scheduleDelayGraphCommit();
     ResolvedRoutePlan expandPlanThroughDelayBridges(const ResolvedRoutePlan& plan) const;
@@ -184,6 +185,7 @@ private:
     int qmlOwnedLinkCount_ = 0;
     QHash<QString, double> playgroundPads_;
     QSet<QString> pendingDelayDestroys_;
+    QHash<QString, QVector<OwnedLink>> delayOutputLinks_;
     QTimer* delayCommitTimer_ = nullptr;
     int delayGraphCommitMs_ = 0;
 };
