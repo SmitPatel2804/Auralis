@@ -305,11 +305,11 @@ Item {
                             wrapMode: Text.WordWrap
                             color: Theme.textMuted
                             font.pixelSize: 12
-                            text: qsTr("If one headset is late, add Delay to the other. Dual Bluetooth cannot be sample-perfect.")
+                            text: qsTr("Auralis aligns session outputs automatically. Dual Bluetooth still cannot be sample-perfect.")
                         }
                         Frame {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.max(120, Math.min(280, 72 * Math.max(1, root.memberCount)))
+                            Layout.preferredHeight: Math.max(120, Math.min(240, 56 * Math.max(1, root.memberCount)))
                             padding: Metrics.sm
                             background: Rectangle {
                                 radius: 12
@@ -327,7 +327,6 @@ Item {
                                     required property bool endpointAvailable
                                     required property real volume
                                     required property bool muted
-                                    required property real delayMs
                                     required property bool memberEnabled
                                     width: ListView.view.width
                                     ColumnLayout {
@@ -355,29 +354,6 @@ Item {
                                                 compact: true
                                                 danger: true
                                                 onClicked: root.report(sessions.removeDevice(root.selectedId, deviceId))
-                                            }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            visible: Qt.platform.os === "linux"
-                                            Label {
-                                                text: qsTr("Delay")
-                                                color: Theme.textMuted
-                                                font.pixelSize: 11
-                                            }
-                                            Slider {
-                                                Layout.fillWidth: true
-                                                from: 0
-                                                to: 250
-                                                stepSize: 5
-                                                value: delayMs
-                                                onPressedChanged: if (!pressed) root.report(sessions.setDeviceDelayMs(root.selectedId, deviceId, value))
-                                            }
-                                            Label {
-                                                text: qsTr("%1 ms").arg(Math.round(delayMs))
-                                                color: Theme.textMuted
-                                                font.pixelSize: 11
-                                                Layout.preferredWidth: 52
                                             }
                                         }
                                     }

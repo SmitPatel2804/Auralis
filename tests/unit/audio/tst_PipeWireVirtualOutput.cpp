@@ -89,6 +89,26 @@ private slots:
         QVERIFY(config.contains("flags = [ ifexists nofail ]"));
         QVERIFY(config.contains("priority.session = 100"));
     }
+
+    void sessionFanoutMatchesExactSinksAndCompensatesLatency()
+    {
+        const QByteArray args = auralis::audio::pipeWireSessionFanoutModuleArguments(
+            {QStringLiteral("bluez_output.one"), QStringLiteral("bluez_output.two")});
+        QVERIFY(args.contains("combine.latency-compensate = true"));
+        QVERIFY(args.contains("auralis_session_fanout"));
+        QVERIFY(args.contains("node.name = \"bluez_output.one\""));
+        QVERIFY(args.contains("node.name = \"bluez_output.two\""));
+        QVERIFY(args.contains("auralis.session.fanout = true"));
+    }
+
+    void delayBridgeUsesLoopbackTargetDelay()
+    {
+        const QByteArray args = auralis::audio::pipeWireDelayBridgeModuleArguments(
+            QStringLiteral("dest-a"), QStringLiteral("bluez_output.one"), 0.08);
+        QVERIFY(args.contains("target.delay.sec = 0.0800"));
+        QVERIFY(args.contains("auralis.delay.bridge = true"));
+        QVERIFY(args.contains("auralis.delay.endpoint = \"dest-a\""));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPipeWireVirtualOutput)

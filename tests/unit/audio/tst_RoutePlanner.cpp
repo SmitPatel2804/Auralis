@@ -157,6 +157,25 @@ private slots:
         const auto plan = RoutePlanner{}.plan(QStringLiteral("src:1:Stream/Output/Audio"), {QStringLiteral("dest-a")}, store, endpoints);
         QVERIFY(plan.error.category == RouteError::NoCompatiblePorts);
     }
+
+    void planToSinkNodeMatchesStereoChannels()
+    {
+        PipeWireObjectStore store;
+        store.upsert(makeNode(7, {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+                                  {QStringLiteral("object.serial"), QStringLiteral("7")}}));
+        store.upsert(makePort(71, 7, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store.upsert(makePort(72, 7, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        store.upsert(makeNode(80, {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+                                   {QStringLiteral("node.name"), QStringLiteral("auralis_session_fanout")}}));
+        store.upsert(makePort(81, 80, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store.upsert(makePort(82, 80, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        const auto plan = RoutePlanner{}.planToSinkNode(
+            QStringLiteral("src:7:Stream/Output/Audio"), 80, QStringLiteral("fanout"), store);
+        QVERIFY(!plan.error.hasError());
+        QCOMPARE(plan.pairs.size(), 2);
+        QCOMPARE(plan.pairs.front().inputNodeId, static_cast<quint32>(80));
+        QCOMPARE(plan.pairs.front().destinationId, QStringLiteral("fanout"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstRoutePlanner)

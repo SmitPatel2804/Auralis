@@ -30,7 +30,6 @@ void VolumeCoordinator::applyMemberVolume(const AuralisSession& session, const S
     const bool muted = session.muted || device.muted;
     router_->setDestinationVolume(device.runtime.endpointId, volume);
     router_->setDestinationMuted(device.runtime.endpointId, muted);
-    router_->setDestinationDelayMs(device.runtime.endpointId, device.delayMs);
 }
 
 void VolumeCoordinator::applySessionVolumes(const AuralisSession& session)
@@ -40,6 +39,9 @@ void VolumeCoordinator::applySessionVolumes(const AuralisSession& session)
             continue;
         }
         applyMemberVolume(session, device);
+    }
+    if (router_ != nullptr && !session.id.isEmpty()) {
+        router_->syncSessionDestinations(session.id);
     }
 }
 

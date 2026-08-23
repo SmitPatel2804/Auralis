@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
 #include <QStringView>
 
 namespace auralis::audio {
@@ -12,6 +13,7 @@ struct PipeWireNodeInfo;
 inline constexpr auto kAuralisVirtualSinkNodeName = "auralis_virtual_output";
 inline constexpr auto kAuralisVirtualSourceNodeName = "auralis_virtual_output.source";
 inline constexpr auto kAuralisVirtualSourceId = "src:auralis-system-audio";
+inline constexpr auto kAuralisSessionFanoutNodeName = "auralis_session_fanout";
 
 struct PipeWireVirtualOutputState {
     quint32 sinkNodeId = 0;
@@ -39,5 +41,14 @@ QString pipeWireDefaultNodeName(QStringView metadataJson);
 /// Arguments for the in-process fallback. Installed packages use the matching
 /// PipeWire drop-in and therefore remain present after Auralis exits.
 QByteArray pipeWireVirtualOutputModuleArguments();
+
+bool isAuralisSessionFanoutSink(const PipeWireNodeInfo& node);
+bool isAuralisDelayBridgeNode(const PipeWireNodeInfo& node);
+bool isAuralisInternalGraphNode(const PipeWireNodeInfo& node);
+QByteArray pipeWireSessionFanoutModuleArguments(const QStringList& sinkNodeNames);
+QByteArray pipeWireDelayBridgeModuleArguments(
+    const QString& endpointId,
+    const QString& destNodeName,
+    double delaySeconds);
 
 } // namespace auralis::audio

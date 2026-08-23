@@ -5,6 +5,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <algorithm>
+#include <cmath>
+
 namespace auralis::audio {
 namespace {
 
@@ -121,6 +124,132 @@ QByteArray pipeWireVirtualOutputModuleArguments()
             auralis.virtual.persistence = "runtime"
         }
     })PW");
+}
+
+bool isAuralisSessionFanoutSink(const PipeWireNodeInfo& node)
+{
+    return node.mediaClass == QLatin1String("Audio/Sink")
+        && (node.name == QLatin1String(kAuralisSessionFanoutNodeName)
+            || node.properties.boolValue(QStringLiteral("auralis.session.fanout")).value_or(false));
+}
+
+bool isAuralisDelayBridgeNode(const PipeWireNodeInfo& node)
+{
+    if (node.properties.boolValue(QStringLiteral("auralis.delay.bridge")).value_or(false)) {
+        return true;
+    }
+    return node.name.startsWith(QLatin1String("auralis_delay_"));
+}
+
+bool isAuralisInternalGraphNode(const PipeWireNodeInfo& node)
+{
+    if (node.properties.boolValue(QStringLiteral("auralis.session.fanout")).value_or(false)) {
+        return true;
+    }
+    return isAuralisPipeWireVirtualSink(node) || isAuralisSessionFanoutSink(node) || isAuralisDelayBridgeNode(node);
+}
+
+namespace {
+
+QString sanitizedGraphToken(const QString& raw)
+{
+    QString token;
+    token.reserve(raw.size());
+    for (const QChar ch : raw) {
+        if (ch.isLetterOrNumber()) {
+            token += ch;
+        } else {
+            token += QLatin1Char('_');
+        }
+    }
+    token = token.left(48);
+    return token.isEmpty() ? QStringLiteral("dest") : token;
+}
+
+bool isSafePipeWireName(const QString& name)
+{
+    return !name.isEmpty() && !name.contains(QLatin1Char('"')) && !name.contains(QLatin1Char('\\'))
+        && !name.contains(QLatin1Char('{')) && !name.contains(QLatin1Char('}'));
+}
+
+} // namespace
+
+QByteArray pipeWireSessionFanoutModuleArguments(const QStringList& sinkNodeNames)
+{
+    QByteArray rules;
+    for (const QString& name : sinkNodeNames) {
+        if (!isSafePipeWireName(name) || name == QLatin1String(kAuralisVirtualSinkNodeName)
+            || name == QLatin1String(kAuralisSessionFanoutNodeName)) {
+            continue;
+        }
+        rules += "                    {\n"
+                 "                        matches = [ { node.name = \"";
+        rules += name.toUtf8();
+        rules += "\" } ]\n"
+                 "                        actions = { create-stream = { } }\n"
+                 "                    }\n";
+    }
+    QByteArray args = QByteArrayLiteral(R"PW({
+        combine.mode = sink
+        combine.latency-compensate = true
+        node.name = "auralis_session_fanout"
+        node.description = "Auralis Session Mix"
+        audio.rate = 48000
+        audio.channels = 2
+        audio.position = [ FL FR ]
+        combine.props = {
+            node.name = "auralis_session_fanout"
+            node.description = "Auralis Session Mix"
+            media.class = "Audio/Sink"
+            node.virtual = true
+            node.autoconnect = false
+            session.suspend-timeout-seconds = 0
+            auralis.session.fanout = true
+        }
+        stream.props = {
+            node.virtual = true
+            node.dont-fallback = true
+            auralis.session.fanout = true
+        }
+        stream.rules = [
+)PW");
+    args += rules;
+    args += "        ]\n    }";
+    return args;
+}
+
+QByteArray pipeWireDelayBridgeModuleArguments(
+    const QString& endpointId,
+    const QString& destNodeName,
+    double delaySeconds)
+{
+    const QString token = sanitizedGraphToken(endpointId);
+    const double clamped = std::clamp(std::isfinite(delaySeconds) ? delaySeconds : 0.0, 0.0, 0.5);
+    QByteArray args = QByteArrayLiteral("{\n"
+        "        node.name = \"auralis_delay_");
+    args += token.toUtf8();
+    args += "\"\n        audio.rate = 48000\n        audio.channels = 2\n"
+            "        audio.position = [ FL FR ]\n        target.delay.sec = ";
+    args += QByteArray::number(clamped, 'f', 4);
+    args += "\n        capture.props = {\n            node.name = \"auralis_delay_";
+    args += token.toUtf8();
+    args += "\"\n            node.description = \"Auralis Delay\"\n"
+            "            media.class = \"Audio/Sink\"\n            node.virtual = true\n"
+            "            node.autoconnect = false\n            auralis.delay.bridge = true\n"
+            "            auralis.delay.role = \"capture\"\n            auralis.delay.endpoint = \"";
+    args += endpointId.toUtf8();
+    args += "\"\n            auralis.delay.target = \"";
+    args += destNodeName.toUtf8();
+    args += "\"\n        }\n        playback.props = {\n            node.name = \"auralis_delay_";
+    args += token.toUtf8();
+    args += ".source\"\n            node.description = \"Auralis Delay\"\n"
+            "            media.class = \"Stream/Output/Audio\"\n            node.virtual = true\n"
+            "            node.autoconnect = false\n            node.dont-fallback = true\n"
+            "            node.dont-reconnect = true\n            auralis.delay.bridge = true\n"
+            "            auralis.delay.role = \"playback\"\n            auralis.delay.endpoint = \"";
+    args += endpointId.toUtf8();
+    args += "\"\n        }\n    }";
+    return args;
 }
 
 } // namespace auralis::audio

@@ -262,4 +262,63 @@ ResolvedRoutePlan RoutePlanner::plan(
     return plan;
 }
 
+ResolvedRoutePlan RoutePlanner::planToSinkNode(
+    const QString& sourceId,
+    quint32 sinkNodeId,
+    const QString& destinationId,
+    const PipeWireObjectStore& store) const
+{
+    ResolvedRoutePlan plan;
+    plan.sourceId = sourceId;
+    if (!destinationId.isEmpty()) {
+        plan.destinationIds = {destinationId};
+    }
+
+    if (sourceId.isEmpty()) {
+        plan.error = {RouteError::SourceNotFound, QStringLiteral("Source id is empty")};
+        return plan;
+    }
+    if (sinkNodeId == 0) {
+        plan.error = {RouteError::DestinationUnavailable, QStringLiteral("Fanout sink is not available")};
+        return plan;
+    }
+
+    const QVector<AudioSource> sources = classifyAudioSources(store);
+    const AudioSource* source = findSource(sources, sourceId);
+    if (source == nullptr) {
+        plan.error = {RouteError::SourceNotFound, QStringLiteral("Source %1 is not currently routable").arg(sourceId)};
+        return plan;
+    }
+    plan.sourceNodeId = source->pipeWireNodeId;
+
+    const QVector<PipeWirePortInfo> outputs = outputPorts(*source, store);
+    if (outputs.isEmpty()) {
+        plan.error = {RouteError::SourceNotRoutable, QStringLiteral("Source has no audio output ports")};
+        return plan;
+    }
+    if (store.node(sinkNodeId) == nullptr) {
+        plan.error = {RouteError::DestinationUnavailable, QStringLiteral("Fanout sink has no current PipeWire node")};
+        return plan;
+    }
+
+    const QVector<PipeWirePortInfo> inputs = inputPorts(sinkNodeId, store);
+    if (inputs.isEmpty()) {
+        plan.error = {RouteError::NoCompatiblePorts, QStringLiteral("Fanout sink has no audio input ports")};
+        return plan;
+    }
+
+    QVector<ResolvedPortPair> pairs;
+    if (hasChannelMetadata(outputs) || hasChannelMetadata(inputs)) {
+        pairs = matchByChannel(outputs, inputs, destinationId);
+    } else {
+        pairs = matchByIndex(outputs, inputs, destinationId);
+    }
+    if (pairs.isEmpty()) {
+        plan.error = {RouteError::NoCompatiblePorts, QStringLiteral("No compatible ports between source and fanout sink")};
+        return plan;
+    }
+    plan.pairs = std::move(pairs);
+    return plan;
+}
+
 } // namespace auralis::audio

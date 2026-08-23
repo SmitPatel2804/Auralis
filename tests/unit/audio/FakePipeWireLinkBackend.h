@@ -7,6 +7,7 @@
 
 #include <QHash>
 #include <QSet>
+#include <QStringList>
 #include <QVector>
 
 namespace auralis::test {
@@ -44,6 +45,9 @@ public:
     bool lastMuted = false;
     quint32 lastDelayNode = 0;
     double lastDelaySeconds = -1.0;
+    bool fanoutEnabled = false;
+    QStringList lastFanoutNames;
+    int fanoutDestroyCalls = 0;
 
     std::optional<auralis::audio::LinkCreateResult> createLink(
         quint32 outputNode,
@@ -163,6 +167,17 @@ public:
         lastDelayNode = nodeId;
         lastDelaySeconds = delaySeconds;
         return !failVolumeNodes.contains(nodeId);
+    }
+
+    bool ensureLatencyCompensatedFanout(const QStringList& sinkNodeNames) override
+    {
+        lastFanoutNames = sinkNodeNames;
+        return fanoutEnabled;
+    }
+
+    void destroyLatencyCompensatedFanout() override
+    {
+        ++fanoutDestroyCalls;
     }
 
 private:

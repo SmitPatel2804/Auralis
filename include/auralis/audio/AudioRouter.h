@@ -86,6 +86,8 @@ public:
     Q_INVOKABLE void setRouteMuted(const QString& routeId, bool muted);
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
 
+    void syncSessionDestinations(const QString& sessionId);
+
     void refreshSources();
     void handleGraphChanged();
     void handleConnectionState(PipeWireConnectionState state, bool initialSyncComplete);
@@ -136,6 +138,16 @@ private:
         RouteOwnerType ownerType,
         const QString& ownerId);
     bool rejectPlannerMutation(const AudioRoute& route);
+    QVector<AudioRoute*> sessionGroup(const QString& ownerId);
+    QStringList sessionSinkNodeNames(const QVector<AudioRoute*>& group) const;
+    quint32 fanoutSinkNodeId() const;
+    bool fanoutSinkReady() const;
+    bool tryActivateCompensatedFanout(AudioRoute& route);
+    void relinkSessionToFanout(const QString& ownerId);
+    void releaseFanoutIfUnused(const QString& ownerId);
+    void applyAutomaticDelayBridges(const QVector<AudioRoute*>& group);
+    ResolvedRoutePlan expandPlanThroughDelayBridges(const ResolvedRoutePlan& plan) const;
+    bool ownedLinksMatchPlan(const AudioRoute& route, const ResolvedRoutePlan& plan) const;
 
     PipeWireObjectStore* store_ = nullptr;
     AudioEndpointRegistry* endpoints_ = nullptr;

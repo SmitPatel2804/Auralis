@@ -246,6 +246,9 @@ void mergeNodeInfo(PipeWireNodeInfo& target, const PipeWireObjectSnapshot& snaps
             target.processId = static_cast<quint32>(pid.value());
         }
     }
+    if (const auto latencyNs = target.properties.uintValue(QStringLiteral("auralis.latency.input.ns"))) {
+        target.inputLatencyNs = static_cast<qint64>(latencyNs.value());
+    }
 }
 
 QString toString(PipeWirePortDirection direction)

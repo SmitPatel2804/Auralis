@@ -119,6 +119,16 @@ private slots:
         QVERIFY(!classifyAudioEndpoint(*store.node(18), store).has_value());
     }
 
+    void auralisSessionFanoutIsNotOfferedAsDestination()
+    {
+        PipeWireObjectStore store = storeWith(makeNode(
+            19,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_session_fanout")},
+             {QStringLiteral("auralis.session.fanout"), QStringLiteral("true")}}));
+        QVERIFY(!classifyAudioEndpoint(*store.node(19), store).has_value());
+    }
+
     void registryDeduplicatesAndUpdates()
     {
         AudioEndpointRegistry registry;

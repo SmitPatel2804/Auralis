@@ -100,7 +100,7 @@ std::optional<AudioEndpoint> classifyAudioEndpoint(
     }
     // Never offer the Auralis input sink as one of its own playback
     // destinations. That would form a graph feedback loop.
-    if (isAuralisPipeWireVirtualSink(node)) {
+    if (isAuralisInternalGraphNode(node)) {
         return std::nullopt;
     }
     const AudioEndpointDirection direction = directionFromMediaClass(node.mediaClass);

@@ -58,6 +58,12 @@ enum class RouteRecoveryPolicy {
     RebindOnGraphReplacement
 };
 
+enum class RouteFanoutRole {
+    None,
+    Leader,
+    Member
+};
+
 struct RouteErrorInfo {
     RouteError category = RouteError::None;
     QString detail;
@@ -92,6 +98,7 @@ struct AudioRoute {
     RouteRecoveryPolicy recoveryPolicy = RouteRecoveryPolicy::RebindOnGraphReplacement;
     RouteOwnerType ownerType = RouteOwnerType::Manual;
     QString ownerId;
+    RouteFanoutRole fanoutRole = RouteFanoutRole::None;
 };
 
 QString toString(RouteState state);

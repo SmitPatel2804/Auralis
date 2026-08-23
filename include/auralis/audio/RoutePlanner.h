@@ -34,6 +34,12 @@ public:
         const QStringList& destinationEndpointIds,
         const PipeWireObjectStore& store,
         const class AudioEndpointRegistry& endpoints) const;
+
+    ResolvedRoutePlan planToSinkNode(
+        const QString& sourceId,
+        quint32 sinkNodeId,
+        const QString& destinationId,
+        const PipeWireObjectStore& store) const;
 };
 
 } // namespace auralis::audio

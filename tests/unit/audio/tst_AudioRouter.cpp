@@ -779,6 +779,50 @@ private slots:
         QCOMPARE(h.router.sourceDisplayName(QStringLiteral("src:auralis-system-audio")),
                  QStringLiteral("Auralis System Audio"));
     }
+
+    void sessionFanoutLinksSourceToMixNotDestinations()
+    {
+        Harness h;
+        h.backend.fanoutEnabled = true;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        h.addStereoSink(3, 31, 32, QStringLiteral("dest-b"));
+        h.store.upsert(makeNode(
+            50,
+            {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_session_fanout")},
+             {QStringLiteral("auralis.session.fanout"), QStringLiteral("true")}}));
+        h.store.upsert(makePort(51, 50, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(52, 50, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+
+        const QString routeA =
+            h.router.createSessionRoute(QStringLiteral("sess"), h.sourceId(), {QStringLiteral("dest-a")});
+        const QString routeB =
+            h.router.createSessionRoute(QStringLiteral("sess"), h.sourceId(), {QStringLiteral("dest-b")});
+        h.router.activateRoute(routeA);
+        h.router.activateRoute(routeB);
+
+        QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-a")));
+        QVERIFY(h.backend.lastFanoutNames.contains(QStringLiteral("dest-b")));
+        const auto first = h.router.routeById(routeA);
+        const auto second = h.router.routeById(routeB);
+        QVERIFY(first.has_value());
+        QVERIFY(second.has_value());
+        QVERIFY(first->state == RouteState::Active);
+        QVERIFY(second->state == RouteState::Active);
+        const bool firstLeads = !first->ownedLinks.isEmpty();
+        const bool secondLeads = !second->ownedLinks.isEmpty();
+        QVERIFY(firstLeads != secondLeads);
+        const auto& leader = firstLeads ? *first : *second;
+        QCOMPARE(leader.ownedLinks.size(), 2);
+        QCOMPARE(leader.ownedLinks.front().inputNodeId, static_cast<quint32>(50));
+
+        const int creates = h.backend.createCalls;
+        h.router.handleGraphChanged();
+        h.router.handleGraphChanged();
+        QCOMPARE(h.backend.createCalls, creates);
+        QVERIFY(h.router.routeById(firstLeads ? routeA : routeB)->state == RouteState::Active);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstAudioRouter)

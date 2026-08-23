@@ -2,6 +2,8 @@
 
 #include <QHash>
 #include <QString>
+#include <QStringList>
+#include <QtGlobal>
 
 #include <optional>
 
@@ -32,6 +34,26 @@ public:
     virtual bool volumeSupported(quint32 nodeId) const = 0;
     /// Software delay on a destination node. 0 clears the delay graph.
     virtual bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) = 0;
+
+    /// PipeWire combine-stream sink that fans out to the named destinations
+    /// with latency compensation. Default is unsupported.
+    virtual bool ensureLatencyCompensatedFanout(const QStringList& sinkNodeNames)
+    {
+        Q_UNUSED(sinkNodeNames);
+        return false;
+    }
+    virtual void destroyLatencyCompensatedFanout() {}
+
+    /// Per-destination loopback delay line in the route path. Default is unsupported.
+    virtual bool ensureDelayBridge(const QString& endpointId, const QString& destNodeName, double delaySeconds)
+    {
+        Q_UNUSED(endpointId);
+        Q_UNUSED(destNodeName);
+        Q_UNUSED(delaySeconds);
+        return false;
+    }
+    virtual void destroyDelayBridge(const QString& endpointId) { Q_UNUSED(endpointId); }
+    virtual void destroyAllDelayBridges() {}
 };
 
 } // namespace auralis::audio

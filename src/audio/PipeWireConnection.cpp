@@ -6,12 +6,15 @@
 #include <QByteArray>
 #include <QHash>
 #include <QSet>
+#include <QStringList>
 #include <QVector>
 
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <optional>
 
@@ -23,6 +26,7 @@
 #include <pipewire/pipewire.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/impl-module.h>
+#include <spa/param/latency-utils.h>
 #include <spa/param/param.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
@@ -139,6 +143,18 @@ struct PipeWireConnection::Impl {
     spa_hook registryListener{};
     pw_impl_module* virtualOutputModule = nullptr;
     spa_hook virtualOutputModuleListener{};
+    pw_impl_module* fanoutModule = nullptr;
+    spa_hook fanoutModuleListener{};
+    QStringList fanoutSinkNames;
+    struct DelayBridge {
+        Impl* impl = nullptr;
+        QString endpointId;
+        QString destNodeName;
+        double delaySec = 0;
+        pw_impl_module* module = nullptr;
+        spa_hook listener{};
+    };
+    QHash<QString, DelayBridge*> delayBridges;
     QHash<quint32, BoundProxy*> proxies;
     QHash<quint64, BoundProxy*> ownedByToken;
     QHash<quint64, quint32> tokenToGlobalId;
@@ -159,6 +175,8 @@ struct PipeWireConnection::Impl {
     static const pw_link_events kLinkEvents;
     static const pw_metadata_events kMetadataEvents;
     static const pw_impl_module_events kModuleEvents;
+    static const pw_impl_module_events kFanoutModuleEvents;
+    static const pw_impl_module_events kDelayModuleEvents;
 
     void emitEvent(const PipeWireClientEvent& event)
     {
@@ -422,6 +440,42 @@ struct PipeWireConnection::Impl {
         pw_thread_loop_unlock(loop);
         return rc >= 0;
     }
+
+    void destroyFanoutLocked()
+    {
+        fanoutSinkNames.clear();
+        if (fanoutModule == nullptr) {
+            return;
+        }
+        pw_impl_module* module = fanoutModule;
+        fanoutModule = nullptr;
+        spa_hook_remove(&fanoutModuleListener);
+        pw_impl_module_destroy(module);
+    }
+
+    void destroyDelayBridgeLocked(const QString& endpointId)
+    {
+        DelayBridge* bridge = delayBridges.take(endpointId);
+        if (bridge == nullptr) {
+            return;
+        }
+        if (bridge->module != nullptr) {
+            spa_hook_remove(&bridge->listener);
+            pw_impl_module* module = bridge->module;
+            bridge->module = nullptr;
+            bridge->impl = nullptr;
+            pw_impl_module_destroy(module);
+        }
+        delete bridge;
+    }
+
+    void destroyAllDelayBridgesLocked()
+    {
+        const QList<QString> ids = delayBridges.keys();
+        for (const QString& id : ids) {
+            destroyDelayBridgeLocked(id);
+        }
+    }
 };
 
 const pw_core_events PipeWireConnection::Impl::kCoreEvents = {
@@ -557,12 +611,24 @@ const pw_node_events PipeWireConnection::Impl::kNodeEvents = {
             }
             bound->propsWritable = false;
             if (info->params != nullptr) {
+                bool enumLatency = false;
                 for (uint32_t i = 0; i < info->n_params; ++i) {
                     if (info->params[i].id == SPA_PARAM_Props
                         && (info->params[i].flags & SPA_PARAM_INFO_WRITE) != 0) {
                         bound->propsWritable = true;
-                        break;
                     }
+                    if (info->params[i].id == SPA_PARAM_Latency) {
+                        enumLatency = true;
+                    }
+                }
+                if (enumLatency && bound->proxy != nullptr) {
+                    pw_node_enum_params(
+                        reinterpret_cast<pw_node*>(bound->proxy),
+                        0,
+                        SPA_PARAM_Latency,
+                        0,
+                        std::numeric_limits<uint32_t>::max(),
+                        nullptr);
                 }
             }
             bound->impl->emitSnapshot(
@@ -571,7 +637,33 @@ const pw_node_events PipeWireConnection::Impl::kNodeEvents = {
                 PW_TYPE_INTERFACE_Node,
                 info->props);
         },
-    .param = nullptr,
+    .param =
+        [](void* data, int, uint32_t id, uint32_t, uint32_t, const spa_pod* param) {
+            auto* bound = static_cast<BoundProxy*>(data);
+            if (bound == nullptr || bound->impl == nullptr || bound->impl->stopping || param == nullptr) {
+                return;
+            }
+            if (id != SPA_PARAM_Latency) {
+                return;
+            }
+            spa_latency_info latency{};
+            if (spa_latency_parse(param, &latency) < 0 || latency.direction != SPA_DIRECTION_INPUT) {
+                return;
+            }
+            const int64_t ns = latency.min_ns > 0 ? latency.min_ns : latency.max_ns;
+            if (ns <= 0) {
+                return;
+            }
+            QHash<QString, QString> values;
+            values.insert(QStringLiteral("auralis.latency.input.ns"), QString::number(static_cast<qint64>(ns)));
+            PipeWireClientEvent event;
+            event.type = PipeWireClientEvent::Type::GlobalUpdated;
+            event.snapshot.globalId = bound->globalId;
+            event.snapshot.interfaceType = QString::fromUtf8(PW_TYPE_INTERFACE_Node);
+            event.snapshot.kind = PipeWireObjectKind::Node;
+            event.snapshot.properties = PipeWireProperties::fromHash(std::move(values));
+            bound->impl->emitEvent(event);
+        },
 };
 
 const pw_device_events PipeWireConnection::Impl::kDeviceEvents = {
@@ -648,6 +740,52 @@ const pw_impl_module_events PipeWireConnection::Impl::kModuleEvents = {
             impl->virtualOutputModule = nullptr;
             if (!impl->stopping) {
                 qCWarning(auralisAudio) << "PipeWire VirtualOutputModuleDestroyed unexpectedly";
+            }
+        },
+    .free = nullptr,
+    .initialized = nullptr,
+    .registered = nullptr,
+};
+
+const pw_impl_module_events PipeWireConnection::Impl::kFanoutModuleEvents = {
+    .version = PW_VERSION_IMPL_MODULE_EVENTS,
+    .destroy =
+        [](void* data) {
+            auto* impl = static_cast<Impl*>(data);
+            if (impl == nullptr) {
+                return;
+            }
+            spa_hook_remove(&impl->fanoutModuleListener);
+            impl->fanoutModule = nullptr;
+            impl->fanoutSinkNames.clear();
+            if (!impl->stopping) {
+                qCWarning(auralisAudio) << "PipeWire SessionFanoutModuleDestroyed unexpectedly";
+            }
+        },
+    .free = nullptr,
+    .initialized = nullptr,
+    .registered = nullptr,
+};
+
+const pw_impl_module_events PipeWireConnection::Impl::kDelayModuleEvents = {
+    .version = PW_VERSION_IMPL_MODULE_EVENTS,
+    .destroy =
+        [](void* data) {
+            auto* bridge = static_cast<Impl::DelayBridge*>(data);
+            if (bridge == nullptr) {
+                return;
+            }
+            spa_hook_remove(&bridge->listener);
+            bridge->module = nullptr;
+            Impl* impl = bridge->impl;
+            bridge->impl = nullptr;
+            if (impl != nullptr && impl->delayBridges.value(bridge->endpointId) == bridge) {
+                impl->delayBridges.remove(bridge->endpointId);
+                if (!impl->stopping) {
+                    qCWarning(auralisAudio) << "PipeWire DelayBridgeDestroyed unexpectedly endpoint="
+                                            << bridge->endpointId;
+                }
+                delete bridge;
             }
         },
     .free = nullptr,
@@ -762,6 +900,8 @@ void PipeWireConnection::stop()
             spa_hook_remove(&impl_->virtualOutputModuleListener);
             pw_impl_module_destroy(module);
         }
+        impl_->destroyFanoutLocked();
+        impl_->destroyAllDelayBridgesLocked();
         impl_->destroyAllProxies();
         if (impl_->registry != nullptr) {
             spa_hook_remove(&impl_->registryListener);
@@ -1068,6 +1208,127 @@ bool PipeWireConnection::setNodeDelaySeconds(quint32 nodeId, double delaySeconds
     }
     const float clamped = static_cast<float>(std::clamp(delaySeconds, 0.0, 0.5));
     return impl_->applyNodeProps(nodeId, std::nullopt, std::nullopt, clamped);
+}
+
+bool PipeWireConnection::ensureLatencyCompensatedFanout(const QStringList& sinkNodeNames)
+{
+    QStringList names;
+    for (const QString& name : sinkNodeNames) {
+        const QString trimmed = name.trimmed();
+        if (!trimmed.isEmpty() && !names.contains(trimmed)) {
+            names.push_back(trimmed);
+        }
+    }
+    names.sort();
+    if (names.size() < 2 || impl_ == nullptr || impl_->context == nullptr || impl_->loop == nullptr
+        || !impl_->started || impl_->stopping) {
+        return false;
+    }
+
+    pw_thread_loop_lock(impl_->loop);
+    if (impl_->fanoutModule != nullptr && impl_->fanoutSinkNames == names) {
+        pw_thread_loop_unlock(impl_->loop);
+        return true;
+    }
+    impl_->destroyFanoutLocked();
+    const QByteArray arguments = pipeWireSessionFanoutModuleArguments(names);
+    errno = 0;
+    impl_->fanoutModule = pw_context_load_module(
+        impl_->context, "libpipewire-module-combine-stream", arguments.constData(), nullptr);
+    if (impl_->fanoutModule != nullptr) {
+        impl_->fanoutSinkNames = names;
+        pw_impl_module_add_listener(
+            impl_->fanoutModule, &impl_->fanoutModuleListener, &Impl::kFanoutModuleEvents, impl_);
+    }
+    const bool created = impl_->fanoutModule != nullptr;
+    pw_thread_loop_unlock(impl_->loop);
+    if (created) {
+        qCInfo(auralisAudio) << "PipeWire SessionFanoutCreateRequested sinks=" << names;
+    } else {
+        qCWarning(auralisAudio) << "PipeWire SessionFanoutCreateFailed";
+    }
+    return created;
+}
+
+void PipeWireConnection::destroyLatencyCompensatedFanout()
+{
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    const bool had = impl_->fanoutModule != nullptr;
+    impl_->destroyFanoutLocked();
+    pw_thread_loop_unlock(impl_->loop);
+    if (had) {
+        qCInfo(auralisAudio) << "PipeWire SessionFanoutDestroyed";
+    }
+}
+
+bool PipeWireConnection::ensureDelayBridge(
+    const QString& endpointId,
+    const QString& destNodeName,
+    double delaySeconds)
+{
+    const QString id = endpointId.trimmed();
+    if (id.isEmpty() || id.contains(QLatin1Char('"')) || impl_ == nullptr || impl_->context == nullptr
+        || impl_->loop == nullptr || !impl_->started || impl_->stopping) {
+        return false;
+    }
+    const double clamped = std::clamp(std::isfinite(delaySeconds) ? delaySeconds : 0.0, 0.0, 0.5);
+    if (clamped < 0.0005) {
+        destroyDelayBridge(id);
+        return true;
+    }
+
+    pw_thread_loop_lock(impl_->loop);
+    if (Impl::DelayBridge* existing = impl_->delayBridges.value(id)) {
+        if (existing->module != nullptr && existing->destNodeName == destNodeName
+            && std::abs(existing->delaySec - clamped) < 0.0005) {
+            pw_thread_loop_unlock(impl_->loop);
+            return true;
+        }
+    }
+    impl_->destroyDelayBridgeLocked(id);
+    auto* bridge = new Impl::DelayBridge;
+    bridge->impl = impl_;
+    bridge->endpointId = id;
+    bridge->destNodeName = destNodeName;
+    bridge->delaySec = clamped;
+    const QByteArray arguments = pipeWireDelayBridgeModuleArguments(id, destNodeName, clamped);
+    errno = 0;
+    bridge->module = pw_context_load_module(
+        impl_->context, "libpipewire-module-loopback", arguments.constData(), nullptr);
+    if (bridge->module == nullptr) {
+        delete bridge;
+        pw_thread_loop_unlock(impl_->loop);
+        qCWarning(auralisAudio) << "PipeWire DelayBridgeCreateFailed endpoint=" << id;
+        return false;
+    }
+    pw_impl_module_add_listener(bridge->module, &bridge->listener, &Impl::kDelayModuleEvents, bridge);
+    impl_->delayBridges.insert(id, bridge);
+    pw_thread_loop_unlock(impl_->loop);
+    qCInfo(auralisAudio) << "PipeWire DelayBridgeCreateRequested endpoint=" << id << "delaySec=" << clamped;
+    return true;
+}
+
+void PipeWireConnection::destroyDelayBridge(const QString& endpointId)
+{
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    impl_->destroyDelayBridgeLocked(endpointId.trimmed());
+    pw_thread_loop_unlock(impl_->loop);
+}
+
+void PipeWireConnection::destroyAllDelayBridges()
+{
+    if (impl_ == nullptr || impl_->loop == nullptr) {
+        return;
+    }
+    pw_thread_loop_lock(impl_->loop);
+    impl_->destroyAllDelayBridgesLocked();
+    pw_thread_loop_unlock(impl_->loop);
 }
 
 bool PipeWireConnection::setDefaultAudioSink(const QString& nodeName)

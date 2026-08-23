@@ -16,8 +16,9 @@ driver, a Microsoft-style driver signature, or root privileges at runtime.
    Routing a browser or other app stream instead of that source leaves one
    headset on the OS path and the other on Auralis, which sounds like lag.
 4. Select one or more connected playback endpoints and activate the route or
-   session. Dual Bluetooth A2DP is not delay-compensated, so a small remaining
-   offset between headsets can still be audible.
+   session. Auralis fans session members through a latency-compensated mix so
+   host-visible delays are aligned automatically. Dual Bluetooth A2DP still
+   cannot be sample-perfect when headsets do not report air delay.
 
 Applications write once to the virtual sink. The paired PipeWire source is the
 only object Auralis routes to the selected speakers or Bluetooth endpoints.

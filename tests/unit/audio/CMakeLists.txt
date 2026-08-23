@@ -56,6 +56,9 @@ auralis_add_test(tst_AudioSources tst_AudioSources.cpp)
 target_link_libraries(tst_AudioSources PRIVATE auralis-audio)
 target_include_directories(tst_AudioSources PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
+auralis_add_test(tst_DestinationSync tst_DestinationSync.cpp)
+target_link_libraries(tst_DestinationSync PRIVATE auralis-audio)
+
 auralis_add_test(tst_RoutePlanner tst_RoutePlanner.cpp)
 target_link_libraries(tst_RoutePlanner PRIVATE auralis-audio)
 target_include_directories(tst_RoutePlanner PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

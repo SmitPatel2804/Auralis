@@ -65,6 +65,11 @@ public:
     /// Sets PipeWire/WirePlumber current and configured default sink.
     bool setDefaultAudioSink(const QString& nodeName);
     bool setNodeDelaySeconds(quint32 nodeId, double delaySeconds) override;
+    bool ensureLatencyCompensatedFanout(const QStringList& sinkNodeNames) override;
+    void destroyLatencyCompensatedFanout() override;
+    bool ensureDelayBridge(const QString& endpointId, const QString& destNodeName, double delaySeconds) override;
+    void destroyDelayBridge(const QString& endpointId) override;
+    void destroyAllDelayBridges() override;
 
     using LinkErrorHandler = std::function<void(quint64 ownershipToken, int res, const QString& message)>;
     void setLinkErrorHandler(LinkErrorHandler handler);

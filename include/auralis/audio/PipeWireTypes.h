@@ -67,6 +67,7 @@ struct PipeWireNodeInfo {
     std::optional<QString> bluezCodec;
     std::optional<quint32> channelCount;
     std::optional<quint32> sampleRate;
+    std::optional<qint64> inputLatencyNs;
     PipeWireProperties properties;
 
     bool operator==(const PipeWireNodeInfo& other) const = default;

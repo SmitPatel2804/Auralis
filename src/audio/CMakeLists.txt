@@ -7,6 +7,7 @@ set(AURALIS_AUDIO_SOURCES
     AudioRouter.cpp
     AudioSource.cpp
     AudioSourceListModel.cpp
+    DestinationSync.cpp
     EndpointResolver.cpp
     LinkManager.cpp
     PipeWireObjectStore.cpp
@@ -25,6 +26,7 @@ set(AURALIS_AUDIO_SOURCES
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioRouter.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioSource.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/AudioSourceListModel.h"
+    "${CMAKE_SOURCE_DIR}/include/auralis/audio/DestinationSync.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/EndpointResolver.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/IAudioManager.h"
     "${CMAKE_SOURCE_DIR}/include/auralis/audio/IPipeWireLinkBackend.h"

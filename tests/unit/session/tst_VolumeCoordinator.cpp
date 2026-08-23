@@ -57,6 +57,7 @@ private slots:
         volume.applyMemberVolume(session, device);
         QCOMPARE(backend.lastVolume, 0.3);
         QVERIFY(!backend.lastMuted);
+        QCOMPARE(backend.lastDelaySeconds, -1.0);
 
         session.muted = true;
         volume.applyMemberVolume(session, device);

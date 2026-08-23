@@ -123,7 +123,7 @@ std::optional<AudioSource> classifyAudioSource(const PipeWireNodeInfo& node, con
     // The sink half is selected by desktop applications. Only the source half
     // is routed by Auralis; exposing the sink monitor as well would create two
     // indistinguishable copies and make feedback selection possible.
-    if (isAuralisPipeWireVirtualSink(node)) {
+    if (isAuralisPipeWireVirtualSink(node) || isAuralisInternalGraphNode(node)) {
         return std::nullopt;
     }
 
@@ -144,6 +144,9 @@ std::optional<AudioSource> classifyAudioSource(const PipeWireNodeInfo& node, con
     }
 
     if (node.mediaClass == QLatin1String("Stream/Output/Audio")) {
+        if (isAuralisInternalGraphNode(node)) {
+            return std::nullopt;
+        }
         AudioSource source = makeSourceFromNode(node, AudioSourceType::ApplicationPlaybackStream, false);
         for (const PipeWirePortInfo& port : store.portsForNode(node.globalId)) {
             if (port.direction == PipeWirePortDirection::Output && isRoutableAudioPort(port)) {

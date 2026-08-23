@@ -1,10 +1,12 @@
 #include <auralis/audio/AudioRouter.h>
 
 #include <auralis/audio/AudioSourceListModel.h>
+#include <auralis/audio/DestinationSync.h>
 #include <auralis/audio/PipeWireVirtualOutput.h>
 #include <auralis/audio/RouteListModel.h>
 #include <auralis/core/LoggingCategories.h>
 
+#include <QHash>
 #include <QUuid>
 
 #include <algorithm>
@@ -31,6 +33,59 @@ bool hasLiveOwnership(const AudioRoute& route)
         }
     }
     return false;
+}
+
+struct DelayBridgeNodes {
+    quint32 captureNodeId = 0;
+    quint32 playbackNodeId = 0;
+    bool ready = false;
+};
+
+const PipeWirePortInfo* findNodeAudioPort(
+    const PipeWireObjectStore& store,
+    quint32 nodeId,
+    PipeWirePortDirection direction,
+    const QString& channel)
+{
+    const PipeWirePortInfo* fallback = nullptr;
+    for (const PipeWirePortInfo& port : store.portsForNode(nodeId)) {
+        if (port.direction != direction || port.control || port.monitor) {
+            continue;
+        }
+        if (!channel.isEmpty() && port.audioChannel == channel) {
+            return &port;
+        }
+        if (fallback == nullptr) {
+            fallback = &port;
+        }
+    }
+    return fallback;
+}
+
+DelayBridgeNodes findDelayBridge(const PipeWireObjectStore& store, const QString& endpointId)
+{
+    DelayBridgeNodes result;
+    for (const PipeWireNodeInfo& node : store.nodes()) {
+        if (node.properties.value(QStringLiteral("auralis.delay.endpoint")) != endpointId) {
+            continue;
+        }
+        const QString role = node.properties.value(QStringLiteral("auralis.delay.role"));
+        if (role == QLatin1String("capture") || node.mediaClass == QLatin1String("Audio/Sink")) {
+            result.captureNodeId = node.globalId;
+        } else if (role == QLatin1String("playback")
+                   || node.mediaClass.startsWith(QLatin1String("Stream/Output"))) {
+            result.playbackNodeId = node.globalId;
+        }
+    }
+    if (result.captureNodeId == 0 || result.playbackNodeId == 0) {
+        return result;
+    }
+    const bool captureReady =
+        findNodeAudioPort(store, result.captureNodeId, PipeWirePortDirection::Input, {}) != nullptr;
+    const bool playbackReady =
+        findNodeAudioPort(store, result.playbackNodeId, PipeWirePortDirection::Output, {}) != nullptr;
+    result.ready = captureReady && playbackReady;
+    return result;
 }
 
 } // namespace
@@ -303,6 +358,24 @@ void AudioRouter::activateRoute(const QString& routeId)
     beginActivation(*route, generation);
 }
 
+void AudioRouter::syncSessionDestinations(const QString& sessionId)
+{
+    if (sessionId.isEmpty()) {
+        return;
+    }
+    for (AudioRoute& route : routes_) {
+        if (route.ownerType != RouteOwnerType::Session || route.ownerId != sessionId || !route.enabled) {
+            continue;
+        }
+        if (tryActivateCompensatedFanout(route)) {
+            return;
+        }
+        applyAutomaticDelayBridges(sessionGroup(sessionId));
+        replanIfEnabled(route);
+        return;
+    }
+}
+
 void AudioRouter::deactivateRoute(const QString& routeId)
 {
     AudioRoute* route = mutableRoute(routeId);
@@ -312,14 +385,21 @@ void AudioRouter::deactivateRoute(const QString& routeId)
     generations_[routeId] = ++nextGeneration_;
     route->enabled = false;
     stopActivationTimeout(routeId);
+    const RouteOwnerType ownerType = route->ownerType;
+    const QString ownerId = route->ownerId;
     if (route->state == RouteState::Inactive && route->ownedLinks.isEmpty()) {
         emitQmlPropertyNotifications();
         return;
     }
     setState(*route, RouteState::Deactivating);
     links_.destroyLinks(route->ownedLinks);
+    route->ownedLinks.clear();
+    route->fanoutRole = RouteFanoutRole::None;
     setState(*route, RouteState::Inactive);
     qCInfo(auralisAudio) << "AudioRouter RouteDeactivated id=" << routeId;
+    if (ownerType == RouteOwnerType::Session) {
+        releaseFanoutIfUnused(ownerId);
+    }
 }
 
 void AudioRouter::setRouteSource(const QString& routeId, const QString& sourceId)
@@ -481,6 +561,9 @@ void AudioRouter::handleGraphChanged()
             continue;
         }
         if (route.state == RouteState::Activating) {
+            if (route.ownerType == RouteOwnerType::Session) {
+                tryActivateCompensatedFanout(route);
+            }
             if (linksHaveError(route)) {
                 rollback(route, RouteError::LinkEnteredErrorState, QStringLiteral("A created link entered ERROR"), true);
                 continue;
@@ -542,6 +625,9 @@ void AudioRouter::handleGraphChanged()
                 continue;
             }
             if (route.recoveryPolicy == RouteRecoveryPolicy::RebindOnGraphReplacement) {
+                if (route.ownerType == RouteOwnerType::Session && tryActivateCompensatedFanout(route)) {
+                    continue;
+                }
                 replanIfEnabled(route);
             }
         }
@@ -582,6 +668,11 @@ void AudioRouter::shutdown()
         route.enabled = false;
         links_.destroyLinks(route.ownedLinks);
         route.state = RouteState::Inactive;
+        route.fanoutRole = RouteFanoutRole::None;
+    }
+    if (backend_ != nullptr) {
+        backend_->destroyLatencyCompensatedFanout();
+        backend_->destroyAllDelayBridges();
     }
     routes_.clear();
     sources_.clear();
@@ -732,12 +823,19 @@ void AudioRouter::beginActivation(AudioRoute& route, quint64 generation)
         rollback(route, RouteError::InternalError, QStringLiteral("Graph is not available"), true);
         return;
     }
-
-    const ResolvedRoutePlan plan = planner_.plan(route.sourceId, route.destinationIds, *store_, *endpoints_);
-    if (plan.error.hasError()) {
-        rollback(route, plan.error.category, plan.error.detail, true);
+    if (tryActivateCompensatedFanout(route)) {
         return;
     }
+    route.fanoutRole = RouteFanoutRole::None;
+
+    const ResolvedRoutePlan planned = planner_.plan(route.sourceId, route.destinationIds, *store_, *endpoints_);
+    if (planned.error.hasError()) {
+        rollback(route, planned.error.category, planned.error.detail, true);
+        return;
+    }
+    applyAutomaticDelayBridges(
+        route.ownerType == RouteOwnerType::Session ? sessionGroup(route.ownerId) : QVector<AudioRoute*>{&route});
+    const ResolvedRoutePlan plan = expandPlanThroughDelayBridges(planned);
     if (QVector<OwnedLink> adopted = tryAdoptExistingLinks(route.id, plan); !adopted.isEmpty()) {
         if (adopted.size() != plan.pairs.size()) {
             rollback(
@@ -931,6 +1029,8 @@ void AudioRouter::rollback(AudioRoute& route, RouteError category, const QString
     stopActivationTimeout(route.id);
     links_.destroyLinks(route.ownedLinks);
     route.ownedLinks.clear();
+    const RouteOwnerType ownerType = route.ownerType;
+    const QString ownerId = route.ownerId;
 
     if (QVector<OwnedLink> backup = replanBackups_.take(route.id); !backup.isEmpty()) {
         route.ownedLinks = backup;
@@ -946,14 +1046,21 @@ void AudioRouter::rollback(AudioRoute& route, RouteError category, const QString
         route.ownedLinks.clear();
     }
 
+    route.fanoutRole = RouteFanoutRole::None;
     if (disable) {
         route.enabled = false;
         setError(route, category, detail);
         setState(route, RouteState::Failed);
+        if (ownerType == RouteOwnerType::Session) {
+            releaseFanoutIfUnused(ownerId);
+        }
         return;
     }
     setError(route, category, detail);
     setState(route, RouteState::Degraded);
+    if (ownerType == RouteOwnerType::Session) {
+        releaseFanoutIfUnused(ownerId);
+    }
 }
 
 void AudioRouter::replanIfEnabled(AudioRoute& route)
@@ -964,15 +1071,25 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
     if (connectionState_ != PipeWireConnectionState::Connected || !initialSyncComplete_) {
         return;
     }
-    const ResolvedRoutePlan plan = planner_.plan(route.sourceId, route.destinationIds, *store_, *endpoints_);
-    if (plan.error.hasError()) {
+    if (tryActivateCompensatedFanout(route)) {
+        return;
+    }
+    if (route.ownerType == RouteOwnerType::Session && backend_ != nullptr) {
+        backend_->destroyLatencyCompensatedFanout();
+    }
+    route.fanoutRole = RouteFanoutRole::None;
+    applyAutomaticDelayBridges(
+        route.ownerType == RouteOwnerType::Session ? sessionGroup(route.ownerId) : QVector<AudioRoute*>{&route});
+    const ResolvedRoutePlan planned = planner_.plan(route.sourceId, route.destinationIds, *store_, *endpoints_);
+    if (planned.error.hasError()) {
         if (linksOperational(route)) {
             return;
         }
-        setError(route, plan.error.category, plan.error.detail);
+        setError(route, planned.error.category, planned.error.detail);
         setState(route, RouteState::Degraded);
         return;
     }
+    const ResolvedRoutePlan plan = expandPlanThroughDelayBridges(planned);
 
     refreshOwnedLinkIds(route);
     bool needsRebuild = route.ownedLinks.size() != plan.pairs.size() || !linksOperational(route);
@@ -1034,6 +1151,9 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
 
 bool AudioRouter::linksOperational(const AudioRoute& route) const
 {
+    if (route.fanoutRole == RouteFanoutRole::Member) {
+        return fanoutSinkReady();
+    }
     if (route.ownedLinks.isEmpty() || store_ == nullptr) {
         return false;
     }
@@ -1139,6 +1259,301 @@ QVector<QPair<QString, quint32>> AudioRouter::destinationNodes(const AudioRoute&
         }
     }
     return result;
+}
+
+QVector<AudioRoute*> AudioRouter::sessionGroup(const QString& ownerId)
+{
+    QVector<AudioRoute*> group;
+    if (ownerId.isEmpty()) {
+        return group;
+    }
+    for (AudioRoute& route : routes_) {
+        if (route.ownerType != RouteOwnerType::Session || route.ownerId != ownerId) {
+            continue;
+        }
+        if (route.enabled || route.state == RouteState::Planning || route.state == RouteState::Ready
+            || route.state == RouteState::Activating) {
+            group.push_back(&route);
+        }
+    }
+    std::sort(group.begin(), group.end(), [](const AudioRoute* left, const AudioRoute* right) {
+        return left->id < right->id;
+    });
+    return group;
+}
+
+QStringList AudioRouter::sessionSinkNodeNames(const QVector<AudioRoute*>& group) const
+{
+    QStringList names;
+    if (endpoints_ == nullptr) {
+        return names;
+    }
+    for (const AudioRoute* route : group) {
+        if (route == nullptr) {
+            continue;
+        }
+        for (const QString& destId : route->destinationIds) {
+            const AudioEndpoint* endpoint = endpoints_->findById(destId);
+            if (endpoint == nullptr) {
+                continue;
+            }
+            QString sinkName = endpoint->nodeName;
+            if (sinkName.isEmpty()) {
+                sinkName = endpoint->name;
+            }
+            if (sinkName.isEmpty() && store_ != nullptr) {
+                if (const PipeWireNodeInfo* node = store_->node(endpoint->pipeWireObjectId)) {
+                    sinkName = node->name;
+                }
+            }
+            if (sinkName.isEmpty() || names.contains(sinkName)) {
+                continue;
+            }
+            names.push_back(sinkName);
+        }
+    }
+    return names;
+}
+
+quint32 AudioRouter::fanoutSinkNodeId() const
+{
+    if (store_ == nullptr) {
+        return 0;
+    }
+    for (const PipeWireNodeInfo& node : store_->nodes()) {
+        if (isAuralisSessionFanoutSink(node)) {
+            return node.globalId;
+        }
+    }
+    return 0;
+}
+
+bool AudioRouter::fanoutSinkReady() const
+{
+    const quint32 id = fanoutSinkNodeId();
+    if (id == 0 || store_ == nullptr) {
+        return false;
+    }
+    return findNodeAudioPort(*store_, id, PipeWirePortDirection::Input, {}) != nullptr;
+}
+
+bool AudioRouter::tryActivateCompensatedFanout(AudioRoute& route)
+{
+    if (backend_ == nullptr || route.ownerType != RouteOwnerType::Session || route.ownerId.isEmpty()) {
+        return false;
+    }
+    const QVector<AudioRoute*> group = sessionGroup(route.ownerId);
+    if (group.size() < 2) {
+        if (route.fanoutRole != RouteFanoutRole::None && backend_ != nullptr) {
+            backend_->destroyLatencyCompensatedFanout();
+            route.fanoutRole = RouteFanoutRole::None;
+        }
+        return false;
+    }
+    const QStringList names = sessionSinkNodeNames(group);
+    if (names.size() < 2 || !backend_->ensureLatencyCompensatedFanout(names)) {
+        if (route.fanoutRole != RouteFanoutRole::None) {
+            backend_->destroyLatencyCompensatedFanout();
+            route.fanoutRole = RouteFanoutRole::None;
+        }
+        return false;
+    }
+    backend_->destroyAllDelayBridges();
+    relinkSessionToFanout(route.ownerId);
+    return true;
+}
+
+void AudioRouter::relinkSessionToFanout(const QString& ownerId)
+{
+    const QVector<AudioRoute*> group = sessionGroup(ownerId);
+    if (group.size() < 2 || backend_ == nullptr || store_ == nullptr) {
+        return;
+    }
+    AudioRoute* leader = group.front();
+    if (!fanoutSinkReady()) {
+        for (AudioRoute* route : group) {
+            if (route->fanoutRole == RouteFanoutRole::None && !route->ownedLinks.isEmpty()) {
+                links_.destroyLinks(route->ownedLinks);
+                route->ownedLinks.clear();
+            }
+            route->enabled = true;
+            route->fanoutRole = (route == leader) ? RouteFanoutRole::Leader : RouteFanoutRole::Member;
+            if (route->state != RouteState::Activating && route->state != RouteState::Planning) {
+                setState(*route, RouteState::Activating);
+            } else if (route->state == RouteState::Planning) {
+                setState(*route, RouteState::Activating);
+            }
+        }
+        qCInfo(auralisAudio) << "AudioRouter SessionFanoutWaiting owner=" << ownerId;
+        return;
+    }
+
+    const quint32 fanout = fanoutSinkNodeId();
+    const ResolvedRoutePlan plan =
+        planner_.planToSinkNode(leader->sourceId, fanout, QStringLiteral("fanout"), *store_);
+    if (plan.error.hasError()) {
+        qCWarning(auralisAudio) << "AudioRouter SessionFanoutPlanFailed" << plan.error.detail;
+        return;
+    }
+
+    refreshOwnedLinkIds(*leader);
+    bool leaderHasFanoutLinks = leader->fanoutRole == RouteFanoutRole::Leader && ownedLinksMatchPlan(*leader, plan);
+    if (leaderHasFanoutLinks) {
+        for (const OwnedLink& owned : leader->ownedLinks) {
+            if (owned.inputNodeId != fanout) {
+                leaderHasFanoutLinks = false;
+                break;
+            }
+        }
+    }
+
+    if (!leaderHasFanoutLinks) {
+        for (AudioRoute* route : group) {
+            links_.destroyLinks(route->ownedLinks);
+            route->ownedLinks.clear();
+        }
+        clearConflictingLinks(plan);
+        RouteErrorInfo error;
+        QVector<OwnedLink> created = links_.createLinks(leader->id, plan, &error);
+        if (created.isEmpty()) {
+            qCWarning(auralisAudio) << "AudioRouter SessionFanoutLinkFailed" << error.detail;
+            return;
+        }
+        leader->ownedLinks = std::move(created);
+        leader->activatedAt = QDateTime::currentDateTimeUtc();
+        const quint64 generation = ++nextGeneration_;
+        generations_[leader->id] = generation;
+        leader->fanoutRole = RouteFanoutRole::Leader;
+        leader->enabled = true;
+        setState(*leader, RouteState::Activating);
+        armActivationTimeout(leader->id, generation);
+        qCInfo(auralisAudio) << "AudioRouter SessionFanoutLinked owner=" << ownerId << "leader=" << leader->id;
+    }
+    finishActivationIfReady(*leader);
+
+    for (AudioRoute* route : group) {
+        if (route == leader) {
+            continue;
+        }
+        if (!route->ownedLinks.isEmpty()) {
+            links_.destroyLinks(route->ownedLinks);
+            route->ownedLinks.clear();
+        }
+        const bool alreadyMember = route->fanoutRole == RouteFanoutRole::Member && route->state == RouteState::Active;
+        route->fanoutRole = RouteFanoutRole::Member;
+        route->enabled = true;
+        route->error = {};
+        route->activatedAt = QDateTime::currentDateTimeUtc();
+        stopActivationTimeout(route->id);
+        if (!alreadyMember) {
+            setState(*route, RouteState::Active);
+            qCInfo(auralisAudio) << "AudioRouter RouteActive id=" << route->id << "fanout=member";
+        }
+    }
+}
+
+void AudioRouter::releaseFanoutIfUnused(const QString& ownerId)
+{
+    if (backend_ == nullptr || ownerId.isEmpty()) {
+        return;
+    }
+    const QVector<AudioRoute*> group = sessionGroup(ownerId);
+    if (group.size() >= 2) {
+        relinkSessionToFanout(ownerId);
+        return;
+    }
+    backend_->destroyLatencyCompensatedFanout();
+    backend_->destroyAllDelayBridges();
+    for (AudioRoute* route : group) {
+        route->fanoutRole = RouteFanoutRole::None;
+        if (route->enabled) {
+            replanIfEnabled(*route);
+        }
+    }
+}
+
+void AudioRouter::applyAutomaticDelayBridges(const QVector<AudioRoute*>& group)
+{
+    if (backend_ == nullptr || store_ == nullptr || endpoints_ == nullptr) {
+        return;
+    }
+    QVector<DestinationLatencySample> samples;
+    QHash<QString, QString> destNodeNames;
+    for (const AudioRoute* route : group) {
+        if (route == nullptr) {
+            continue;
+        }
+        for (const QString& destId : route->destinationIds) {
+            if (destNodeNames.contains(destId)) {
+                continue;
+            }
+            const AudioEndpoint* endpoint = endpoints_->findById(destId);
+            if (endpoint == nullptr) {
+                continue;
+            }
+            destNodeNames.insert(destId, endpoint->nodeName);
+            DestinationLatencySample sample;
+            sample.endpointId = destId;
+            if (const PipeWireNodeInfo* node = store_->node(endpoint->pipeWireObjectId)) {
+                sample.inputLatencyNs = node->inputLatencyNs;
+            }
+            samples.push_back(sample);
+        }
+    }
+    const QHash<QString, double> delays = destinationDelayMsTowardMax(samples);
+    for (auto it = destNodeNames.constBegin(); it != destNodeNames.constEnd(); ++it) {
+        backend_->ensureDelayBridge(it.key(), it.value(), delays.value(it.key(), 0.0) / 1000.0);
+    }
+}
+
+ResolvedRoutePlan AudioRouter::expandPlanThroughDelayBridges(const ResolvedRoutePlan& plan) const
+{
+    if (store_ == nullptr) {
+        return plan;
+    }
+    ResolvedRoutePlan expanded = plan;
+    expanded.pairs.clear();
+    for (const ResolvedPortPair& pair : plan.pairs) {
+        const DelayBridgeNodes bridge = findDelayBridge(*store_, pair.destinationId);
+        if (!bridge.ready) {
+            expanded.pairs.push_back(pair);
+            continue;
+        }
+        const PipeWirePortInfo* captureIn =
+            findNodeAudioPort(*store_, bridge.captureNodeId, PipeWirePortDirection::Input, pair.channel);
+        const PipeWirePortInfo* playbackOut =
+            findNodeAudioPort(*store_, bridge.playbackNodeId, PipeWirePortDirection::Output, pair.channel);
+        if (captureIn == nullptr || playbackOut == nullptr) {
+            expanded.pairs.push_back(pair);
+            continue;
+        }
+        ResolvedPortPair toBridge = pair;
+        toBridge.inputNodeId = captureIn->nodeId.value_or(bridge.captureNodeId);
+        toBridge.inputPortId = captureIn->globalId;
+        expanded.pairs.push_back(toBridge);
+
+        ResolvedPortPair toDest = pair;
+        toDest.outputNodeId = playbackOut->nodeId.value_or(bridge.playbackNodeId);
+        toDest.outputPortId = playbackOut->globalId;
+        expanded.pairs.push_back(toDest);
+    }
+    return expanded;
+}
+
+bool AudioRouter::ownedLinksMatchPlan(const AudioRoute& route, const ResolvedRoutePlan& plan) const
+{
+    if (route.ownedLinks.size() != plan.pairs.size()) {
+        return false;
+    }
+    for (int i = 0; i < plan.pairs.size(); ++i) {
+        const ResolvedPortPair& pair = plan.pairs.at(i);
+        const OwnedLink& owned = route.ownedLinks.at(i);
+        if (owned.outputPortId != pair.outputPortId || owned.inputPortId != pair.inputPortId
+            || owned.outputNodeId != pair.outputNodeId || owned.inputNodeId != pair.inputNodeId) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace auralis::audio
