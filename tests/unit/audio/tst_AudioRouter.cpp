@@ -60,6 +60,17 @@ private:
     };
 
 private slots:
+    void unchangedSourceRefreshDoesNotEmit()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        QSignalSpy sourcesSpy(&h.router, &AudioRouter::sourcesChanged);
+
+        h.router.refreshSources();
+
+        QCOMPARE(sourcesSpy.count(), 0);
+    }
+
     void createActivateDeactivate()
     {
         Harness h;

@@ -268,10 +268,6 @@ void BluetoothManager::connectClientSignals()
         emit deviceCountChanged();
         emit connectedDeviceCountChanged();
     });
-    connect(registry_, &DeviceRegistry::deviceUpdated, this, [this]() {
-        emit deviceCountChanged();
-        emit connectedDeviceCountChanged();
-    });
     if (agent_ != nullptr) {
         connect(agent_, &BlueZAgent::pendingRequestChanged, this, [this]() {
             if (agent_ != nullptr && registry_ != nullptr) {
@@ -601,6 +597,8 @@ void BluetoothManager::handleSnapshot(const QVariantMap& objectsByPath)
     }
     syncButtonPoliciesFromRegistry();
     emit adapterChanged();
+    emit deviceCountChanged();
+    emit connectedDeviceCountChanged();
     updateStatusText();
     refreshDisplayedError();
 }
@@ -667,6 +665,13 @@ void BluetoothManager::handlePropertiesChanged(
             if (const BluetoothDeviceData* device = registry_->findByObjectPath(objectPath)) {
                 syncButtonPolicyForAddress(device->address, device->connected);
             }
+            emit connectedDeviceCountChanged();
+        }
+        if (changed.contains(bluez::kPropAddressType.toString())
+            || changed.contains(bluez::kPropClass.toString())
+            || invalidated.contains(bluez::kPropAddressType.toString())
+            || invalidated.contains(bluez::kPropClass.toString())) {
+            emit deviceCountChanged();
         }
     }
 }

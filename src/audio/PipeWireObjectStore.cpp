@@ -30,44 +30,62 @@ bool PipeWireObjectStore::upsert(const PipeWireObjectSnapshot& snapshot)
 
     switch (snapshot.kind) {
     case PipeWireObjectKind::Device: {
-        PipeWireDeviceInfo current = devices_.value(snapshot.globalId);
-        mergeDeviceInfo(current, snapshot);
-        devices_.insert(snapshot.globalId, current);
+        const auto existing = devices_.constFind(snapshot.globalId);
+        PipeWireDeviceInfo next = existing != devices_.cend() ? existing.value() : PipeWireDeviceInfo{};
+        mergeDeviceInfo(next, snapshot);
+        if (existing != devices_.cend() && existing.value() == next) {
+            return false;
+        }
+        devices_.insert(snapshot.globalId, next);
         extras_.remove(snapshot.globalId);
         return true;
     }
     case PipeWireObjectKind::Node: {
-        PipeWireNodeInfo current = nodes_.value(snapshot.globalId);
-        mergeNodeInfo(current, snapshot);
-        nodes_.insert(snapshot.globalId, current);
+        const auto existing = nodes_.constFind(snapshot.globalId);
+        PipeWireNodeInfo next = existing != nodes_.cend() ? existing.value() : PipeWireNodeInfo{};
+        mergeNodeInfo(next, snapshot);
+        if (existing != nodes_.cend() && existing.value() == next) {
+            return false;
+        }
+        nodes_.insert(snapshot.globalId, next);
         extras_.remove(snapshot.globalId);
         return true;
     }
     case PipeWireObjectKind::Port: {
-        PipeWirePortInfo current = ports_.value(snapshot.globalId);
-        mergePortInfo(current, snapshot);
-        ports_.insert(snapshot.globalId, current);
+        const auto existing = ports_.constFind(snapshot.globalId);
+        PipeWirePortInfo next = existing != ports_.cend() ? existing.value() : PipeWirePortInfo{};
+        mergePortInfo(next, snapshot);
+        if (existing != ports_.cend() && existing.value() == next) {
+            return false;
+        }
+        ports_.insert(snapshot.globalId, next);
         extras_.remove(snapshot.globalId);
         return true;
     }
     case PipeWireObjectKind::Link: {
-        PipeWireLinkInfo current = links_.value(snapshot.globalId);
-        mergeLinkInfo(current, snapshot);
-        links_.insert(snapshot.globalId, current);
+        const auto existing = links_.constFind(snapshot.globalId);
+        PipeWireLinkInfo next = existing != links_.cend() ? existing.value() : PipeWireLinkInfo{};
+        mergeLinkInfo(next, snapshot);
+        if (existing != links_.cend() && existing.value() == next) {
+            return false;
+        }
+        links_.insert(snapshot.globalId, next);
         extras_.remove(snapshot.globalId);
         return true;
     }
     case PipeWireObjectKind::Metadata:
-        if (!extras_.contains(snapshot.globalId)) {
-            extras_.insert(snapshot.globalId, snapshot.kind);
-            ++metadataCount_;
+        if (extras_.contains(snapshot.globalId)) {
+            return false;
         }
+        extras_.insert(snapshot.globalId, snapshot.kind);
+        ++metadataCount_;
         return true;
     case PipeWireObjectKind::Other:
-        if (!extras_.contains(snapshot.globalId)) {
-            extras_.insert(snapshot.globalId, snapshot.kind);
-            ++otherCount_;
+        if (extras_.contains(snapshot.globalId)) {
+            return false;
         }
+        extras_.insert(snapshot.globalId, snapshot.kind);
+        ++otherCount_;
         return true;
     case PipeWireObjectKind::Unknown:
         return false;

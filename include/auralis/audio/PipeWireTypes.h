@@ -47,6 +47,8 @@ struct PipeWireDeviceInfo {
     std::optional<QString> bluezProfile;
     std::optional<QString> bluezCodec;
     PipeWireProperties properties;
+
+    bool operator==(const PipeWireDeviceInfo& other) const = default;
 };
 
 struct PipeWireNodeInfo {
@@ -66,6 +68,8 @@ struct PipeWireNodeInfo {
     std::optional<quint32> channelCount;
     std::optional<quint32> sampleRate;
     PipeWireProperties properties;
+
+    bool operator==(const PipeWireNodeInfo& other) const = default;
 };
 
 enum class PipeWirePortDirection {
@@ -98,6 +102,8 @@ struct PipeWirePortInfo {
     bool terminal = false;
     bool control = false;
     PipeWireProperties properties;
+
+    bool operator==(const PipeWirePortInfo& other) const = default;
 };
 
 struct PipeWireLinkInfo {
@@ -109,6 +115,8 @@ struct PipeWireLinkInfo {
     PipeWireLinkState state = PipeWireLinkState::Unknown;
     QString error;
     PipeWireProperties properties;
+
+    bool operator==(const PipeWireLinkInfo& other) const = default;
 };
 
 QString toString(PipeWireConnectionState state);

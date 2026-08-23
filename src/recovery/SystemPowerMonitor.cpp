@@ -14,6 +14,7 @@ SystemPowerMonitor::SystemPowerMonitor(QObject* parent)
     : QObject(parent)
 {
     subscribeRetryTimer_.setSingleShot(false);
+    subscribeRetryTimer_.setTimerType(Qt::VeryCoarseTimer);
     connect(&subscribeRetryTimer_, &QTimer::timeout, this, [this]() {
         if (!initialized_ || subscribed_ || !busAvailable_) {
             if (!busAvailable_) {

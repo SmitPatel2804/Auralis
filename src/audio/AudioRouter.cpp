@@ -459,7 +459,11 @@ void AudioRouter::setRouteMuted(const QString& routeId, bool muted)
 
 void AudioRouter::refreshSources()
 {
-    sources_ = store_ != nullptr ? classifyAudioSources(*store_) : QVector<AudioSource>{};
+    QVector<AudioSource> next = store_ != nullptr ? classifyAudioSources(*store_) : QVector<AudioSource>{};
+    if (sources_ == next) {
+        return;
+    }
+    sources_ = std::move(next);
     if (sourceModel_ != nullptr) {
         sourceModel_->setSources(sources_);
     }

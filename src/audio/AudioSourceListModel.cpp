@@ -9,6 +9,9 @@ AudioSourceListModel::AudioSourceListModel(QObject* parent)
 
 void AudioSourceListModel::setSources(QVector<AudioSource> sources)
 {
+    if (sources_ == sources) {
+        return;
+    }
     beginResetModel();
     sources_ = std::move(sources);
     endResetModel();

@@ -24,6 +24,8 @@ public:
 
     void merge(const PipeWireProperties& other);
 
+    bool operator==(const PipeWireProperties& other) const = default;
+
 private:
     QHash<QString, QString> values_;
 };

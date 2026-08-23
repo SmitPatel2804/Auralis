@@ -54,7 +54,7 @@ private:
     bool suspended_ = false;
     bool subscribed_ = false;
     bool busAvailable_ = true;
-    int subscribeRetryIntervalMs_ = 2000;
+    int subscribeRetryIntervalMs_ = 10000;
 };
 
 } // namespace auralis::recovery

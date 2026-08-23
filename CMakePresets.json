@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-low-resource",
+      "displayName": "Linux low-resource validation",
+      "description": "Release build with tests and bounded build/test concurrency.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-low-resource",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+        "AURALIS_BUILD_TESTS": "ON",
+        "AURALIS_ENABLE_SANITIZERS": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-low-resource",
+      "configurePreset": "linux-low-resource",
+      "jobs": 1
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-low-resource",
+      "configurePreset": "linux-low-resource",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "timeout": 180,
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

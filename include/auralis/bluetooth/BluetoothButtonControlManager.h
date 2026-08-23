@@ -2,6 +2,7 @@
 
 #include <auralis/bluetooth/DeviceButtonPolicy.h>
 
+#include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
 #include <QSettings>
@@ -76,6 +77,9 @@ private:
     QHash<QString, DeviceButtonEffectiveState> effective_;
     QHash<QString, ActiveGrab> grabs_;
     QHash<QString, bool> connected_;
+    mutable QVector<BluetoothInputEndpoint> inputCache_;
+    mutable bool inputCacheValid_ = false;
+    mutable QElapsedTimer inputCacheAge_;
     InputProbe probeOverride_;
     GrabFn grabOverride_;
     ReleaseFn releaseOverride_;

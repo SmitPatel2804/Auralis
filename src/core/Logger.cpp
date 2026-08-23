@@ -134,14 +134,22 @@ void maybeRotateLocked()
     openFileSinkLocked(state.filePath);
 }
 
-void writeLine(const QString& line)
+bool requiresImmediateFlush(QtMsgType type)
+{
+    return type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg;
+}
+
+void writeLine(QtMsgType type, const QString& line)
 {
     LoggerState& state = loggerState();
     const QByteArray utf8 = line.toUtf8();
+    const bool flushNow = requiresImmediateFlush(type);
 
     if (state.consoleEnabled) {
         std::fprintf(stderr, "%s\n", utf8.constData());
-        std::fflush(stderr);
+        if (flushNow) {
+            std::fflush(stderr);
+        }
     }
 
     if (state.file && state.file->isOpen()) {
@@ -149,7 +157,12 @@ void writeLine(const QString& line)
         if (state.file && state.file->isOpen()) {
             state.file->write(utf8);
             state.file->write("\n", 1);
-            state.file->flush();
+            // Normal records remain in the OS/file buffer and are flushed on
+            // shutdown or rotation. Warnings and failures are forced out
+            // immediately so crash diagnostics remain durable.
+            if (flushNow) {
+                state.file->flush();
+            }
         }
     }
 }
@@ -161,7 +174,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext& context, const QSt
     QString category;
     {
         QMutexLocker locker(&state.mutex);
-        writeLine(formatLine(type, context, message));
+        writeLine(type, formatLine(type, context, message));
         observer = state.observer;
         category = categoryLabel(context);
     }

@@ -66,6 +66,29 @@ private slots:
         QVERIFY(auralis::core::Logger::isFileLoggingActive());
     }
 
+    void bufferedInfoIsDurableAfterShutdown()
+    {
+#ifdef AURALIS_ENABLE_FILE_LOGGING
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("buffered.log"));
+
+        auralis::core::Logger::Options options;
+        options.enableConsole = false;
+        options.enableFile = true;
+        options.filePath = path;
+        QVERIFY(auralis::core::Logger::initialize(options));
+        qInfo("buffered-record");
+        auralis::core::Logger::shutdown();
+
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+        QVERIFY(file.readAll().contains("buffered-record"));
+#else
+        QSKIP("File logging disabled in this build");
+#endif
+    }
+
     void rotatesWhenMaxSizeExceeded()
     {
 #ifdef AURALIS_ENABLE_FILE_LOGGING

@@ -289,7 +289,10 @@ BlueZDbusClient::BlueZDbusClient(QObject* parent)
 {
     qDBusRegisterMetaType<InterfacePropertyMap>();
     qDBusRegisterMetaType<ManagedObjectMap>();
-    busHealthTimer_.setInterval(2000);
+    // D-Bus service watchers handle BlueZ changes. This is only a fallback
+    // probe for loss of the system-bus transport itself, so keep it coarse.
+    busHealthTimer_.setInterval(5000);
+    busHealthTimer_.setTimerType(Qt::VeryCoarseTimer);
     connect(&busHealthTimer_, &QTimer::timeout, this, &BlueZDbusClient::pollSystemBusHealth);
 }
 

@@ -50,6 +50,9 @@ BluetoothButtonControlManager::~BluetoothButtonControlManager()
 void BluetoothButtonControlManager::setInputProbeForTesting(InputProbe probe)
 {
     probeOverride_ = std::move(probe);
+    inputCache_.clear();
+    inputCacheValid_ = false;
+    inputCacheAge_.invalidate();
 }
 
 void BluetoothButtonControlManager::setGrabHooksForTesting(GrabFn grab, ReleaseFn release)
@@ -64,6 +67,9 @@ bool BluetoothButtonControlManager::initialize()
         return true;
     }
     loadPolicies();
+    inputCache_.clear();
+    inputCacheValid_ = false;
+    inputCacheAge_.invalidate();
     initialized_ = true;
     return true;
 }
@@ -72,9 +78,15 @@ void BluetoothButtonControlManager::shutdown()
 {
     if (!initialized_) {
         releaseAll();
+        inputCache_.clear();
+        inputCacheValid_ = false;
+        inputCacheAge_.invalidate();
         return;
     }
     releaseAll();
+    inputCache_.clear();
+    inputCacheValid_ = false;
+    inputCacheAge_.invalidate();
     initialized_ = false;
 }
 
@@ -187,7 +199,15 @@ void BluetoothButtonControlManager::syncDevice(const QString& address, bool conn
     if (key.isEmpty()) {
         return;
     }
+    const bool connectionChanged = connected_.value(key, false) != connected;
     connected_.insert(key, connected);
+    if (connectionChanged || connected) {
+        // The kernel input endpoint is created/removed independently from the
+        // BlueZ Device1 object. Re-probe on connection synchronization, while
+        // keeping repeated QML role reads entirely in memory.
+        inputCacheValid_ = false;
+        inputCacheAge_.invalidate();
+    }
     if (!connected) {
         applyAllow(key);
         if (policyForAddress(key) == DeviceButtonPolicy::Disallow) {
@@ -264,7 +284,14 @@ void BluetoothButtonControlManager::removePersistedPolicy(const QString& key)
 std::optional<BluetoothInputEndpoint> BluetoothButtonControlManager::findEndpoint(const QString& address) const
 {
     const QString key = normalizeAddress(address);
-    for (const BluetoothInputEndpoint& endpoint : probeInputs()) {
+    constexpr qint64 kInputCacheLifetimeMs = 2000;
+    if (!inputCacheValid_ || !inputCacheAge_.isValid()
+        || inputCacheAge_.elapsed() >= kInputCacheLifetimeMs) {
+        inputCache_ = probeInputs();
+        inputCacheValid_ = true;
+        inputCacheAge_.restart();
+    }
+    for (const BluetoothInputEndpoint& endpoint : inputCache_) {
         if (addressesMatch(endpoint.address, key)) {
             return endpoint;
         }
@@ -347,6 +374,10 @@ void BluetoothButtonControlManager::applyDisallow(const QString& address)
     const QString key = normalizeAddress(address);
     applyAllow(key);
 
+    // A policy change is infrequent and must not depend on a possibly stale
+    // capability read made before the kernel created the event endpoint.
+    inputCacheValid_ = false;
+    inputCacheAge_.invalidate();
     const auto endpoint = findEndpoint(key);
     if (!endpoint.has_value()) {
         updateEffective(key, DeviceButtonEffectiveState::Unsupported);

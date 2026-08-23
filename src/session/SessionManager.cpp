@@ -145,7 +145,11 @@ bool SessionManager::initialize()
             SLOT(handleManagedReconnectTerminalFailure(QString,int,QString)));
     }
 
-    recoverySweep_.setInterval(1000);
+    // Graph, route and BlueZ signals drive normal reconciliation. This timer
+    // is only a low-frequency safety net while a session is starting or
+    // degraded; healthy active sessions keep no periodic sweep running.
+    recoverySweep_.setInterval(5000);
+    recoverySweep_.setTimerType(Qt::VeryCoarseTimer);
     connect(&recoverySweep_, &QTimer::timeout, this, &SessionManager::handleRecoveryTick);
 
     loadSessions();
@@ -1146,6 +1150,7 @@ void SessionManager::handleRecoveryTick()
     if (AuralisSession* session = mutableSession(activeSessionId_)) {
         if (session->state == SessionState::Failed || session->state == SessionState::Idle
             || session->state == SessionState::Stopping) {
+            recoverySweep_.stop();
             return;
         }
         reconcileActiveSession(*session);
@@ -1476,6 +1481,7 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
     emit sessionUpdated(session.id);
 
     reconciling_ = false;
+    updateRecoverySweep(&session);
     if (reconcilePending_ && generations_.value(session.id) == session.operationGeneration
         && session.state != SessionState::Failed && session.state != SessionState::Idle) {
         reconcileActiveSession(session);
@@ -1501,6 +1507,7 @@ void SessionManager::stopSession(AuralisSession& session, bool persist)
     if (activeSessionId_ == session.id) {
         activeSessionId_.clear();
     }
+    updateRecoverySweep(nullptr);
     if (oldState != SessionState::Idle) {
         emit sessionStateChanged(session.id, oldState, SessionState::Idle);
     }
@@ -1509,6 +1516,20 @@ void SessionManager::stopSession(AuralisSession& session, bool persist)
     }
     emit sessionUpdated(session.id);
     emitSessionUiSignals();
+}
+
+void SessionManager::updateRecoverySweep(const AuralisSession* session)
+{
+    const bool needsSafetyNet = session != nullptr
+        && (session->state == SessionState::Starting || session->state == SessionState::Degraded
+            || session->state == SessionState::Recovering);
+    if (needsSafetyNet) {
+        if (!recoverySweep_.isActive()) {
+            recoverySweep_.start();
+        }
+        return;
+    }
+    recoverySweep_.stop();
 }
 
 void SessionManager::bumpGeneration(AuralisSession& session)

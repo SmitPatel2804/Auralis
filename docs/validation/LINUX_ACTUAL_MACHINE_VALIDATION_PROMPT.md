@@ -43,6 +43,27 @@ A skipped test is never automatically a pass. Investigate why it skipped.
 - Avoid testing at unsafe listening volumes. Begin muted or very low and ask the user before audible playback.
 - Do not commit, push, publish, or open a pull request unless the user explicitly requests it.
 
+## Resource guardrails
+
+This validation must remain usable on a constrained desktop while the AI IDE is
+also running:
+
+- Record `free -h`, `df -h .`, and `ulimit -a` before building.
+- Never run builds, tests, sanitizers, packaging, or the Auralis GUI concurrently.
+- Use one build job and one test job by default. Increase the build to two jobs
+  only when the machine has clear memory headroom; never derive concurrency from
+  `nproc`.
+- Prefer `bash scripts/validation/run-linux-low-resource.sh` for the first
+  deterministic pass. The runner deliberately rejects more than two build jobs.
+- Do not start the sanitizer phase automatically. Ask first and run it only when
+  the release suite is clean and the host has enough free RAM and swap.
+- Watch available memory during long live/endurance checks. Stop the active test
+  cleanly if the desktop begins swapping continuously, available memory falls
+  below 1 GiB, or the UI becomes unresponsive. Report the resource boundary; do
+  not launch concurrent retries.
+- Keep raw logs bounded and do not load an entire large log into the IDE/chat.
+  Use `tail`, `rg`, or another streaming filter and retain only relevant excerpts.
+
 ## Expected Linux implementation under test
 
 Confirm these expectations against the current code rather than blindly assuming them:
@@ -105,16 +126,27 @@ Inspect the current worktree before editing. Treat every pre-existing modificati
 
 ## Phase 2 — Clean configure and build
 
-Use an independent build directory. Prefer Ninja when available.
+On a constrained host, run the bounded script below and treat its configure,
+build, and deterministic test as Phases 2 and 3. Reuse
+`build/linux-low-resource`; do not create a second equivalent validation build.
+
+```bash
+AURALIS_BUILD_JOBS=1 bash scripts/validation/run-linux-low-resource.sh
+```
+
+The following commands are the manual alternative when the preset cannot be
+used. Use an independent build directory and prefer Ninja. Do not run both
+paths merely to duplicate the same coverage.
 
 ```bash
 cmake -S . -B build-linux-validation -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DBUILD_TESTING=ON
-cmake --build build-linux-validation --parallel
+  -DAURALIS_BUILD_TESTS=ON
+cmake --build build-linux-validation --parallel 1
 ```
 
-If the repository provides an appropriate Linux preset, test it as well, but do not substitute a preset for understanding its options.
+For all later commands, substitute `build/linux-low-resource` for
+`build-linux-validation` when the bounded runner was selected.
 
 Requirements:
 
@@ -146,7 +178,7 @@ ctest --test-dir build-linux-validation \
   --output-on-failure \
   --no-tests=error \
   --timeout 180 \
-  -j"$(nproc)"
+  -j1
 ```
 
 Then run the Linux-specific and integration-related tests serially and verbosely. Derive exact names from `ctest -N`; do not invent missing tests.
@@ -204,8 +236,8 @@ Configure and build a clean Release package using the repository's intended pack
 ```bash
 cmake -S . -B build-linux-package -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_TESTING=OFF
-cmake --build build-linux-package --parallel
+  -DAURALIS_BUILD_TESTS=OFF
+cmake --build build-linux-package --parallel 1
 cpack --config build-linux-package/CPackConfig.cmake -G DEB
 cpack --config build-linux-package/CPackConfig.cmake -G TGZ
 ```
@@ -382,12 +414,27 @@ Correlate at least one complete workflow—from launch through scan, route activ
 
 ## Phase 13 — Sanitizer build
 
-If the compiler/toolchain supports it, create another independent debug build with AddressSanitizer and UndefinedBehaviorSanitizer. Use project-supported options when they exist; otherwise add scoped compiler/linker flags for this validation build only.
+Only after user approval and after confirming adequate resource headroom, create
+another independent debug build with AddressSanitizer and UndefinedBehaviorSanitizer.
+Use the project-supported option and keep both build and test concurrency at one.
+If the host is constrained, mark this optional phase blocked by resources rather
+than risking another exhausted desktop.
 
 Typical GCC/Clang flags are:
 
 ```bash
 -fsanitize=address,undefined -fno-omit-frame-pointer
+```
+
+The project-supported bounded commands are:
+
+```bash
+cmake -S . -B build-linux-sanitized -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DAURALIS_BUILD_TESTS=ON \
+  -DAURALIS_ENABLE_SANITIZERS=ON
+cmake --build build-linux-sanitized --parallel 1
+ctest --test-dir build-linux-sanitized --output-on-failure --timeout 180 -j1
 ```
 
 Build, run the deterministic tests, launch the application, and exercise a representative scan/session/routing lifecycle. Report sanitizer findings with stacks. LeakSanitizer limitations caused by third-party desktop libraries must be investigated and narrowly classified, not globally suppressed without evidence.

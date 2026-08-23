@@ -41,7 +41,11 @@ PipeWireManager::PipeWireManager(bluetooth::DeviceRegistry* bluetoothRegistry, Q
     wireBluetoothRegistry();
 
     graphRefreshTimer_.setSingleShot(true);
-    graphRefreshTimer_.setInterval(100);
+    // PipeWire can deliver a burst for every node/port/link and BlueZ can
+    // update RSSI several times per second. Rebuild the public graph at most
+    // four times per second instead of once per raw event.
+    graphRefreshTimer_.setInterval(250);
+    graphRefreshTimer_.setTimerType(Qt::CoarseTimer);
     connect(&graphRefreshTimer_, &QTimer::timeout, this, &PipeWireManager::refreshGraph);
 
     reconnectTimer_.setSingleShot(true);
@@ -65,7 +69,7 @@ void PipeWireManager::wireBluetoothRegistry()
         return;
     }
     bluetoothWired_ = true;
-    const auto refresh = [this]() { refreshGraph(); };
+    const auto refresh = [this]() { scheduleGraphRefresh(); };
     connect(bluetoothRegistry_, &bluetooth::DeviceRegistry::deviceAdded, this, refresh);
     connect(bluetoothRegistry_, &bluetooth::DeviceRegistry::deviceUpdated, this, refresh);
     connect(bluetoothRegistry_, &bluetooth::DeviceRegistry::deviceRemoved, this, refresh);
@@ -584,21 +588,18 @@ void PipeWireManager::handleClientEvent(const PipeWireClientEvent& event, quint6
         qCDebug(auralisAudio) << "PipeWireRegistry GlobalAdded id=" << event.snapshot.globalId
                               << "type=" << event.snapshot.interfaceType
                               << "mediaClass=" << event.snapshot.properties.value(QStringLiteral("media.class"));
-        store_->upsert(event.snapshot);
-        if (initialSyncComplete_) {
+        if (store_->upsert(event.snapshot) && initialSyncComplete_) {
             scheduleGraphRefresh();
         }
         break;
     case PipeWireClientEvent::Type::GlobalUpdated:
-        store_->upsert(event.snapshot);
-        if (initialSyncComplete_) {
+        if (store_->upsert(event.snapshot) && initialSyncComplete_) {
             scheduleGraphRefresh();
         }
         break;
     case PipeWireClientEvent::Type::GlobalRemoved:
         qCDebug(auralisAudio) << "PipeWireRegistry GlobalRemoved id=" << event.removedId;
-        store_->remove(event.removedId);
-        if (initialSyncComplete_) {
+        if (store_->remove(event.removedId) && initialSyncComplete_) {
             scheduleGraphRefresh();
         }
         break;
@@ -645,6 +646,9 @@ void PipeWireManager::setConnectionState(PipeWireConnectionState state, const QS
 
 void PipeWireManager::scheduleGraphRefresh()
 {
+    if (shuttingDown_ || !initialSyncComplete_ || graphRefreshTimer_.isActive()) {
+        return;
+    }
     graphRefreshTimer_.start();
 }
 

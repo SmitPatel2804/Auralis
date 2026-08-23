@@ -16,6 +16,25 @@ class TstAudioSources : public QObject {
     Q_OBJECT
 
 private slots:
+    void identicalSnapshotsDoNotReportGraphChanges()
+    {
+        PipeWireObjectStore store;
+        const auto original = makeNode(
+            9,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("player")}});
+
+        QVERIFY(store.upsert(original));
+        QVERIFY(!store.upsert(original));
+
+        const auto changed = makeNode(
+            9,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("renamed-player")}});
+        QVERIFY(store.upsert(changed));
+        QVERIFY(!store.upsert(changed));
+    }
+
     void applicationPlaybackStream()
     {
         PipeWireObjectStore store;

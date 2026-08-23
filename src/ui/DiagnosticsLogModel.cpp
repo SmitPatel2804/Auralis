@@ -209,24 +209,33 @@ void DiagnosticsLogModel::appendFromLogger(QtMsgType type, const QString& catego
     entry.message = message;
 
     if (entries_.size() >= capacity_) {
-        beginResetModel();
+        const bool oldestVisible = !visibleRows_.isEmpty() && visibleRows_.constFirst() == 0;
+        if (oldestVisible) {
+            beginRemoveRows(QModelIndex(), 0, 0);
+        }
         entries_.removeFirst();
-        entries_.push_back(entry);
-        rebuildVisibleRows();
-        endResetModel();
-        emit filterChanged();
-        return;
+        if (oldestVisible) {
+            visibleRows_.removeFirst();
+        }
+        for (int& row : visibleRows_) {
+            --row;
+        }
+        if (oldestVisible) {
+            endRemoveRows();
+        }
     }
 
     const int storageIndex = entries_.size();
-    entries_.push_back(entry);
     if (matches(entry)) {
         const int visibleRow = visibleRows_.size();
         beginInsertRows(QModelIndex(), visibleRow, visibleRow);
+        entries_.push_back(entry);
         visibleRows_.push_back(storageIndex);
         endInsertRows();
-        emit filterChanged();
+    } else {
+        entries_.push_back(entry);
     }
+    emit filterChanged();
 }
 
 bool DiagnosticsLogModel::matches(const Entry& entry) const

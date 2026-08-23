@@ -33,6 +33,8 @@ struct AudioSource {
     std::optional<quint32> processId;
     bool monitorSource = false;
     QVector<quint32> portIds;
+
+    bool operator==(const AudioSource& other) const = default;
 };
 
 QString toString(AudioSourceType type);

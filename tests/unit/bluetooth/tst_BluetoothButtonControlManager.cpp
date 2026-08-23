@@ -87,6 +87,31 @@ private slots:
         manager.shutdown();
     }
 
+    void repeatedCapabilityReadsUseCachedInputProbe()
+    {
+        auto settings = std::make_unique<QSettings>(
+            QSettings::IniFormat,
+            QSettings::UserScope,
+            QStringLiteral("AuralisTest"),
+            QStringLiteral("ButtonsCache"));
+        BluetoothButtonControlManager manager(std::move(settings));
+        int probes = 0;
+        manager.setInputProbeForTesting([&]() {
+            ++probes;
+            return QVector<BluetoothInputEndpoint>{
+                {QStringLiteral("AA:BB:CC:DD:EE:0C"), QStringLiteral("/dev/input/event12"), QStringLiteral("C")},
+            };
+        });
+        QVERIFY(manager.initialize());
+        QVERIFY(manager.canControlButtonsForAddress(QStringLiteral("AA:BB:CC:DD:EE:0C")));
+        QVERIFY(manager.canControlButtonsForAddress(QStringLiteral("AA:BB:CC:DD:EE:0C")));
+        QCOMPARE(probes, 1);
+
+        manager.syncDevice(QStringLiteral("AA:BB:CC:DD:EE:0C"), true);
+        QVERIFY(manager.canControlButtonsForAddress(QStringLiteral("AA:BB:CC:DD:EE:0C")));
+        QCOMPARE(probes, 2);
+    }
+
     void twoDevicesHaveIndependentPolicies()
     {
         auto settings = std::make_unique<QSettings>(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("AuralisTest"), QStringLiteral("Buttons3"));

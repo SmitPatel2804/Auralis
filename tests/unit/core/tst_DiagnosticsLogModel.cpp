@@ -35,6 +35,26 @@ private slots:
         QVERIFY(model.visibleText().contains(QStringLiteral("hello-log")));
     }
 
+    void capacityEvictionUsesIncrementalRows()
+    {
+        auralis::ui::DiagnosticsLogModel model;
+        model.setCapacity(100);
+        model.setCaptureEnabled(true);
+        QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+        QSignalSpy removeSpy(&model, &QAbstractItemModel::rowsRemoved);
+
+        for (int i = 0; i < 101; ++i) {
+            model.appendFromLogger(QtInfoMsg, QStringLiteral("test"), QString::number(i));
+        }
+
+        QCOMPARE(model.rowCount(), 100);
+        QCOMPARE(resetSpy.count(), 0);
+        QCOMPARE(removeSpy.count(), 1);
+        QCOMPARE(
+            model.data(model.index(0, 0), auralis::ui::DiagnosticsLogModel::MessageRole).toString(),
+            QStringLiteral("1"));
+    }
+
     void filtersBySeverity()
     {
         auralis::ui::DiagnosticsLogModel model;

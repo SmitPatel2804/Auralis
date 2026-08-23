@@ -61,6 +61,25 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
+For Linux machines with limited RAM or CPU, use the bounded preset. It builds
+and tests one target at a time by default:
+
+```bash
+cmake --preset linux-low-resource
+cmake --build --preset linux-low-resource
+ctest --preset linux-low-resource
+```
+
+The equivalent one-command runner is:
+
+```bash
+bash scripts/validation/run-linux-low-resource.sh
+```
+
+Set `AURALIS_BUILD_JOBS=2` only when the host has enough free memory. The runner
+rejects values above two so an automated IDE cannot accidentally exhaust the
+host.
+
 On Windows, run these commands from an **x64 Native Tools Command Prompt for VS 2022** (or another shell initialized with `vcvars64.bat`) and point CMake at the MSVC Qt kit when it is not already discoverable:
 
 ```powershell
