@@ -27,6 +27,7 @@ public:
 
     void setSources(QVector<AudioSource> sources);
     QVector<AudioSource> sources() const;
+    Q_INVOKABLE QString sourceIdAt(int row) const;
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;

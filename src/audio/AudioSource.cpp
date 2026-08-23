@@ -75,8 +75,20 @@ QString toString(AudioSourceType type)
     return QStringLiteral("Unknown");
 }
 
+bool isUserSelectableAudioSource(const AudioSource& source)
+{
+    if (source.id == QLatin1String(kAuralisVirtualSourceId)) {
+        return true;
+    }
+    // Windows exclusive virtual-output loopback published by NativeAudioManager.
+    return source.nodeName == QLatin1String("auralis.virtual.output.loopback");
+}
+
 QString sourceListDisplayName(const AudioSource& source)
 {
+    if (isUserSelectableAudioSource(source)) {
+        return QStringLiteral("Auralis Virtual Output");
+    }
     if (!source.applicationName.isEmpty()) {
         if (!source.description.isEmpty() && source.description != source.applicationName
             && source.description != source.nodeName) {
@@ -88,9 +100,6 @@ QString sourceListDisplayName(const AudioSource& source)
         : (!source.nodeName.isEmpty() ? source.nodeName : source.id);
     if (source.monitorSource) {
         return base + QStringLiteral(" (monitor)");
-    }
-    if (source.id == QLatin1String(kAuralisVirtualSourceId)) {
-        return base;
     }
     if (source.sourceType == AudioSourceType::PhysicalAudioSource
         || source.sourceType == AudioSourceType::VirtualAudioSource) {

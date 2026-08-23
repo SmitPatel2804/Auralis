@@ -48,7 +48,7 @@ private slots:
         QCOMPARE(model->rowCount(), 0);
 
         QString sourceId;
-        if (router.sourceCount() > 0) {
+        if (!router.sourceList().isEmpty()) {
             sourceId = router.sourceList().front().id;
         }
         QVERIFY(!sourceId.isEmpty());

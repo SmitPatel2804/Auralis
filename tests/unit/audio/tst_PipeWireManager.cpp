@@ -285,7 +285,7 @@ private slots:
         QVERIFY(!manager.virtualOutputSelected());
         QCOMPARE(manager.virtualOutputStatus(), QStringLiteral("Ready (persistent)"));
         QCOMPARE(manager.audioRouter()->sourceDisplayName(QStringLiteral("src:auralis-system-audio")),
-                 QStringLiteral("Auralis System Audio"));
+                 QStringLiteral("Auralis Virtual Output"));
 
         manager.injectClientEventForTesting(defaultSinkEvent(QStringLiteral("auralis_virtual_output")));
         QVERIFY(manager.virtualOutputSelected());

@@ -160,7 +160,39 @@ private slots:
         QCOMPARE(source->id, QStringLiteral("src:auralis-system-audio"));
         QCOMPARE(source->description, QStringLiteral("Auralis System Audio"));
         QVERIFY(source->applicationName.isEmpty());
-        QCOMPARE(auralis::audio::sourceListDisplayName(*source), QStringLiteral("Auralis System Audio"));
+        QCOMPARE(auralis::audio::sourceListDisplayName(*source), QStringLiteral("Auralis Virtual Output"));
+        QVERIFY(auralis::audio::isUserSelectableAudioSource(*source));
+    }
+
+    void pickerHidesApplicationAndMicrophoneSources()
+    {
+        PipeWireObjectStore store;
+        store.upsert(makeNode(10, {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+                                   {QStringLiteral("node.name"), QStringLiteral("Firefox")},
+                                   {QStringLiteral("application.name"), QStringLiteral("Firefox")}}));
+        store.upsert(makePort(100, 10, QStringLiteral("out")));
+        store.upsert(makeNode(11, {{QStringLiteral("media.class"), QStringLiteral("Audio/Source")},
+                                   {QStringLiteral("node.name"), QStringLiteral("mic")},
+                                   {QStringLiteral("device.api"), QStringLiteral("alsa")}}));
+        store.upsert(makePort(110, 11, QStringLiteral("out")));
+        store.upsert(makeNode(
+            31,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")}}));
+        store.upsert(makePort(310, 31, QStringLiteral("out")));
+
+        const QVector sources = classifyAudioSources(store);
+        QCOMPARE(sources.size(), 3);
+        int visible = 0;
+        for (const auto& source : sources) {
+            if (auralis::audio::isUserSelectableAudioSource(source)) {
+                ++visible;
+                QCOMPARE(auralis::audio::sourceListDisplayName(source), QStringLiteral("Auralis Virtual Output"));
+            }
+        }
+        QCOMPARE(visible, 1);
     }
 };
 

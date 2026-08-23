@@ -85,6 +85,7 @@ public:
     Q_INVOKABLE void setRouteVolume(const QString& routeId, double value);
     Q_INVOKABLE void setRouteMuted(const QString& routeId, bool muted);
     Q_INVOKABLE QString sourceDisplayName(const QString& sourceId) const;
+    Q_INVOKABLE QString selectableSourceIdAt(int row) const;
 
     void syncSessionDestinations(const QString& sessionId);
 

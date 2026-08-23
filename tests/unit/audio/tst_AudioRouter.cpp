@@ -777,7 +777,28 @@ private slots:
         h.store.upsert(makePort(801, 80, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
         h.router.refreshSources();
         QCOMPARE(h.router.sourceDisplayName(QStringLiteral("src:auralis-system-audio")),
-                 QStringLiteral("Auralis System Audio"));
+                 QStringLiteral("Auralis Virtual Output"));
+    }
+
+    void sourcePickerShowsOnlyAuralisVirtualOutput()
+    {
+        Harness h;
+        h.addStereoStream(1, 11, 12);
+        h.store.upsert(makeNode(
+            80,
+            {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+             {QStringLiteral("node.name"), QStringLiteral("auralis_virtual_output.source")},
+             {QStringLiteral("auralis.virtual.output"), QStringLiteral("true")},
+             {QStringLiteral("auralis.virtual.role"), QStringLiteral("source")}}));
+        h.store.upsert(makePort(800, 80, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        h.store.upsert(makePort(801, 80, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        h.router.refreshSources();
+        QCOMPARE(h.router.sourceList().size(), 2);
+        QCOMPARE(h.router.sourceCount(), 1);
+        auto* model = h.router.sources();
+        QVERIFY(model != nullptr);
+        QCOMPARE(model->rowCount(), 1);
+        QCOMPARE(model->data(model->index(0, 0), Qt::DisplayRole).toString(), QStringLiteral("Auralis Virtual Output"));
     }
 
     void sessionFanoutLinksSourceToMixNotDestinations()

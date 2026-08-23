@@ -76,8 +76,8 @@ Flickable {
                 color: Theme.textMuted
                 text: audio && audio.virtualOutputAvailable
                       ? (root.linuxAudio
-                         ? qsTr("GNOME Settings can meter this sink without making it the default, and Bluetooth often steals the default back to a headset. Click USE AS SYSTEM OUTPUT and leave it held. Then deactivate the session if it is active, choose Auralis System Audio as the source, and activate. Dual Bluetooth can still sound slightly out of sync. Routing is active only while Auralis is running.")
-                         : qsTr("Choose Auralis Virtual Output in Windows, then select Auralis System Audio as the session source. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session."))
+                         ? qsTr("GNOME Settings can meter this sink without making it the default, and Bluetooth often steals the default back to a headset. Click USE AS SYSTEM OUTPUT and leave it held. Then deactivate the session if it is active and activate it again. The session source is Auralis Virtual Output. Dual Bluetooth can still sound slightly out of sync. Routing is active only while Auralis is running.")
+                         : qsTr("Choose Auralis Virtual Output as the Windows output, then activate the session. Auralis captures that endpoint's Windows mix and fans it out only to the devices in your active session."))
                       : (root.linuxAudio
                          ? qsTr("PipeWire could not publish the virtual output. Check Diagnostics and ensure PipeWire and WirePlumber are running in this user session.")
                          : qsTr("The current application-capture fallback observes a copy after Windows has already sent audio to its selected device. A virtual endpoint removes that duplicate physical path, but Windows will only load an installed and trusted audio driver."))
@@ -86,7 +86,7 @@ Flickable {
 
         SectionCard {
             title: qsTr("Sources")
-            subtitle: qsTr("Capture nodes available to the routing engine")
+            subtitle: qsTr("Auralis Virtual Output is the only session source")
             signalColor: Theme.accent
             Repeater {
                 model: router ? router.sources : null
@@ -103,7 +103,7 @@ Flickable {
             EmptyState {
                 visible: !router || router.sourceCount === 0
                 title: qsTr("No sources")
-                message: qsTr("Play audio or wait for a capture source.")
+                message: qsTr("Waiting for Auralis Virtual Output.")
             }
         }
 

@@ -178,7 +178,8 @@ private slots:
              "deactivateRoute(QString)", "setRouteSource(QString,QString)",
              "setRouteDestinations(QString,QStringList)", "setDestinationVolume(QString,double)",
              "setDestinationMuted(QString,bool)", "setRouteVolume(QString,double)",
-             "setRouteMuted(QString,bool)", "setDestinationDelayMs(QString,double)"});
+             "setRouteMuted(QString,bool)", "setDestinationDelayMs(QString,double)",
+             "selectableSourceIdAt(int)"});
         verifyRoles(
             modelProperty(router, "sources"),
             {"sourceId", "name", "sourceType", "applicationName", "available", "monitorSource"});

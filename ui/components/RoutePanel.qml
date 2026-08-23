@@ -60,6 +60,10 @@ ColumnLayout {
         valueRole: "sourceId"
         displayText: currentIndex >= 0 ? currentText : "Select a source"
         enabled: router && router.sourceCount > 0
+        onModelChanged: {
+            if (count === 1 && currentIndex < 0)
+                currentIndex = 0
+        }
         delegate: ItemDelegate {
             required property string name
             required property string sourceType
@@ -79,7 +83,7 @@ ColumnLayout {
 
     Text {
         visible: !router || router.sourceCount === 0
-        text: "No routable sources yet. Play audio or wait for a capture source."
+        text: "Waiting for Auralis Virtual Output."
         font.pixelSize: 12
         color: Theme.textMuted
         wrapMode: Text.WordWrap

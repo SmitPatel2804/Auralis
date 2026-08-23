@@ -9,17 +9,32 @@ AudioSourceListModel::AudioSourceListModel(QObject* parent)
 
 void AudioSourceListModel::setSources(QVector<AudioSource> sources)
 {
-    if (sources_ == sources) {
+    QVector<AudioSource> visible;
+    visible.reserve(sources.size());
+    for (const AudioSource& source : sources) {
+        if (isUserSelectableAudioSource(source)) {
+            visible.push_back(source);
+        }
+    }
+    if (sources_ == visible) {
         return;
     }
     beginResetModel();
-    sources_ = std::move(sources);
+    sources_ = std::move(visible);
     endResetModel();
 }
 
 QVector<AudioSource> AudioSourceListModel::sources() const
 {
     return sources_;
+}
+
+QString AudioSourceListModel::sourceIdAt(int row) const
+{
+    if (row < 0 || row >= sources_.size()) {
+        return {};
+    }
+    return sources_.at(row).id;
 }
 
 int AudioSourceListModel::rowCount(const QModelIndex& parent) const

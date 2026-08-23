@@ -124,7 +124,7 @@ QAbstractItemModel* AudioRouter::routeModel() const
 
 int AudioRouter::sourceCount() const
 {
-    return static_cast<int>(sources_.size());
+    return sourceModel_ != nullptr ? sourceModel_->rowCount() : 0;
 }
 
 QString AudioRouter::sourceDisplayName(const QString& sourceId) const
@@ -135,6 +135,11 @@ QString AudioRouter::sourceDisplayName(const QString& sourceId) const
         }
     }
     return sourceId;
+}
+
+QString AudioRouter::selectableSourceIdAt(int row) const
+{
+    return sourceModel_ != nullptr ? sourceModel_->sourceIdAt(row) : QString();
 }
 
 const AudioRoute* AudioRouter::plannerRoute() const

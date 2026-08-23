@@ -23,6 +23,8 @@ Item {
             selected.sessionId = root.selectedId
         if (sessions && sessions.sessionMembers)
             sessions.sessionMembers.sessionId = root.selectedId
+        Qt.callLater(root.maybeAssignVirtualOutput)
+        Qt.callLater(root.syncSourceCombo)
     }
 
     function report(result) {
@@ -49,9 +51,27 @@ Item {
             sourceCombo.currentIndex = idx
     }
 
+    function maybeAssignVirtualOutput() {
+        if (!sessions || !selected || !selected.exists || root.selectedId.length === 0)
+            return
+        if (!router || !router.sources || root.sourceCount !== 1)
+            return
+        const onlyId = router.selectableSourceIdAt(0)
+        if (!onlyId || onlyId.length === 0)
+            return
+        if (selected.sourceId === onlyId)
+            return
+        const idx = sourceCombo ? sourceCombo.indexOfValue(selected.sourceId) : -1
+        if (selected.sourceId.length === 0 || idx < 0)
+            sessions.setSource(root.selectedId, onlyId)
+    }
+
     Connections {
         target: router
-        function onSourcesChanged() { Qt.callLater(root.syncSourceCombo) }
+        function onSourcesChanged() {
+            Qt.callLater(root.maybeAssignVirtualOutput)
+            Qt.callLater(root.syncSourceCombo)
+        }
     }
 
     ColumnLayout {
@@ -223,10 +243,8 @@ Item {
                         }
                         Label {
                             text: root.sourceCount === 0
-                                  ? qsTr("No application audio sessions yet. Start playback in a browser or app; it will appear automatically.")
-                                  : (Qt.platform.os === "linux"
-                                     ? qsTr("For both headsets in sync, choose Auralis System Audio after USE AS SYSTEM OUTPUT. A browser or app stream leaves one headset on the OS path.")
-                                     : qsTr("Choose the browser or application whose playback should be shared with this session."))
+                                  ? qsTr("Waiting for Auralis Virtual Output. Keep Auralis running, then click USE AS SYSTEM OUTPUT on Audio Routing.")
+                                  : qsTr("This session uses Auralis Virtual Output. Click USE AS SYSTEM OUTPUT on Audio Routing so the desktop mix is captured once.")
                             color: Theme.textMuted
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
@@ -249,8 +267,14 @@ Item {
                                     return selected.sourceName
                                 return qsTr("Select source")
                             }
-                            Component.onCompleted: root.syncSourceCombo()
-                            onModelChanged: Qt.callLater(root.syncSourceCombo)
+                            Component.onCompleted: {
+                                root.maybeAssignVirtualOutput()
+                                root.syncSourceCombo()
+                            }
+                            onModelChanged: {
+                                Qt.callLater(root.maybeAssignVirtualOutput)
+                                Qt.callLater(root.syncSourceCombo)
+                            }
                             onActivated: root.report(sessions.setSource(root.selectedId, currentValue))
                             popup.implicitHeight: Math.min(360, 40 * Math.max(1, root.sourceCount))
                         }
