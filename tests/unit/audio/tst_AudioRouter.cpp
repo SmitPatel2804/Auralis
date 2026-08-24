@@ -341,6 +341,44 @@ private slots:
         QCOMPARE(route->ownedLinks.at(1).globalId, static_cast<quint32>(901));
     }
 
+    void sessionSyncDoesNotDuplicatePendingActivation()
+    {
+        Harness h;
+        h.backend.delayBind = true;
+        h.addStereoStream(1, 11, 12);
+        h.addStereoSink(2, 21, 22, QStringLiteral("dest-a"));
+        const QString sessionId = QStringLiteral("session-a");
+        const QString routeId = h.router.createSessionRoute(
+            sessionId, h.sourceId(), {QStringLiteral("dest-a")});
+
+        h.router.activateRoute(routeId);
+        auto route = h.router.routeById(routeId);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state == RouteState::Activating);
+        QCOMPARE(route->ownedLinks.size(), 2);
+        QCOMPARE(h.backend.createCalls, 2);
+        const QVector<auralis::audio::OwnedLink> pendingLinks = route->ownedLinks;
+
+        // SessionManager applies volume state immediately after route creation.
+        // The resulting sync must not replan links whose PipeWire globals have
+        // not appeared yet.
+        h.router.syncSessionDestinations(sessionId);
+
+        route = h.router.routeById(routeId);
+        QVERIFY(route.has_value());
+        QVERIFY(route->state == RouteState::Activating);
+        QCOMPARE(route->ownedLinks.size(), pendingLinks.size());
+        QCOMPARE(route->ownedLinks.at(0).ownershipToken, pendingLinks.at(0).ownershipToken);
+        QCOMPARE(route->ownedLinks.at(1).ownershipToken, pendingLinks.at(1).ownershipToken);
+        QCOMPARE(h.backend.createCalls, 2);
+        QCOMPARE(h.backend.owned.size(), 2);
+
+        h.backend.completeBind(pendingLinks.at(0).ownershipToken, 900);
+        h.backend.completeBind(pendingLinks.at(1).ownershipToken, 901);
+        h.router.handleGraphChanged();
+        QVERIFY(h.router.routeById(routeId)->state == RouteState::Active);
+    }
+
     void twoRoutesHaveIndependentTimeouts()
     {
         Harness h;

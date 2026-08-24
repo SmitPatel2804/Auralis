@@ -4,7 +4,7 @@ Auralis is a cross-platform desktop application for managing multiple Bluetooth/
 
 The Qt/QML UI, device model, session persistence, route planner, volume controls, recovery policy, and diagnostics are shared on Linux, Windows, and macOS. Platform selection occurs only in the desktop composition and backend build targets.
 
-This repository currently contains **Phase 8**: reliability orchestration, service recovery, suspend/resume coordination, log rotation, automated failure-injection tests, and `.deb` packaging on top of Phases 0–7.
+This repository contains the Phase 8 implementation plus Phase 9 Linux RC1 qualification automation and audit artifacts. The 2026-08-24/25 fresh software, sanitizer, two-device live routing, operator-confirmed system audio, PipeWire/WirePlumber/Bluetooth-adapter recovery, hardware churn, and package checks pass; the RC1 technical gate remains pending button support, physical-device and BlueZ-daemon recovery, suspend, lifecycle, and the two-hour soak.
 
 ## Current status
 
@@ -17,7 +17,8 @@ Phase 4: Implemented
 Phase 5: Implemented
 Phase 6: Software complete (live two-device hardware opt-in)
 Phase 7: Implemented (GUI + hardened file logging)
-Phase 8: Software exit PASS (hardware validation pending)
+Phase 8: Complete — software + actual Linux hardware validation PASS
+Phase 9: Software/package + two-device live hardware PASS (Linux RC1 technical gate pending operator gates)
 ```
 
 `Bluetooth Ready` on the status screen means the Bluetooth **discovery subsystem** initialized. It does **not** mean an adapter was found. Use the Bluetooth Discovery panel for adapter and scan state.

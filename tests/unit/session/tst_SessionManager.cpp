@@ -2,9 +2,11 @@
 #include "../audio/FakePipeWireLinkBackend.h"
 
 #include <auralis/audio/AudioEndpointRegistry.h>
+#include <auralis/audio/IAudioManager.h>
 #include <auralis/audio/AudioRoute.h>
 #include <auralis/audio/AudioRouter.h>
 #include <auralis/bluetooth/DeviceRegistry.h>
+#include <auralis/bluetooth/IBluetoothManager.h>
 #include <auralis/core/ServiceStatus.h>
 #include <auralis/session/SessionManager.h>
 
@@ -28,6 +30,61 @@ using auralis::test::makeBluetoothDevice;
 using auralis::test::makeNode;
 using auralis::test::makePlaybackEndpoint;
 using auralis::test::makePort;
+
+namespace {
+
+class ControllableAudioManager final : public auralis::audio::IAudioManager {
+public:
+    ControllableAudioManager(AudioRouter* router, AudioEndpointRegistry* endpoints)
+        : router_(router)
+        , endpoints_(endpoints)
+    {
+    }
+
+    bool initialize() override { return true; }
+    void shutdown() override {}
+    auralis::core::ServiceStatus status() const noexcept override
+    {
+        return connected_ ? auralis::core::ServiceStatus::Ready : auralis::core::ServiceStatus::Error;
+    }
+    bool connected() const noexcept override { return connected_; }
+    bool graphReady() const noexcept override { return connected_ && graphReady_; }
+    AudioRouter* audioRouter() const noexcept override { return router_; }
+    AudioEndpointRegistry* endpointRegistry() const noexcept override { return endpoints_; }
+
+    void setGraphAvailable(bool available)
+    {
+        connected_ = available;
+        graphReady_ = available;
+    }
+
+private:
+    AudioRouter* router_ = nullptr;
+    AudioEndpointRegistry* endpoints_ = nullptr;
+    bool connected_ = true;
+    bool graphReady_ = true;
+};
+
+class RegistryBluetoothManager final : public auralis::bluetooth::IBluetoothManager {
+public:
+    explicit RegistryBluetoothManager(auralis::bluetooth::DeviceRegistry* devices)
+        : devices_(devices)
+    {
+    }
+
+    bool initialize() override { return true; }
+    void shutdown() override {}
+    auralis::core::ServiceStatus status() const noexcept override
+    {
+        return auralis::core::ServiceStatus::Ready;
+    }
+    auralis::bluetooth::DeviceRegistry* deviceRegistry() const noexcept override { return devices_; }
+
+private:
+    auralis::bluetooth::DeviceRegistry* devices_ = nullptr;
+};
+
+} // namespace
 
 class TstSessionManager : public QObject {
     Q_OBJECT
@@ -548,6 +605,57 @@ private slots:
         h.addSource();
         h.manager.refreshActiveSession();
         QTRY_VERIFY_WITH_TIMEOUT(h.manager.sessionById(id)->state == SessionState::Active, 2000);
+    }
+
+    void backendOutageDoesNotMakeRecoverableSessionTerminal()
+    {
+        QTemporaryDir tempDir;
+        PipeWireObjectStore store;
+        AudioEndpointRegistry endpoints;
+        auralis::bluetooth::DeviceRegistry devices;
+        FakePipeWireLinkBackend backend(&store);
+        AudioRouter router(&store, &endpoints, &backend);
+        ControllableAudioManager audio(&router, &endpoints);
+        RegistryBluetoothManager bluetooth(&devices);
+        SessionManager manager(&bluetooth, &audio, tempDir.filePath(QStringLiteral("sessions.json")));
+        router.handleConnectionState(PipeWireConnectionState::Connected, true);
+        QVERIFY(manager.initialize());
+
+        store.upsert(makeNode(1, {{QStringLiteral("media.class"), QStringLiteral("Stream/Output/Audio")},
+                                  {QStringLiteral("object.serial"), QStringLiteral("7")}}));
+        store.upsert(makePort(11, 1, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store.upsert(makePort(12, 1, QStringLiteral("out"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        router.refreshSources();
+        devices.upsertDevice(makeBluetoothDevice(
+            QStringLiteral("/org/bluez/hci0/dev_AABBCCDDEE01"),
+            QStringLiteral("AA:BB:CC:DD:EE:01"),
+            QStringLiteral("dest-a"),
+            true));
+        store.upsert(makeNode(2, {{QStringLiteral("media.class"), QStringLiteral("Audio/Sink")},
+                                  {QStringLiteral("node.name"), QStringLiteral("dest-a")}}));
+        store.upsert(makePort(21, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FL")}}));
+        store.upsert(makePort(22, 2, QStringLiteral("in"), {{QStringLiteral("audio.channel"), QStringLiteral("FR")}}));
+        auto endpoint = makePlaybackEndpoint(QStringLiteral("dest-a"), 2, QStringLiteral("dest-a"));
+        endpoint.bluetoothAddress = QStringLiteral("AA:BB:CC:DD:EE:01");
+        endpoints.upsert(endpoint);
+
+        const QString id = manager.createSession(QStringLiteral("Backend recovery"));
+        QVERIFY(manager.addDevice(id, QStringLiteral("AA:BB:CC:DD:EE:01")) == SessionCommandResult::Accepted);
+        QVERIFY(manager.setSource(id, QStringLiteral("src:7:Stream/Output/Audio")) == SessionCommandResult::Accepted);
+        QVERIFY(manager.activateSession(id) == SessionCommandResult::Accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(manager.sessionById(id)->state == SessionState::Active, 2000);
+        const int createsBeforeOutage = backend.createCalls;
+
+        audio.setGraphAvailable(false);
+        router.handleConnectionState(PipeWireConnectionState::Error, false);
+        QTRY_VERIFY_WITH_TIMEOUT(manager.sessionById(id)->state == SessionState::Recovering, 2000);
+        QCOMPARE(backend.createCalls, createsBeforeOutage);
+
+        audio.setGraphAvailable(true);
+        router.handleConnectionState(PipeWireConnectionState::Connected, true);
+        manager.refreshActiveSession();
+        QTRY_VERIFY_WITH_TIMEOUT(manager.sessionById(id)->state == SessionState::Active, 2000);
+        QCOMPARE(router.ownedLinkCount(), 2);
     }
 
     void deactivateSessionIsReentrancySafe()

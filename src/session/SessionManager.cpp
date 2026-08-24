@@ -1454,6 +1454,31 @@ void SessionManager::reconcileActiveSession(AuralisSession& session)
 
     applyAutoRestoreFlags(session);
 
+    // PipeWire emits route-state callbacks synchronously while tearing down a
+    // dead graph. Do not let those callbacks re-plan against stale node/port
+    // IDs: that turns a recoverable backend outage into terminal route errors
+    // before the manager's bounded reconnect can publish the replacement graph.
+    const bool audioGraphUnavailable =
+        audio_ != nullptr && (!audio_->connected() || !audio_->graphReady());
+    if (audioGraphUnavailable) {
+        const bool restoreRoutes = policyAllowsAutoRouteRestore(session);
+        for (SessionDevice& device : session.devices) {
+            if (!device.enabled) {
+                device.runtime.recovering = false;
+                continue;
+            }
+            device.runtime.recovering = restoreRoutes;
+            if (restoreRoutes && policyAllowsBluetoothReconnect(session) && !device.runtime.connected) {
+                requestManagedReconnect(session, device);
+            }
+        }
+        recomputeSession(session);
+        emit sessionUpdated(session.id);
+        reconciling_ = false;
+        updateRecoverySweep(&session);
+        return;
+    }
+
     const bool sourceAvailableBefore = routing_ != nullptr && routing_->sourceAvailable(session);
     const ReconcileMode mode = sourceAvailableBefore ? ReconcileMode::Full : ReconcileMode::SuppressCreate;
 

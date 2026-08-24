@@ -26,6 +26,16 @@ BluetoothOperationError mapDbusError(const QString& errorName, const QString& er
     }
     if (errorName == bluez::kErrorFailed.toString()) {
         result.category = BluetoothError::OperationFailed;
+        // BlueZ folds several transport races into org.bluez.Error.Failed.
+        // These `br-connection-*` reasons are transient during PipeWire /
+        // WirePlumber graph replacement and must consume the bounded reconnect
+        // budget instead of being treated like authentication or bond failures.
+        const QString reason = errorMessage.trimmed().toLower();
+        result.retryable = reason == QLatin1String("br-connection-unknown")
+            || reason == QLatin1String("br-connection-aborted-by-local")
+            || reason == QLatin1String("br-connection-page-timeout")
+            || reason == QLatin1String("br-connection-timeout")
+            || reason == QLatin1String("br-connection-profile-unavailable");
         return result;
     }
     if (errorName == bluez::kErrorAlreadyConnected.toString()) {

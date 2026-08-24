@@ -1190,6 +1190,14 @@ void AudioRouter::replanIfEnabled(AudioRoute& route)
     if (connectionState_ != PipeWireConnectionState::Connected || !initialSyncComplete_) {
         return;
     }
+    // A backend link may have an ownership token before PipeWire publishes its
+    // global id. Replanning during that window creates the same port pairs a
+    // second time, and PipeWire rejects the duplicate with EEXIST. Graph
+    // callbacks already finish or fail the in-flight activation.
+    if (route.state == RouteState::Planning || route.state == RouteState::Ready
+        || route.state == RouteState::Activating) {
+        return;
+    }
     if (tryActivateCompensatedFanout(route)) {
         return;
     }

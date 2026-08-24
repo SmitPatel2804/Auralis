@@ -35,6 +35,33 @@ private slots:
         QVERIFY(mapped.category == BluetoothError::AlreadyConnected);
     }
 
+    void mapsTransientGenericConnectionFailuresAsRetryable_data()
+    {
+        QTest::addColumn<QString>("reason");
+        QTest::newRow("unknown") << QStringLiteral("br-connection-unknown");
+        QTest::newRow("local-abort") << QStringLiteral("br-connection-aborted-by-local");
+        QTest::newRow("page-timeout") << QStringLiteral("br-connection-page-timeout");
+        QTest::newRow("timeout") << QStringLiteral("br-connection-timeout");
+        QTest::newRow("profile-race") << QStringLiteral("br-connection-profile-unavailable");
+    }
+
+    void mapsTransientGenericConnectionFailuresAsRetryable()
+    {
+        QFETCH(QString, reason);
+        const auto mapped = mapDbusError(auralis::bluetooth::bluez::kErrorFailed.toString(), reason);
+        QVERIFY(mapped.category == BluetoothError::OperationFailed);
+        QVERIFY(mapped.retryable);
+    }
+
+    void keepsBondFailureTerminal()
+    {
+        const auto mapped = mapDbusError(
+            auralis::bluetooth::bluez::kErrorFailed.toString(),
+            QStringLiteral("br-connection-key-missing"));
+        QVERIFY(mapped.category == BluetoothError::OperationFailed);
+        QVERIFY(!mapped.retryable);
+    }
+
     void mapsUnknownToDbusCallFailed()
     {
         const auto mapped = mapDbusError(QStringLiteral("org.example.Error.Custom"), QStringLiteral("boom"));

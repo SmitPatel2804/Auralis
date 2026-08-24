@@ -18,6 +18,7 @@ These documents describe **how to verify** a completed phase. They are not the p
 | [phase-6-final-closure.md](phase-6-final-closure.md) | 6 | Correction/hardening final closure |
 | [phase-6-independent-rigorous-audit.md](phase-6-independent-rigorous-audit.md) | 6 | Independent adversarial audit after final fixes |
 | [phase-6-actual-machine-rigorous-audit.md](phase-6-actual-machine-rigorous-audit.md) | 6 | Actual-machine rigorous validation after absolute final correction |
+| [phase-9-linux-rc.md](phase-9-linux-rc.md) | 9 Linux RC1 | Safe automation plus operator-controlled hardware, recovery, suspend, soak, and package gates |
 
 Default `ctest` must pass without Bluetooth hardware and without a live PipeWire daemon. Live tests are opt-in via environment variables documented in the phase files.
 

@@ -1,7 +1,6 @@
 #include <auralis/recovery/SystemPowerMonitor.h>
 
 #include <QDBusConnection>
-#include <QDBusInterface>
 #include <QLoggingCategory>
 
 #include <algorithm>
@@ -171,15 +170,9 @@ bool SystemPowerMonitor::trySubscribeLogind()
         return false;
     }
 
-    QDBusInterface iface(
-        QStringLiteral("org.freedesktop.login1"),
-        QStringLiteral("/org/freedesktop/login1"),
-        QStringLiteral("org.freedesktop.login1.Manager"),
-        bus);
-    if (!iface.isValid()) {
-        return false;
-    }
-
+    // A service-qualified signal match remains valid across logind restarts.
+    // Avoid a dynamic QDBusInterface probe here: Qt caches its generated
+    // meta-object for the process lifetime, which appears as a leak under LSan.
     return bus.connect(
         QStringLiteral("org.freedesktop.login1"),
         QStringLiteral("/org/freedesktop/login1"),

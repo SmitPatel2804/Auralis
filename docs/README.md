@@ -48,6 +48,8 @@ docs/
 | [validation/phase-6-audit.md](validation/phase-6-audit.md) | Phase 6 live machine audit |
 | [validation/phase-6-final-closure.md](validation/phase-6-final-closure.md) | Phase 6 correction/hardening closure |
 | [validation/phase-6-independent-rigorous-audit.md](validation/phase-6-independent-rigorous-audit.md) | Phase 6 independent adversarial audit |
+| [validation/phase-9-linux-rc.md](validation/phase-9-linux-rc.md) | Phase 9 Linux RC1 qualification procedure |
+| [PHASE_9_LINUX_RC1_QUALIFICATION_AUDIT.md](PHASE_9_LINUX_RC1_QUALIFICATION_AUDIT.md) | Current evidence-backed Phase 9 audit and exit gates |
 
 ## Product specification
 
