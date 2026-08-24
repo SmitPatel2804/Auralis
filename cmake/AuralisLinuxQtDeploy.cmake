@@ -12,10 +12,14 @@ function(auralis_deploy_bundled_qml_assets target qml_dir)
         message(FATAL_ERROR "auralis_deploy_bundled_qml_assets: QML_DIR must not be empty")
     endif()
 
-    set(imports_file "${__QT_DEPLOY_IMPL_DIR}/../apps/desktop/.qt/qml_imports/${target}_build.cmake")
+    set(imports_base_dir "${__QT_DEPLOY_IMPL_DIR}/../apps/desktop/.qt/qml_imports")
+    set(imports_file "${imports_base_dir}/${target}_build.cmake")
+    if(NOT EXISTS "${imports_file}")
+        set(imports_file "${imports_base_dir}/${target}_conf.cmake")
+    endif()
     if(NOT EXISTS "${imports_file}")
         message(FATAL_ERROR
-            "Missing QML import scanner output for ${target}: ${imports_file}")
+            "Missing QML import scanner output for ${target} under ${imports_base_dir}")
     endif()
     include("${imports_file}")
 
