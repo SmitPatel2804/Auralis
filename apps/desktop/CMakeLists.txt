@@ -99,55 +99,40 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     if(AURALIS_LINUX_BUNDLE_QT)
-        # qt_generate_deploy_qml_app_script does not accept explicit QML/PLUGIN
-        # install dirs. For aqt trees those defaults can be absolute, which makes
-        # file(INSTALL) drop QML outside CPack's usr/ staging (verify then finds
-        # libQt6Core in usr/lib but no /qml/QtQuick/). Force prefix-relative dirs
-        # and keep dependency resolution inside the bundled Qt prefix on CI.
-        set(auralis_linux_deploy_dirs "")
-        set(auralis_grd_filter_line "")
+        # Runtime/libs: qt_generate_deploy_qml_app_script accepts GRD filters as
+        # real CMake arguments (PRE_INCLUDE scoping worked in c921b6b). A single
+        # qt_generate_deploy_script CONTENT blob cannot pass those reliably and
+        # using the installed executable path re-triggers file(GET_RUNTIME_DEPENDENCIES)
+        # failures on Ubuntu linker scripts during cpack.
+        set(auralis_runtime_deploy_options "")
         if(NOT Qt6_DIR MATCHES "^/usr/")
             get_filename_component(AURALIS_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
             string(REGEX REPLACE "([][+.*()^$])" "\\\\\\1" AURALIS_QT_PREFIX_REGEX "${AURALIS_QT_PREFIX}")
             set(QT_DEPLOY_QML_DIR "qml")
             set(QT_DEPLOY_PLUGINS_DIR "plugins")
-            set(auralis_linux_deploy_dirs
-                "QML_DIR qml"
-                "PLUGINS_DIR plugins")
-            set(auralis_grd_filter_line
-                "PRE_INCLUDE_REGEXES \"${AURALIS_QT_PREFIX_REGEX}\"")
+            list(APPEND auralis_runtime_deploy_options
+                PRE_INCLUDE_REGEXES "${AURALIS_QT_PREFIX_REGEX}")
         endif()
-        set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
-        set(auralis_linux_deploy_dir_args "")
-        foreach(auralis_linux_deploy_dir IN LISTS auralis_linux_deploy_dirs)
-            string(APPEND auralis_linux_deploy_dir_args "                    ${auralis_linux_deploy_dir}\n")
-        endforeach()
+        qt_generate_deploy_qml_app_script(
+            TARGET auralis-desktop
+            OUTPUT_SCRIPT auralis_runtime_deploy_script
+            ${auralis_runtime_deploy_options}
+        )
+
+        # QML .qml trees: qt_deploy_qml_imports only copies qmldir/plugins on Linux.
         if(NOT Qt6_DIR MATCHES "^/usr/")
             set(auralis_qml_assets_dir "qml")
         else()
             set(auralis_qml_assets_dir "\${QT_DEPLOY_QML_DIR}")
         endif()
-        # Build CONTENT in one string. Embedding a CMake list such as
-        # PRE_INCLUDE_REGEXES;<path> directly in the qt_generate_deploy_script()
-        # call splits on ';' and leaks <path> as an unexpected argument.
-        set(auralis_deploy_content "
+        set(auralis_qml_assets_content "
 include(\"\${CMAKE_CURRENT_LIST_DIR}/../../cmake/AuralisLinuxQtDeploy.cmake\")
-qt_deploy_qml_imports(
-    TARGET auralis-desktop
-${auralis_linux_deploy_dir_args}    PLUGINS_FOUND auralis_qml_plugins
-)
 auralis_deploy_bundled_qml_assets(auralis-desktop ${auralis_qml_assets_dir})
-qt_deploy_runtime_dependencies(
-    EXECUTABLE \"${auralis_linux_executable}\"
-    ADDITIONAL_MODULES \${auralis_qml_plugins}
-    GENERATE_QT_CONF
-${auralis_linux_deploy_dir_args}    ${auralis_grd_filter_line}
-)
 ")
         qt_generate_deploy_script(
             TARGET auralis-desktop
-            OUTPUT_SCRIPT auralis_deploy_script
-            CONTENT "${auralis_deploy_content}"
+            OUTPUT_SCRIPT auralis_qml_assets_deploy_script
+            CONTENT "${auralis_qml_assets_content}"
         )
     endif()
 else()
@@ -171,6 +156,12 @@ else()
         OUTPUT_SCRIPT auralis_deploy_script
         ${AURALIS_DEPLOY_OPTIONS}
     )
+endif()
+if(DEFINED auralis_runtime_deploy_script)
+    install(SCRIPT ${auralis_runtime_deploy_script})
+endif()
+if(DEFINED auralis_qml_assets_deploy_script)
+    install(SCRIPT ${auralis_qml_assets_deploy_script})
 endif()
 if(DEFINED auralis_deploy_script)
     install(SCRIPT ${auralis_deploy_script})
