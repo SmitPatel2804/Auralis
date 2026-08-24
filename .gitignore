@@ -86,6 +86,7 @@ Thumbs.db
 /audit-phase*/
 /logs_*/
 job-logs.txt
+error.txt
 
 # Windows WDK/NuGet driver build products
 /drivers/windows/auralis-virtual-audio/**/obj/

@@ -99,38 +99,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     if(AURALIS_LINUX_BUNDLE_QT)
-        # qt_generate_deploy_qml_app_script does not deploy regular runtime
-        # dependencies on Linux. Use Qt's low-level paired deployment calls so the
-        # DEB/TGZ carries the exact Qt runtime, plugins, and imported QML modules it
-        # was built against instead of relying on a distro's potentially older Qt.
-        set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
-        # CMake file(GET_RUNTIME_DEPENDENCIES) fatals with "file unknown error"
-        # if it opens a GNU ld script (common for unversioned /usr/lib/*.so on
-        # Debian/Ubuntu) while walking PipeWire/DBus/GL deps of auralis-desktop.
-        # Keep resolution inside a bundled Qt tree. Distro Qt lives under
-        # /usr/lib, so do not apply this exclusion there.
-        set(auralis_deploy_pre_exclude "")
+        # qt_generate_deploy_qml_app_script runs the same Linux deploy path as our
+        # previous custom script, but accepts GRD filter options directly.
+        set(auralis_deploy_grd_filters "")
         if(NOT Qt6_DIR MATCHES "^/usr/")
-            set(auralis_deploy_pre_exclude [=[
-                    PRE_EXCLUDE_REGEXES
-                        "^/lib" "^/usr/lib" "^/lib64" "^/usr/lib64"
-            ]=])
+            get_filename_component(AURALIS_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
+            string(REGEX REPLACE "([][+.*()^$])" "\\\\\\1" AURALIS_QT_PREFIX_REGEX "${AURALIS_QT_PREFIX}")
+            # Limit dependency walking to the bundled aqt Qt tree. Without this,
+            # file(GET_RUNTIME_DEPENDENCIES) follows PipeWire/GL/DBus into
+            # /usr/lib linker scripts and fails with "file unknown error" on CI.
+            list(APPEND auralis_deploy_grd_filters
+                PRE_INCLUDE_REGEXES "${AURALIS_QT_PREFIX_REGEX}")
         endif()
-        qt_generate_deploy_script(
+        qt_generate_deploy_qml_app_script(
             TARGET auralis-desktop
             OUTPUT_SCRIPT auralis_deploy_script
-            CONTENT "
-                qt_deploy_qml_imports(
-                    TARGET auralis-desktop
-                    PLUGINS_FOUND auralis_qml_plugins
-                )
-                qt_deploy_runtime_dependencies(
-                    EXECUTABLE \"${auralis_linux_executable}\"
-                    ADDITIONAL_MODULES \${auralis_qml_plugins}
-                    GENERATE_QT_CONF
-                    ${auralis_deploy_pre_exclude}
-                )
-            "
+            ${auralis_deploy_grd_filters}
         )
     endif()
 else()
