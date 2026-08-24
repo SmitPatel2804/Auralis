@@ -87,6 +87,8 @@ Thumbs.db
 /logs_*/
 job-logs.txt
 error.txt
+# Accidental shell redirect of cmake --help / similar (not a source file)
+/file
 
 # Windows WDK/NuGet driver build products
 /drivers/windows/auralis-virtual-audio/**/obj/

@@ -99,22 +99,51 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     if(AURALIS_LINUX_BUNDLE_QT)
-        # qt_generate_deploy_qml_app_script runs the same Linux deploy path as our
-        # previous custom script, but accepts GRD filter options directly.
+        # qt_generate_deploy_qml_app_script does not accept explicit QML/PLUGIN
+        # install dirs. For aqt trees those defaults can be absolute, which makes
+        # file(INSTALL) drop QML outside CPack's usr/ staging (verify then finds
+        # libQt6Core in usr/lib but no /qml/QtQuick/). Force prefix-relative dirs
+        # and keep dependency resolution inside the bundled Qt prefix on CI.
+        set(auralis_linux_deploy_dirs "")
         set(auralis_deploy_grd_filters "")
         if(NOT Qt6_DIR MATCHES "^/usr/")
             get_filename_component(AURALIS_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
             string(REGEX REPLACE "([][+.*()^$])" "\\\\\\1" AURALIS_QT_PREFIX_REGEX "${AURALIS_QT_PREFIX}")
-            # Limit dependency walking to the bundled aqt Qt tree. Without this,
-            # file(GET_RUNTIME_DEPENDENCIES) follows PipeWire/GL/DBus into
-            # /usr/lib linker scripts and fails with "file unknown error" on CI.
+            set(QT_DEPLOY_QML_DIR "qml")
+            set(QT_DEPLOY_PLUGINS_DIR "plugins")
+            set(auralis_linux_deploy_dirs
+                "QML_DIR qml"
+                "PLUGINS_DIR plugins")
             list(APPEND auralis_deploy_grd_filters
                 PRE_INCLUDE_REGEXES "${AURALIS_QT_PREFIX_REGEX}")
         endif()
-        qt_generate_deploy_qml_app_script(
+        set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
+        set(auralis_linux_deploy_dir_args "")
+        foreach(auralis_linux_deploy_dir IN LISTS auralis_linux_deploy_dirs)
+            string(APPEND auralis_linux_deploy_dir_args "                    ${auralis_linux_deploy_dir}\n")
+        endforeach()
+        if(NOT Qt6_DIR MATCHES "^/usr/")
+            set(auralis_qml_assets_dir "qml")
+        else()
+            set(auralis_qml_assets_dir "\${QT_DEPLOY_QML_DIR}")
+        endif()
+        qt_generate_deploy_script(
             TARGET auralis-desktop
             OUTPUT_SCRIPT auralis_deploy_script
-            ${auralis_deploy_grd_filters}
+            CONTENT "
+                include(\"\${CMAKE_CURRENT_LIST_DIR}/../../cmake/AuralisLinuxQtDeploy.cmake\")
+                qt_deploy_qml_imports(
+                    TARGET auralis-desktop
+                    ${auralis_linux_deploy_dir_args}                    PLUGINS_FOUND auralis_qml_plugins
+                )
+                auralis_deploy_bundled_qml_assets(auralis-desktop ${auralis_qml_assets_dir})
+                qt_deploy_runtime_dependencies(
+                    EXECUTABLE \"${auralis_linux_executable}\"
+                    ADDITIONAL_MODULES \${auralis_qml_plugins}
+                    GENERATE_QT_CONF
+                    ${auralis_linux_deploy_dir_args}                    ${auralis_deploy_grd_filters}
+                )
+            "
         )
     endif()
 else()
