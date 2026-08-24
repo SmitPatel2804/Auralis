@@ -14,6 +14,7 @@ using auralis::audio::AudioEndpointListModel;
 using auralis::audio::AudioRouter;
 using auralis::audio::PipeWireConnectionState;
 using auralis::audio::PipeWireManager;
+using auralis::audio::inspectPipeWireVirtualOutput;
 using auralis::audio::kAuralisVirtualSourceId;
 using auralis::bluetooth::BluetoothManager;
 using auralis::bluetooth::DeviceRegistry;
@@ -79,15 +80,21 @@ private slots:
         QVERIFY2(
             waitUntil([&audio]() { return audio.virtualOutputAvailable(); }, 8000),
             qPrintable(QStringLiteral("Auralis virtual output did not become ready: %1").arg(diagnostics(audio))));
+        const auto* store = audio.objectStore();
+        QVERIFY(store != nullptr);
+        const auto virtualState = inspectPipeWireVirtualOutput(*store);
         const QString expectedPersistence =
             QString::fromLocal8Bit(qgetenv("AURALIS_EXPECT_VIRTUAL_OUTPUT_PERSISTENCE")).trimmed();
+        // Isolated CI PipeWire has no other sink, so WirePlumber often selects
+        // the virtual output as default. The UI status then becomes "Selected
+        // as system output" and no longer mentions persistence.
         if (expectedPersistence == QLatin1String("persistent")) {
             QVERIFY2(
-                audio.virtualOutputStatus().contains(QLatin1String("persistent"), Qt::CaseInsensitive),
+                virtualState.packageManaged,
                 qPrintable(QStringLiteral("Expected package-managed virtual output: %1").arg(diagnostics(audio))));
         } else if (expectedPersistence == QLatin1String("runtime")) {
             QVERIFY2(
-                audio.virtualOutputStatus().contains(QLatin1String("while Auralis runs"), Qt::CaseInsensitive),
+                virtualState.runtimeManaged && !virtualState.packageManaged,
                 qPrintable(QStringLiteral("Expected runtime-managed virtual output: %1").arg(diagnostics(audio))));
         }
         auto* router = audio.audioRouter();
