@@ -119,15 +119,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ${auralis_runtime_deploy_options}
         )
 
-        # QML .qml trees: qt_deploy_qml_imports only copies qmldir/plugins on Linux.
-        if(NOT Qt6_DIR MATCHES "^/usr/")
-            set(auralis_qml_assets_dir "qml")
-        else()
-            set(auralis_qml_assets_dir "\${QT_DEPLOY_QML_DIR}")
-        endif()
+        # QML .qml trees: bundled Linux packages should always place imports
+        # under a package-local qml/ prefix, regardless of how the source Qt
+        # installation names its own QML directory.
+        set(auralis_qml_assets_dir "qml")
         set(auralis_qml_assets_content "
 include(\"\${CMAKE_CURRENT_LIST_DIR}/../../cmake/AuralisLinuxQtDeploy.cmake\")
-auralis_deploy_bundled_qml_assets(auralis-desktop ${auralis_qml_assets_dir})
+auralis_deploy_bundled_qml_assets(auralis-desktop \"${auralis_qml_assets_dir}\")
 ")
         qt_generate_deploy_script(
             TARGET auralis-desktop
