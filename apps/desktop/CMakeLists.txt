@@ -99,39 +99,47 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     if(AURALIS_LINUX_BUNDLE_QT)
-        # Runtime/libs: qt_generate_deploy_qml_app_script accepts GRD filters as
-        # real CMake arguments (PRE_INCLUDE scoping worked in c921b6b). A single
-        # qt_generate_deploy_script CONTENT blob cannot pass those reliably and
-        # using the installed executable path re-triggers file(GET_RUNTIME_DEPENDENCIES)
-        # failures on Ubuntu linker scripts during cpack.
         set(auralis_runtime_deploy_options "")
+        set(auralis_force_relative_qt_layout OFF)
         if(NOT Qt6_DIR MATCHES "^/usr/")
             get_filename_component(AURALIS_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
             string(REGEX REPLACE "([][+.*()^$])" "\\\\\\1" AURALIS_QT_PREFIX_REGEX "${AURALIS_QT_PREFIX}")
-            set(QT_DEPLOY_QML_DIR "qml")
-            set(QT_DEPLOY_PLUGINS_DIR "plugins")
+            set(auralis_force_relative_qt_layout ON)
             list(APPEND auralis_runtime_deploy_options
                 PRE_INCLUDE_REGEXES "${AURALIS_QT_PREFIX_REGEX}")
+
+            # CMake install(DIRECTORY) is CPack-safe. Install-time file(COPY)
+            # helpers were not reliably landing QML under the package staging
+            # tree on CI, which left the .deb without /qml/QtQuick/.
+            if(EXISTS "${AURALIS_QT_PREFIX}/qml")
+                install(DIRECTORY "${AURALIS_QT_PREFIX}/qml/"
+                    DESTINATION "qml"
+                    USE_SOURCE_PERMISSIONS
+                )
+            else()
+                message(FATAL_ERROR
+                    "Bundled Linux Qt packaging expected QML at "
+                    "${AURALIS_QT_PREFIX}/qml")
+            endif()
         endif()
+
         qt_generate_deploy_qml_app_script(
             TARGET auralis-desktop
             OUTPUT_SCRIPT auralis_runtime_deploy_script
             ${auralis_runtime_deploy_options}
         )
 
-        # QML .qml trees: bundled Linux packages should always place imports
-        # under a package-local qml/ prefix, regardless of how the source Qt
-        # installation names its own QML directory.
-        set(auralis_qml_assets_dir "qml")
-        set(auralis_qml_assets_content "
-include(\"\${CMAKE_CURRENT_LIST_DIR}/../../cmake/AuralisLinuxQtDeploy.cmake\")
-auralis_deploy_bundled_qml_assets(auralis-desktop \"${auralis_qml_assets_dir}\")
+        if(auralis_force_relative_qt_layout)
+            # QtDeploySupport bakes QT6_INSTALL_QML as the default. Force the
+            # package-local relative layout so plugins/qt.conf match install(DIRECTORY).
+            install(CODE "
+set(QT_DEPLOY_QML_DIR \"qml\")
+set(QT_DEPLOY_PLUGINS_DIR \"plugins\")
+include(\"${auralis_runtime_deploy_script}\")
 ")
-        qt_generate_deploy_script(
-            TARGET auralis-desktop
-            OUTPUT_SCRIPT auralis_qml_assets_deploy_script
-            CONTENT "${auralis_qml_assets_content}"
-        )
+        else()
+            install(SCRIPT ${auralis_runtime_deploy_script})
+        endif()
     endif()
 else()
     set(AURALIS_DEPLOY_OPTIONS
@@ -154,12 +162,6 @@ else()
         OUTPUT_SCRIPT auralis_deploy_script
         ${AURALIS_DEPLOY_OPTIONS}
     )
-endif()
-if(DEFINED auralis_runtime_deploy_script)
-    install(SCRIPT ${auralis_runtime_deploy_script})
-endif()
-if(DEFINED auralis_qml_assets_deploy_script)
-    install(SCRIPT ${auralis_qml_assets_deploy_script})
 endif()
 if(DEFINED auralis_deploy_script)
     install(SCRIPT ${auralis_deploy_script})
