@@ -88,16 +88,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # then fails. patchelf can add an RPATH; without it, do not bundle Qt and
     # declare Debian Qt/QML dependencies instead. Official aqt/CI trees still
     # bundle because those plugins already carry an RPATH.
-    if(Qt6_DIR MATCHES "^/usr/")
-        find_program(AURALIS_PATCHELF_EXECUTABLE patchelf)
-        if(AURALIS_PATCHELF_EXECUTABLE)
-            set(QT_DEPLOY_USE_PATCHELF ON)
-            set(QT_DEPLOY_PATCHELF_EXECUTABLE "${AURALIS_PATCHELF_EXECUTABLE}")
-        else()
-            set(AURALIS_LINUX_BUNDLE_QT OFF CACHE BOOL "Bundle Qt into Linux packages" FORCE)
-            message(STATUS
-                "Linux packaging will not bundle Qt (system Qt; install patchelf to enable RPATH rewriting).")
-        endif()
+    find_program(AURALIS_PATCHELF_EXECUTABLE patchelf)
+    if(AURALIS_PATCHELF_EXECUTABLE)
+        set(QT_DEPLOY_USE_PATCHELF ON)
+        set(QT_DEPLOY_PATCHELF_EXECUTABLE "${AURALIS_PATCHELF_EXECUTABLE}")
+    elseif(Qt6_DIR MATCHES "^/usr/")
+        set(AURALIS_LINUX_BUNDLE_QT OFF CACHE BOOL "Bundle Qt into Linux packages" FORCE)
+        message(STATUS
+            "Linux packaging will not bundle Qt (system Qt; install patchelf to enable RPATH rewriting).")
     endif()
 
     if(AURALIS_LINUX_BUNDLE_QT)
@@ -106,6 +104,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # DEB/TGZ carries the exact Qt runtime, plugins, and imported QML modules it
         # was built against instead of relying on a distro's potentially older Qt.
         set(auralis_linux_executable "\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:auralis-desktop>")
+        # CMake file(GET_RUNTIME_DEPENDENCIES) fatals with "file unknown error"
+        # if it opens a GNU ld script (common for unversioned /usr/lib/*.so on
+        # Debian/Ubuntu) while walking PipeWire/DBus/GL deps of auralis-desktop.
+        # Keep resolution inside a bundled Qt tree. Distro Qt lives under
+        # /usr/lib, so do not apply this exclusion there.
+        set(auralis_deploy_pre_exclude "")
+        if(NOT Qt6_DIR MATCHES "^/usr/")
+            set(auralis_deploy_pre_exclude [=[
+                    PRE_EXCLUDE_REGEXES
+                        "^/lib" "^/usr/lib" "^/lib64" "^/usr/lib64"
+            ]=])
+        endif()
         qt_generate_deploy_script(
             TARGET auralis-desktop
             OUTPUT_SCRIPT auralis_deploy_script
@@ -118,6 +128,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                     EXECUTABLE \"${auralis_linux_executable}\"
                     ADDITIONAL_MODULES \${auralis_qml_plugins}
                     GENERATE_QT_CONF
+                    ${auralis_deploy_pre_exclude}
                 )
             "
         )

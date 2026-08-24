@@ -85,6 +85,7 @@ Thumbs.db
 # Temporary audit evidence dumps (host-specific logs; the Markdown audit is the deliverable)
 /audit-phase*/
 /logs_*/
+job-logs.txt
 
 # Windows WDK/NuGet driver build products
 /drivers/windows/auralis-virtual-audio/**/obj/
